@@ -55,7 +55,7 @@
     <span class="sec-action" onclick="openLimitEditor()">Лимиты ✎</span>
   </div>
   <div class="cat-list" id="cat-list"></div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- PAGE: DAY -->
@@ -70,7 +70,7 @@
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
   <div class="entry-list" id="entry-list"></div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- PAGE: INCOME -->
@@ -93,7 +93,7 @@
   <div class="sec-hdr"><span class="sec-title">Источники дохода</span></div>
   <div class="settings-list" id="income-list" style="padding:0 16px;gap:5px;display:flex;flex-direction:column"></div>
   <div style="padding:8px 16px"><button class="btn" style="width:100%" onclick="openAddIncome()">+ Добавить доход</button></div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- PAGE: STATS -->
@@ -118,7 +118,7 @@
       <div id="chart-top-wrap" style="position:relative"><canvas id="chartTop" role="img" aria-label="Топ категорий">Топ категорий</canvas></div>
     </div>
   </div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- PAGE: ASSETS -->
@@ -139,7 +139,7 @@
   <div class="spacer"></div>
   <div class="sec-hdr"><span class="sec-title">Банки</span><span class="sec-action" onclick="openBankManager()">Управлять</span></div>
   <div class="settings-list" id="banks-display"></div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- PAGE: CALC -->
@@ -207,7 +207,7 @@
       <div style="padding:12px 14px 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">График по годам</div>
       <div id="calc-table" style="overflow-x:auto"></div>
     </div>
-    <div class="spacer"></div>
+    <div class="page-end"></div>
   </div>
 </div>
 
@@ -263,7 +263,7 @@
       <span class="setting-label" style="color:var(--red)">🗑 Очистить все данные</span>
     </div>
   </div>
-  <div class="spacer-safe"></div>
+  <div class="page-end"></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -436,6 +436,18 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: CONFIRM CLEAR -->
+<div class="overlay" id="modal-confirm-clear">
+  <div class="sheet" style="position:relative">
+    <h2 style="color:var(--red)">Удалить все данные?</h2>
+    <p style="font-size:14px;color:var(--muted);margin:8px 0 20px;line-height:1.5">Все расходы, доходы и активы будут удалены. Это действие нельзя отменить.</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal('modal-confirm-clear')">Отмена</button>
+      <button class="btn danger" onclick="doClearData()">Удалить всё</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      SCRIPTS  (load order matters)

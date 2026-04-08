@@ -87,10 +87,16 @@ function exportCSV(){
 }
 
 function confirmClearData(){
-  if(confirm('Удалить все данные? Это действие нельзя отменить.')){
-    DB.expenses=[];DB.assets=[];DB.limits={};
-    saveDB();
-    renderBudget();
-    toast('Данные удалены');
-  }
+  openModal('modal-confirm-clear');
+}
+
+function doClearData(){
+  DB.expenses=[];
+  DB.assets=[];
+  DB.incomes=[];
+  DB.limits={};
+  saveDB();
+  closeModal('modal-confirm-clear');
+  renderBudget();
+  toast('Данные удалены');
 }

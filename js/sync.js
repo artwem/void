@@ -76,13 +76,12 @@ async function doSyncRequest(params) {
 }
 
 async function pushInChunks(data) {
-  console.log('[sync] push start: expenses=' + (data.expenses||[]).length +
-    ' incomes=' + (data.incomes||[]).length +
-    ' assets=' + (data.assets||[]).length);
-  // Send metadata + structure first (small), then expenses in batches
   const baseUrl = DB.syncUrl + '?action=push';
+  const expenses = data.expenses || [];
+  const BATCH = 20;
+  let firstResult = null;
 
-  // Step 1: push structure (categories, banks, limits, assets, incomes)
+  // Step 1: metadata + all non-expense data in one chunk
   const meta = {
     categories:  data.categories  || [],
     catColors:   data.catColors   || {},
@@ -91,29 +90,25 @@ async function pushInChunks(data) {
     limits:      data.limits      || {},
     assets:      data.assets      || [],
     incomes:     data.incomes     || [],
-    expenses:    []  // no expenses in meta push
+    expenses:    []
   };
-  await sendChunk(baseUrl, meta, 'meta');
+  firstResult = await sendChunk(baseUrl, meta, 'meta');
 
-  // Step 2: push expenses in batches of ~20
-  const expenses = data.expenses || [];
-  const BATCH = 20;
+  // Step 2: expenses in batches
   for (let i = 0; i < expenses.length; i += BATCH) {
-    const batch = expenses.slice(i, i + BATCH);
-    await sendChunk(baseUrl, {
+    const r = await sendChunk(baseUrl, {
       categories: data.categories || [],
-      expenses: batch,
+      expenses: expenses.slice(i, i + BATCH),
       banks: [], creditBanks: [], limits: {}, assets: [], incomes: []
     }, 'exp_' + i);
+    if(window._onChunkSent) window._onChunkSent();
+    if(r && r.error) return r; // stop on error
   }
 
-  return { success: true };
+  return firstResult || { success: true };
 }
 
 async function sendChunk(baseUrl, payload, label) {
-  if(window._onChunkSent) window._onChunkSent();
-  console.log('[sync] chunk', label, 'expenses:', (payload.expenses||[]).length,
-    'categories:', (payload.categories||[]).length);
   const json = JSON.stringify(payload);
   const encoded = btoa(unescape(encodeURIComponent(json)));
   const url = baseUrl + '&data=' + encodeURIComponent(encoded) + '&enc=b64';

@@ -6,7 +6,6 @@ function init(){
   currentDay=today();
   document.getElementById('fab').style.display='flex';
   document.getElementById('fab').textContent='+';
-  if(!DB.expenses.length) addSampleData();
   renderBudget();
   // Auto-sync on start if URL configured
   initSyncWidget();
@@ -133,30 +132,6 @@ function mergePullData(d){
 
 
 
-function addSampleData(){
-  const now=new Date();
-  const y=now.getFullYear(),m=now.getMonth();
-  const pad=n=>String(n).padStart(2,'0');
-  const d=day=>`${y}-${pad(m+1)}-${pad(day)}`;
-  const days=now.getDate();
-  const sample=[
-    {cat:0,amount:12500,date:d(3)},{cat:1,amount:1200,date:d(5)},
-    {cat:3,amount:8700,date:d(7)},{cat:4,amount:3200,date:d(9)},
-    {cat:5,amount:1800,date:d(11)},{cat:12,amount:900,date:d(Math.min(13,days))},
-    {cat:6,amount:4500,date:d(Math.min(15,days))},{cat:2,amount:900,date:d(4)},
-    {cat:10,amount:1200,date:d(Math.min(18,days))},{cat:14,amount:5000,date:d(2)},
-  ].filter(e=>{const day=parseInt(e.date.split('-')[2]);return day<=days;});
-  sample.forEach(e=>{e.id=uid();DB.expenses.push(e);});
-  DB.assets=[
-    {id:uid(),bank:0,amount:85000,date:`${y}-${pad(m)}-01`},
-    {id:uid(),bank:1,amount:42000,date:`${y}-${pad(m)}-01`},
-    {id:uid(),bank:2,amount:15000,date:`${y}-${pad(m)}-01`},
-    {id:uid(),bank:0,amount:91000,date:`${y}-${pad(m+1)}-01`},
-    {id:uid(),bank:1,amount:47000,date:`${y}-${pad(m+1)}-01`},
-  ].filter(a=>a.date.split('-')[1]<=String(m+1).padStart(2,'0'));
-  const limArr=DB.categories.map((_,i)=>DEFAULT_LIMITS[i]||3000);
-  DB.limits[monthKey(y,m)]=limArr;
-  saveDB();
-}
+
 
 loadAppsScriptCode().then(() => init());

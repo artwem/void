@@ -12,7 +12,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(100px,calc(80px + env(safe-area-inset-bottom)));position:relative}
+body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,calc(100px + env(safe-area-inset-bottom)));position:relative}
 
 /* NAV */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--card);border-top:0.5px solid var(--border);display:flex;z-index:100;padding:8px 4px max(20px,env(safe-area-inset-bottom))}
@@ -149,7 +149,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 /* MISC */
 .divider{height:0.5px;background:var(--border);margin:8px 16px}
 .spacer{height:12px}
-.spacer-safe{height:max(20px,calc(8px + env(safe-area-inset-bottom)))}
+.spacer-safe{height:max(32px,calc(16px + env(safe-area-inset-bottom)))}
 .info-box{background:var(--blue-bg);border:0.5px solid rgba(26,95,168,.2);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;color:var(--blue);line-height:1.5;margin:0 16px 12px}
 .info-box code{background:rgba(26,95,168,.12);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px}
 .sync-widget{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:20px;border:0.5px solid var(--border);background:var(--card);cursor:pointer;transition:background .12s;flex-shrink:0}
@@ -166,3 +166,5 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 
 .cu-btn{padding:4px 9px;border-radius:20px;font-size:12px;font-weight:500;border:0.5px solid var(--border2);background:none;cursor:pointer;color:var(--muted);font-family:inherit;transition:all .15s;white-space:nowrap}
 .cu-btn.active{background:var(--accent);color:#fff;border-color:transparent}
+
+.page-end{height:max(80px,calc(64px + env(safe-area-inset-bottom)))}
