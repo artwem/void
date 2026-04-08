@@ -41,6 +41,7 @@ function openSyncSettings(){
 function saveSyncUrl(){
   const url = document.getElementById('sync-url-input').value.trim();
   DB.syncUrl = url;
+  _resolvedUrl = null; // reset cache when URL changes
   localStorage.setItem('syncUrl', url);
   saveDB();
   closeModal('modal-sync');
@@ -48,18 +49,44 @@ function saveSyncUrl(){
   toast('URL сохранён');
 }
 
-async function doSyncRequest(params){
-  // Always pass action in URL so it survives Google's redirects.
-  // Data payload goes in POST body (stays intact on same-origin redirects).
-  const url = DB.syncUrl + '?action=' + encodeURIComponent(params.action || '');
-  const r = await fetch(url, {
+// Apps Script redirect trick:
+// Google redirects /exec → /exec/usercodehandler which loses POST body.
+// Fix: first resolve the final URL via GET, then POST directly to it.
+let _resolvedUrl = null;
+
+async function resolveScriptUrl() {
+  if (_resolvedUrl) return _resolvedUrl;
+  try {
+    const r = await fetch(DB.syncUrl + '?action=ping', {
+      method: 'GET', redirect: 'follow'
+    });
+    _resolvedUrl = r.url.split('?')[0]; // final URL without params
+    return _resolvedUrl;
+  } catch(e) {
+    return DB.syncUrl;
+  }
+}
+
+async function doSyncRequest(params) {
+  const action = params.action || '';
+
+  // For ping and pull (no large body) — simple GET
+  if (action === 'ping' || action === 'pull') {
+    const url = DB.syncUrl + '?action=' + encodeURIComponent(action);
+    const r = await fetch(url, { method: 'GET', redirect: 'follow' });
+    return JSON.parse(await r.text());
+  }
+
+  // For push — POST to resolved final URL to avoid redirect body loss
+  const finalUrl = await resolveScriptUrl();
+  const body = JSON.stringify({ action, data: params.data });
+  const r = await fetch(finalUrl + '?action=' + encodeURIComponent(action), {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(params),
+    headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
+    body,
     redirect: 'follow'
   });
-  const text = await r.text();
-  return JSON.parse(text);
+  return JSON.parse(await r.text());
 }
 
 async function testSync(){
