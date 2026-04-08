@@ -68,6 +68,11 @@ function saveDB(){
   localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
 }
 
+// Save without marking dirty — used after pull sync to avoid triggering push
+function saveDBQuiet(){
+  localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
+}
+
 // ─── SYNC URL PERSISTENCE ────────────────────────────────────────────
 // iOS PWA has separate localStorage from Safari — use cookies as bridge
 function saveSyncUrlEverywhere(url){
