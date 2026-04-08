@@ -4,36 +4,32 @@
 const APPS_SCRIPT_CODE = window._APPS_SCRIPT_CODE || '';
 
 function copyAppsScript(){
-  // Try modern clipboard API first
+  const code = window._APPS_SCRIPT_CODE || '';
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(APPS_SCRIPT_CODE)
+    navigator.clipboard.writeText(code)
       .then(()=>toast('Скрипт скопирован!'))
-      .catch(()=>showScriptModal());
+      .catch(()=>showScriptModal(code));
   } else {
-    showScriptModal();
+    showScriptModal(code);
   }
 }
 
-function showScriptModal(){
-  document.getElementById('script-code-ta').value = APPS_SCRIPT_CODE;
+function showScriptModal(code){
+  // Don't auto-select — causes freeze on mobile with large text
+  const ta = document.getElementById('script-code-ta');
+  ta.value = code || window._APPS_SCRIPT_CODE || '';
   openModal('modal-script');
-  setTimeout(()=>{
-    const ta = document.getElementById('script-code-ta');
-    ta.focus(); ta.select();
-    try{
-      if(document.execCommand('copy')) toast('Скрипт скопирован!');
-    }catch(e){}
-  }, 120);
 }
 
 function copyScriptFromModal(){
   const ta = document.getElementById('script-code-ta');
-  ta.select();
-  ta.setSelectionRange(0, 99999);
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(ta.value).then(()=>toast('Скрипт скопирован!'));
+    navigator.clipboard.writeText(ta.value)
+      .then(()=>toast('Скрипт скопирован!'))
+      .catch(()=>toast('Не удалось — выделите текст вручную и скопируйте'));
   } else {
-    try{ document.execCommand('copy'); toast('Скрипт скопирован!'); }catch(e){ toast('Выделите текст и скопируйте вручную'); }
+    // Fallback without select() to avoid freezing
+    toast('Выделите текст в поле и скопируйте (Ctrl+A, Ctrl+C)');
   }
 }
 
