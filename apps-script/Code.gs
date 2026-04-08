@@ -21,24 +21,30 @@ const DEFAULT_LIMITS = [15000,3000,1500,20000,8000,5000,5000,3000,4000,5000,3000
 function doGet(e) {
   const p = e.parameter || {};
   const action = p.action || '';
+  const cb = p.callback || null; // JSONP callback name
   try {
-    if (action === 'ping') return out({ ok: true, version: '9.0' });
-    if (action === 'pull') return out(pullAll());
+    if (action === 'ping') return out({ ok: true, version: '9.1' }, cb);
+    if (action === 'pull') return out(pullAll(), cb);
     if (action === 'push') {
       const raw = p.data || '{}';
       const data = JSON.parse(raw);
-      return out(pushAll(data));
+      return out({ success: true, written: pushAll(data) }, cb);
     }
-    return out({ error: 'Unknown action: ' + action });
+    return out({ error: 'Unknown action: ' + action }, cb);
   } catch(err) {
-    return out({ error: err.message });
+    return out({ error: err.message }, cb);
   }
 }
 
 // doPost тоже поддерживаем на всякий случай
 function doPost(e) { return doGet(e); }
 
-function out(obj) {
+function out(obj, callback) {
+  if (callback) {
+    // JSONP — оборачиваем в callback() для обхода CORS
+    return ContentService.createTextOutput(callback + '(' + JSON.stringify(obj) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
