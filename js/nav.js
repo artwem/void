@@ -14,6 +14,7 @@ function showPage(name,btn){
   if(name==='assets') renderAssets();
   if(name==='calc'){setTimeout(calcUpdate,50);}
   if(name==='income') renderIncome();
+  if(name==='settings') renderSettings();
 }
 
 // ─── MONTH NAV ──────────────────────────────────────────────────────

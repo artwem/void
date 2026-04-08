@@ -271,6 +271,9 @@ function pushData(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   setupSheets(ss);
 
+  Logger.log('pushData received: expenses=' + (data.expenses||[]).length +
+    ' cats=' + (data.categories||[]).length +
+    ' incomes=' + (data.incomes||[]).length);
   const categories = data.categories || [];
 
   // --- Push expenses ---
@@ -278,13 +281,23 @@ function pushData(data) {
   const sheetData = daysSheet.getDataRange().getValues();
   const headerRow = sheetData[0];
   const dateColMap = {};
-  for (let c = 1; c < headerRow.length; c++)
-    if (headerRow[c] instanceof Date) dateColMap[fmtDate(headerRow[c])] = c;
+  for (let c = 1; c < headerRow.length; c++) {
+    const cell = headerRow[c];
+    if (cell instanceof Date) {
+      dateColMap[fmtDate(cell)] = c;
+    } else if (typeof cell === 'number' && cell > 40000) {
+      // Google Sheets serial date number → JS Date
+      const jsDate = new Date((cell - 25569) * 86400 * 1000);
+      dateColMap[fmtDate(jsDate)] = c;
+    }
+  }
+  Logger.log('dateColMap keys: ' + Object.keys(dateColMap).slice(0,5).join(', ') + '...');
   const catRowMap = {};
   for (let r = 1; r < sheetData.length; r++) {
     const cat = sheetData[r][0];
     if (cat && String(cat) !== 'Итого') catRowMap[String(cat)] = r;
   }
+  Logger.log('catRowMap keys: ' + Object.keys(catRowMap).slice(0,5).join(', '));
   // Add new categories to По дням and Шаблон
   for (const cat of categories) {
     if (!catRowMap[cat] && cat !== 'Итого') {
