@@ -15,35 +15,7 @@ function init(){
   // Автопуш при закрытии отключён — используй кнопку «Выгрузить»
 }
 
-// ── SYNC STATUS WIDGET ──────────────────────────────────────────────
-function setSyncStatus(state, isoTs){
-  const widget = document.getElementById('sync-widget');
-  const dot    = document.getElementById('sync-dot');
-  const text   = document.getElementById('sync-text');
-  if(!widget) return;
-  widget.style.display = 'flex';
-  dot.className = 'sync-dot ' + state;
-  if(state === 'syncing'){
-    text.textContent = 'Синхр…';
-  } else if(state === 'ok' && isoTs){
-    const d = new Date(isoTs);
-    const hhmm = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
-    const today = new Date().toDateString() === d.toDateString();
-    text.textContent = today ? hhmm : d.getDate()+'.'+(d.getMonth()+1)+' '+hhmm;
-  } else if(state === 'error'){
-    text.textContent = 'Ошибка';
-  } else {
-    text.textContent = 'Не синхр.';
-  }
-}
 
-
-
-function initSyncWidget(){
-  if(!DB.syncUrl) return;
-  const lastSync = localStorage.getItem('lastSync');
-  setSyncStatus(lastSync ? 'ok' : 'none', lastSync);
-}
 
 let _syncInProgress = false;
 
@@ -92,57 +64,7 @@ function buildPayload(){
   };
 }
 
-let _lastCloseSync = 0;
 
-function autoSyncOnClose(){
-  // Debounce: iOS fires pagehide on every background switch, limit to once per 30s
-  const now = Date.now();
-  if(!DB.syncUrl || !DB._dirty) return;
-  if(now - _lastCloseSync < 30000) return;
-  _lastCloseSync = now;
-  DB._dirty = false;
-  localStorage.setItem('lastSync', new Date().toISOString());
-  // Use pushDiff via GET — reliable across redirects
-  // Fire-and-forget each operation, no await needed here
-  const data = buildPayload();
-  _fireAndForgetPush(data);
-}
-
-function _fireAndForgetPush(data) {
-  // Build minimal URL-safe requests and fire them all
-  const urls = buildPushUrls(data);
-  urls.forEach(url => {
-    // Use sendBeacon for reliability at page close
-    if(navigator.sendBeacon && url.length < 2000){
-      navigator.sendBeacon(url);
-    } else {
-      fetch(url, {method:'GET', keepalive:true}).catch(()=>{});
-    }
-  });
-}
-
-function buildPushUrls(data) {
-  const urls = [];
-  const base = DB.syncUrl;
-  const encode = (obj) => {
-    const j = JSON.stringify(obj, null, 0);
-    return base + '?action=push&data=' + encodeURIComponent(btoa(unescape(encodeURIComponent(j)))) + '&enc=b64';
-  };
-
-  // Expenses grouped by date
-  const byDate = {};
-  (data.expenses||[]).forEach(e => { if(!byDate[e.date]) byDate[e.date]=[]; byDate[e.date].push(e); });
-  Object.entries(byDate).forEach(([date, exps]) => {
-    const url = encode({op:'expenses', date, expenses:exps, categories:data.categories});
-    if(url.length <= 1600) urls.push(url);
-    else exps.forEach(e => urls.push(encode({op:'expenses', date, expenses:[e], categories:data.categories})));
-  });
-
-  // Incomes
-  (data.incomes||[]).forEach(inc => urls.push(encode({op:'incomes', incomes:[inc]})));
-
-  return urls;
-}
 
 function mergePullData(d){
   if(d.categories && d.categories.length) DB.categories = d.categories;
