@@ -45,16 +45,16 @@ function out(obj) {
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────────
+// Timezone of the spreadsheet — used for correct date formatting
+const SS_TZ = Session.getScriptTimeZone();
+
 function fmtDate(d) {
-  // Use UTC to avoid timezone shift (Google Sheets dates are midnight UTC)
-  return d.getUTCFullYear() + '-' +
-    String(d.getUTCMonth()+1).padStart(2,'0') + '-' +
-    String(d.getUTCDate()).padStart(2,'0');
+  // Utilities.formatDate respects the spreadsheet timezone — the only correct way
+  return Utilities.formatDate(d, SS_TZ, 'yyyy-MM-dd');
 }
 
 function cellToDate(v) {
   if (v instanceof Date) return v;
-  // Google Sheets serial: days since 1899-12-30, stored as UTC midnight
   if (typeof v === 'number' && v > 40000)
     return new Date(Math.round((v - 25569) * 86400000));
   return null;
