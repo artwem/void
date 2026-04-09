@@ -45,20 +45,34 @@ function out(obj) {
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────────
-// Timezone of the spreadsheet — used for correct date formatting
+// Timezone of the spreadsheet
 const SS_TZ = Session.getScriptTimeZone();
 
-function fmtDate(d) {
-  // Utilities.formatDate respects the spreadsheet timezone — the only correct way
-  return Utilities.formatDate(d, SS_TZ, 'yyyy-MM-dd');
+// Convert any cell value to YYYY-MM-DD string. Returns '' if not a date.
+function cellToDateStr(v) {
+  if (!v && v !== 0) return '';
+  // Already a YYYY-MM-DD string
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  // Date object — use Utilities.formatDate with spreadsheet timezone
+  if (v instanceof Date) return Utilities.formatDate(v, SS_TZ, 'yyyy-MM-dd');
+  // Numeric serial (Google Sheets date stored as number)
+  if (typeof v === 'number' && v > 40000) {
+    const d = new Date(Math.round((v - 25569) * 86400000));
+    return Utilities.formatDate(d, SS_TZ, 'yyyy-MM-dd');
+  }
+  return '';
 }
 
+// Legacy alias — returns Date object (used only for По дням header loop)
 function cellToDate(v) {
-  if (v instanceof Date) return v;
-  if (typeof v === 'number' && v > 40000)
-    return new Date(Math.round((v - 25569) * 86400000));
-  return null;
+  const s = cellToDateStr(v);
+  if (!s) return null;
+  const p = s.split('-').map(Number);
+  return new Date(p[0], p[1]-1, p[2]);
 }
+
+// fmtDate kept as alias
+function fmtDate(d) { return cellToDateStr(d); }
 
 function colLetter(n) {
   let s = '';
@@ -132,8 +146,8 @@ function pullAll() {
   // Карта дата → колонка
   const dateColMap = {};
   for (let c = 1; c < header.length; c++) {
-    const d = cellToDate(header[c]);
-    if (d) dateColMap[fmtDate(d)] = c;
+    const ds = cellToDateStr(header[c]);
+    if (ds) dateColMap[ds] = c;
   }
 
   // Карта категория → строка
@@ -167,8 +181,7 @@ function pullAll() {
     for (let r = 1; r < cd.length; r++) {
       const catIdx = cd[r][0];
       if (catIdx === '' || catIdx === null || catIdx === undefined) continue;
-      const dateVal = cd[r][1];
-      const dateStr = dateVal instanceof Date ? fmtDate(dateVal) : String(dateVal);
+      const dateStr = cellToDateStr(cd[r][1]) || String(cd[r][1]);
       const key = catIdx + '_' + dateStr.replace(/-/g,'');
       if (expenseMap[key] && cd[r][2]) expenseMap[key].comment = String(cd[r][2]);
     }
@@ -181,8 +194,7 @@ function pullAll() {
     const id = incSh.getDataRange().getValues();
     for (let r = 1; r < id.length; r++) {
       if (!id[r][0]) continue;
-      const dateVal = id[r][1];
-      const dateStr = dateVal instanceof Date ? fmtDate(dateVal) : String(dateVal);
+      const dateStr = cellToDateStr(id[r][1]) || String(id[r][1]||'');
       incomes.push({ id:String(id[r][0]), date:dateStr,
         source:String(id[r][2]||''), amount:+id[r][3]||0, comment:String(id[r][4]||'') });
     }
@@ -195,20 +207,20 @@ function pullAll() {
     const ad = aSh.getDataRange().getValues();
     const ah = ad[0];
     const bankCols = [];
-    for (let c = 1; c < ah.length-1; c++) {
+    // c is 0-based; getRange/getValue needs 1-based → store c+1 as col
+    for (let c = 0; c < ah.length; c++) {
       const name = String(ah[c]||'').trim();
-      if (!name) continue;
+      if (!name || name === 'Дата' || name === 'Общий актив') continue;
       const isCredit = name.toUpperCase().includes('КРЕДИТ');
-      bankCols.push({name, c, isCredit});
+      bankCols.push({name, c: c, col: c + 1, isCredit});
       if (isCredit) creditBanks.push(name); else banks.push(name);
     }
     const allB = [...banks,...creditBanks];
     for (let r = 1; r < ad.length; r++) {
-      const d = cellToDate(ad[r][0]);
-      if (!d) continue;
-      const ds = fmtDate(d);
-      for (const {name, c} of bankCols) {
-        const v = ad[r][c];
+      const ds = cellToDateStr(ad[r][0]);
+      if (!ds) continue;
+      for (const {name, c, col} of bankCols) {
+        const v = ad[r][c]; // c is 0-based array index
         if (v===null||v===''||v===undefined) continue;
         const num = typeof v==='number' ? v : parseFloat(String(v).replace(/[^\d.]/g,''));
         if (isNaN(num)) continue;
@@ -303,8 +315,8 @@ function pushAll(data) {
   }
   const dateColMap = {};
   for (let c = 1; c < freshHeader.length; c++) {
-    const d = cellToDate(freshHeader[c]);
-    if (d) dateColMap[fmtDate(d)] = c;
+    const ds = cellToDateStr(freshHeader[c]);
+    if (ds) dateColMap[ds] = c;
   }
 
   // Группируем расходы по ячейке
@@ -379,7 +391,11 @@ function pushAll(data) {
     const aSh = ss.getSheetByName(SHEET_ASSETS);
     const ah = aSh.getDataRange().getValues()[0];
     const colByBank = {};
-    for (let c = 1; c < ah.length; c++) colByBank[String(ah[c]||'')] = c;
+    // c is 0-based array index; getRange needs 1-based → store c+1
+    for (let c = 0; c < ah.length; c++) {
+      const name = String(ah[c]||'').trim();
+      if (name && name !== 'Дата') colByBank[name] = c + 1;
+    }
     for (const bank of allBanks) {
       if (!colByBank[bank]) {
         const lc = aSh.getLastColumn();
@@ -391,8 +407,8 @@ function pushAll(data) {
     const freshA = aSh.getDataRange().getValues();
     const dateRowMap = {};
     for (let r = 1; r < freshA.length; r++) {
-      const d = cellToDate(freshA[r][0]);
-      if (d) dateRowMap[fmtDate(d)] = r+1;
+      const ds = cellToDateStr(freshA[r][0]);
+      if (ds) dateRowMap[ds] = r+1;
     }
     for (const a of (data.assets||[])) {
       // Validate date format — must be YYYY-MM-DD string
@@ -402,9 +418,9 @@ function pushAll(data) {
       let row = dateRowMap[a.date];
       if (!row) {
         if (!a.date || !String(a.date).match(/^\d{4}-\d{2}-\d{2}$/)) continue;
-        // Utilities.parseDate is the ONLY reliable way to create a date in the spreadsheet timezone
-        const dateObj = Utilities.parseDate(a.date, SS_TZ, 'yyyy-MM-dd');
-        aSh.appendRow([dateObj]);
+        // Store as plain text to avoid ALL timezone/serial issues
+        aSh.appendRow([String(a.date)]);
+        aSh.getRange(aSh.getLastRow(), 1).setNumberFormat('@'); // @ = plain text format
         row = aSh.getLastRow();
         dateRowMap[a.date] = row;
         const lc = aSh.getLastColumn();
