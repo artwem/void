@@ -117,15 +117,39 @@ function renderBankManager(){
     (creditRows||'<div style="padding:4px 0;font-size:13px;color:var(--muted)">Нет кредитных</div>');
 }
 
+function toggleCreditCheckbox(){
+  const cb = document.getElementById('new-bank-credit');
+  const vis = document.getElementById('credit-checkbox-visual');
+  cb.checked = !cb.checked;
+  if(cb.checked){
+    vis.style.background = 'var(--red)';
+    vis.style.borderColor = 'var(--red)';
+    vis.innerHTML = '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  } else {
+    vis.style.background = 'var(--card)';
+    vis.style.borderColor = 'var(--border2)';
+    vis.innerHTML = '';
+  }
+}
+
 function addBank(){
   const name = document.getElementById('new-bank-name').value.trim();
   if(!name) return;
   const isCreditBank = document.getElementById('new-bank-credit').checked;
-  if(isCreditBank){ if(!DB.creditBanks) DB.creditBanks=[]; DB.creditBanks.push(name); }
+  if(isCreditBank){
+    if(!DB.creditBanks) DB.creditBanks=[];
+    // Prefix with "Кредитка " if no credit-related word already in name
+    const hasCredit = /кредит/i.test(name);
+    const finalName = hasCredit ? name : 'Кредитка ' + name;
+    DB.creditBanks.push(finalName);
+    document.getElementById('new-bank-name').value = finalName; // show what was saved
+  }
   else DB.banks.push(name);
   saveDB();
   document.getElementById('new-bank-name').value='';
   document.getElementById('new-bank-credit').checked=false;
+  const vis = document.getElementById('credit-checkbox-visual');
+  if(vis){ vis.style.background='var(--card)'; vis.style.borderColor='var(--border2)'; vis.innerHTML=''; }
   renderBankManager();
   toast(isCreditBank?'Кредитный счёт добавлен':'Банк добавлен');
 }

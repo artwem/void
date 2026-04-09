@@ -212,7 +212,7 @@ function pullAll() {
     for (let c = 2; c < ah.length; c++) {
       const name = String(ah[c]||'').trim();
       if (!name) continue;
-      const isCred = name.toUpperCase().includes('КРЕДИТ');
+      const isCred = /кредит/i.test(name);
       if (isCred) creditBanks.push(name); else banks.push(name);
     }
     const allB = [...banks, ...creditBanks];
