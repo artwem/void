@@ -261,12 +261,8 @@ function pushAll(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   setupSheets(ss);
 
-  // Debug: log what we received
-  const assetDates = (data.assets||[]).map(a => ({date: a.date, type: typeof a.date}));
-  Logger.log('push assets dates: ' + JSON.stringify(assetDates));
-
   const categories = data.categories || [];
-  const written = { cells:0, comments:0, incomes:0, assets:0, debug_asset_dates: assetDates };
+  const written = { cells:0, comments:0, incomes:0, assets:0 };
 
   // --- 1. Новые категории ---
   const dsSh = ss.getSheetByName(SHEET_DAYS);
@@ -405,13 +401,11 @@ function pushAll(data) {
       const col = colByBank[bname]; if (!col) continue;
       let row = dateRowMap[a.date];
       if (!row) {
-        if (!a.date) continue;
-        // Parse YYYY-MM-DD and create date in spreadsheet timezone (not UTC)
-        const parts = String(a.date).split('-').map(Number);
-        if (parts.length !== 3) continue;
-        const dateObj = new Date(parts[0], parts[1]-1, parts[2]); // local midnight
-        if (isNaN(dateObj.getTime())) continue;
-        aSh.appendRow([dateObj]);
+        if (!a.date || !String(a.date).match(/^\d{4}-\d{2}-\d{2}$/)) continue;
+        // Write date as string — Sheets auto-parses YYYY-MM-DD correctly
+        aSh.appendRow([a.date]);
+        // Format the cell as date
+        aSh.getRange(aSh.getLastRow(), 1).setNumberFormat('dd.MM.yyyy');
         row = aSh.getLastRow();
         dateRowMap[a.date] = row;
         const lc = aSh.getLastColumn();
@@ -438,5 +432,5 @@ function pushAll(data) {
     written.incomes++;
   }
 
-  return written; // debug_asset_dates is included
+  return written;
 }

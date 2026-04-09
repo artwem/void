@@ -118,9 +118,7 @@ async function pushToSheets(){
     sessionStorage.setItem('lastSync', ts);
     setSyncStatus('ok', ts);
     const w = d.written || {};
-    const adates = (w.debug_asset_dates||[]).map(x=>x.date+':'+x.type).join(', ');
-    console.log('[push] asset dates:', adates);
-    toast('✓ Записано: ячеек=' + (w.cells||0) + (adates ? ' | dates='+adates.slice(0,60) : ''));
+    toast('✓ Выгружено в таблицу!');
   } catch(e) {
     setSyncStatus('error');
     toast('Ошибка выгрузки: ' + e.message);
