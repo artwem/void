@@ -72,30 +72,42 @@ function editExpense(id, e){
 function saveExpense(){
   const amt = parseFloat(document.getElementById('exp-amount').value);
   if(!amt||amt<=0){toast('Введите сумму');return;}
-  const obj = {
-    cat: parseInt(document.getElementById('exp-cat').value),
-    amount: amt,
-    date: document.getElementById('exp-date').value,
-    comment: document.getElementById('exp-comment').value
-  };
+  const cat  = parseInt(document.getElementById('exp-cat').value);
+  const date = document.getElementById('exp-date').value;
+  const comment = document.getElementById('exp-comment').value;
+
   if(editingExpenseId){
+    // Edit existing — just update it
     const idx = DB.expenses.findIndex(e=>e.id===editingExpenseId);
-    if(idx>=0){DB.expenses[idx]={...DB.expenses[idx],...obj};}
+    if(idx>=0) DB.expenses[idx] = {...DB.expenses[idx], cat, amount:amt, date, comment};
   } else {
-    obj.id = uid();
-    DB.expenses.push(obj);
+    // New expense — merge into existing record for same cat+date if any
+    const existing = DB.expenses.find(e => e.cat===cat && e.date===date);
+    if(existing){
+      existing.amount = amt; // replace, not add — user enters total for the day
+      if(comment) existing.comment = comment;
+    } else {
+      // Generate id matching Google Sheets format so sync works correctly
+      DB.expenses.push({ id:'gs_'+cat+'_'+date.replace(/-/g,''), cat, amount:amt, date, comment });
+    }
   }
   saveDB();
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
   else renderBudget();
-  toast(editingExpenseId?'Обновлено':'Добавлено');
+  toast(editingExpenseId?'Обновлено':'Сохранено');
 }
 
 function deleteExpense(){
   if(!editingExpenseId) return;
-  DB.expenses = DB.expenses.filter(e=>e.id!==editingExpenseId);
-  saveDB();
+  const exp = DB.expenses.find(e=>e.id===editingExpenseId);
+  if(exp){
+    // Mark as zero so push will write 0 to the sheet cell
+    exp.amount = 0;
+    exp.comment = '';
+    exp._deleted = true;
+    saveDB();
+  }
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
   else renderBudget();

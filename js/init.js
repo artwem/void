@@ -135,13 +135,39 @@ function mergePullData(d){
   if(d.categories && d.categories.length) DB.categories = d.categories;
   if(d.limits) Object.assign(DB.limits, d.limits);
 
-  // Merge expenses — preserve app-only comments
-  if(d.expenses && d.expenses.length){
+  // Merge expenses:
+  // - Sheet entries (gs_*) always replace — sheet is source of truth
+  // - App entries that match a sheet cat+date get dropped (sheet already has them summed)
+  // - Deleted entries (_deleted) are cleaned up if sheet no longer has them
+  // - Comments preserved from app if sheet has no comment
+  if(d.expenses !== undefined){
+    const sheetById = {};
+    (d.expenses||[]).forEach(e => { sheetById[e.id] = e; });
+
+    // Build set of cat+date covered by sheet
+    const sheetKeys = new Set((d.expenses||[]).map(e => e.cat+'_'+e.date));
+
+    // Preserve comments from app entries
     const appComments = {};
     DB.expenses.forEach(e => { if(e.comment) appComments[e.id] = e.comment; });
-    const appOnly = DB.expenses.filter(e => !e.id.startsWith('gs_'));
-    const sheetEntries = d.expenses.map(e => ({...e, comment: e.comment || appComments[e.id] || ''}));
-    DB.expenses = [...appOnly, ...sheetEntries];
+
+    // Keep app-only entries that don't conflict with sheet data
+    // and remove _deleted entries that sheet confirms are zero
+    const keepApp = DB.expenses.filter(e => {
+      if(e._deleted) return false; // clean up deleted
+      if(e.id.startsWith('gs_')) return false; // always replace with sheet version
+      // App entry with same cat+date as sheet — drop it, sheet has the total
+      if(sheetKeys.has(e.cat+'_'+e.date)) return false;
+      return true;
+    });
+
+    // Sheet entries with comments restored
+    const sheetEntries = (d.expenses||[]).map(e => ({
+      ...e,
+      comment: e.comment || appComments[e.id] || ''
+    }));
+
+    DB.expenses = [...keepApp, ...sheetEntries];
   }
 
   // Merge assets — sheet wins, preserve app-only entries

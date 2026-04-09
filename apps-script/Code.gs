@@ -305,7 +305,8 @@ function pushAll(data) {
     if (d) dateColMap[fmtDate(d)] = c;
   }
 
-  // Группируем расходы по ячейке (суммируем если несколько за день)
+  // Группируем расходы по ячейке
+  // amount=0 или _deleted=true → пишем 0 (очищаем ячейку)
   const cellMap = {};
   const commentMap = {};
   for (const exp of (data.expenses||[])) {
@@ -315,12 +316,19 @@ function pushAll(data) {
     const row = freshCatMap[catName];
     if (col===undefined || row===undefined) continue;
     const key = row+'_'+col;
-    cellMap[key] = (cellMap[key]||0) + exp.amount;
-    if (exp.comment) commentMap[exp.cat+'_'+exp.date] = { cat:exp.cat, date:exp.date, comment:exp.comment, catName };
+    if (exp._deleted || exp.amount === 0) {
+      cellMap[key] = 0; // явно обнуляем
+    } else {
+      // Если уже есть значение — берём максимум (не суммируем, т.к. приложение хранит итог)
+      cellMap[key] = exp.amount;
+    }
+    if (exp.comment && !exp._deleted) {
+      commentMap[exp.cat+'_'+exp.date] = { cat:exp.cat, date:exp.date, comment:exp.comment, catName };
+    }
   }
   for (const [key,amount] of Object.entries(cellMap)) {
     const [r,c] = key.split('_').map(Number);
-    dsSh.getRange(r+1,c+1).setValue(amount);
+    dsSh.getRange(r+1,c+1).setValue(amount === 0 ? '' : amount);
     written.cells++;
   }
 

@@ -123,11 +123,11 @@ function getCatColor(i){
 
 function getMonthExpenses(y,m){
   const k = monthKey(y,m);
-  return DB.expenses.filter(e=>e.date.startsWith(k));
+  return DB.expenses.filter(e=>e.date.startsWith(k) && !e._deleted);
 }
 
 function getDayExpenses(date){
-  return DB.expenses.filter(e=>e.date===date);
+  return DB.expenses.filter(e=>e.date===date && !e._deleted);
 }
 
 function getCatSpent(catIdx,y,m){
