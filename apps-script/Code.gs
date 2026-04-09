@@ -402,10 +402,9 @@ function pushAll(data) {
       let row = dateRowMap[a.date];
       if (!row) {
         if (!a.date || !String(a.date).match(/^\d{4}-\d{2}-\d{2}$/)) continue;
-        // Write date as string — Sheets auto-parses YYYY-MM-DD correctly
-        aSh.appendRow([a.date]);
-        // Format the cell as date
-        aSh.getRange(aSh.getLastRow(), 1).setNumberFormat('dd.MM.yyyy');
+        // Utilities.parseDate is the ONLY reliable way to create a date in the spreadsheet timezone
+        const dateObj = Utilities.parseDate(a.date, SS_TZ, 'yyyy-MM-dd');
+        aSh.appendRow([dateObj]);
         row = aSh.getLastRow();
         dateRowMap[a.date] = row;
         const lc = aSh.getLastColumn();
