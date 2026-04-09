@@ -261,8 +261,12 @@ function pushAll(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   setupSheets(ss);
 
+  // Debug: log what we received
+  const assetDates = (data.assets||[]).map(a => ({date: a.date, type: typeof a.date}));
+  Logger.log('push assets dates: ' + JSON.stringify(assetDates));
+
   const categories = data.categories || [];
-  const written = { cells:0, comments:0, incomes:0, assets:0 };
+  const written = { cells:0, comments:0, incomes:0, assets:0, debug_asset_dates: assetDates };
 
   // --- 1. Новые категории ---
   const dsSh = ss.getSheetByName(SHEET_DAYS);
@@ -395,13 +399,18 @@ function pushAll(data) {
       if (d) dateRowMap[fmtDate(d)] = r+1;
     }
     for (const a of (data.assets||[])) {
+      // Validate date format — must be YYYY-MM-DD string
+      if (!a.date || typeof a.date !== 'string' || !a.date.match(/^\d{4}-\d{2}-\d{2}$/)) continue;
       const bname = allBanks[a.bank]; if (!bname) continue;
       const col = colByBank[bname]; if (!col) continue;
       let row = dateRowMap[a.date];
       if (!row) {
-        if (!a.date) continue; // skip if no date
-        const dateObj = new Date(a.date + 'T00:00:00Z'); // force UTC midnight
-        if (isNaN(dateObj.getTime())) continue; // skip invalid dates
+        if (!a.date) continue;
+        // Parse YYYY-MM-DD and create date in spreadsheet timezone (not UTC)
+        const parts = String(a.date).split('-').map(Number);
+        if (parts.length !== 3) continue;
+        const dateObj = new Date(parts[0], parts[1]-1, parts[2]); // local midnight
+        if (isNaN(dateObj.getTime())) continue;
         aSh.appendRow([dateObj]);
         row = aSh.getLastRow();
         dateRowMap[a.date] = row;
@@ -429,5 +438,5 @@ function pushAll(data) {
     written.incomes++;
   }
 
-  return written;
+  return written; // debug_asset_dates is included
 }

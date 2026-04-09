@@ -66,16 +66,28 @@ async function autoSyncOnStart(){
   _syncInProgress = false;
 }
 
+function normDate(d) {
+  // Ensure date is always YYYY-MM-DD string, never a Date object or number
+  if (!d) return '';
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  // If it's a Date object or ISO string, extract local date
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d).slice(0,10);
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+}
+
 function buildPayload(){
+  // Normalize all dates before sending to Apps Script
+  const expenses = (DB.expenses||[]).map(e => ({...e, date: normDate(e.date)}));
+  const assets   = (DB.assets||[]).map(a => ({...a, date: normDate(a.date)}));
+  const incomes  = (DB.incomes||[]).map(i => ({...i, date: normDate(i.date)}));
   return {
-    expenses: DB.expenses,
-    assets: DB.assets,
+    expenses, assets, incomes,
     categories: DB.categories,
     catColors: DB.catColors || {},
     banks: DB.banks,
     creditBanks: DB.creditBanks || [],
-    limits: DB.limits,
-    incomes: DB.incomes || []
+    limits: DB.limits
   };
 }
 
@@ -161,19 +173,19 @@ function mergePullData(d){
       return true;
     });
 
-    // Sheet entries with comments restored
-    const sheetEntries = (d.expenses||[]).map(e => ({
-      ...e,
-      comment: e.comment || appComments[e.id] || ''
-    }));
+    // Sheet entries — normalize dates and restore comments
+    const sheetEntries = (d.expenses||[])
+      .map(e => ({...e, date: normDate(e.date), comment: e.comment || appComments[e.id] || ''}))
+      .filter(e => e.date);
 
     DB.expenses = [...keepApp, ...sheetEntries];
   }
 
   // Merge assets — sheet wins, preserve app-only entries
   if(d.assets && d.assets.length){
-    const appOnly = DB.assets.filter(a => !String(a.id||'').startsWith('gs_asset_'));
-    DB.assets = [...appOnly, ...d.assets];
+    const appOnly = DB.assets.filter(a => !String(a.id||'').startsWith('gs_'));
+    const sheetAssets = (d.assets||[]).map(a => ({...a, date: normDate(a.date)})).filter(a => a.date);
+    DB.assets = [...appOnly, ...sheetAssets];
   }
 
   // Merge incomes
