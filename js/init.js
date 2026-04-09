@@ -188,10 +188,12 @@ function mergePullData(d){
     DB.assets = [...appOnly, ...sheetAssets];
   }
 
-  // Merge incomes
-  if(d.incomes && d.incomes.length){
-    const appOnlyInc = DB.incomes.filter(i => !String(i.id||'').startsWith('gs_inc_'));
-    DB.incomes = [...appOnlyInc, ...d.incomes];
+  // Merge incomes — sheet is source of truth, deduplicate by id
+  if(d.incomes !== undefined){
+    const sheetIds = new Set((d.incomes||[]).map(i => i.id));
+    // Keep app-only entries not yet in sheet
+    const appOnly = (DB.incomes||[]).filter(i => !sheetIds.has(i.id));
+    DB.incomes = [...appOnly, ...(d.incomes||[])];
   }
 
   // Merge banks — add any new banks from sheet not yet in app
