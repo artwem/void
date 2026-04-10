@@ -72,8 +72,7 @@ function renderCatManager(){
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">'
             + '<input type="color" value="'+g.color+'" onchange="setGroupColor(\''+g.color+'\',this.value)"'
             + ' style="width:22px;height:22px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"/>'
-            + '<span style="font-size:13px;color:var(--text);flex:1">'+g.names.join(', ')+'</span>'
-            + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px;flex:1">'            + g.names.map(n => '<span style="font-size:12px;padding:3px 10px;border-radius:20px;background:'+g.color+'22;color:'+g.color+';border:1px solid '+g.color+'44;white-space:nowrap">'+n+'</span>').join('')            + '</div>'            + '</div>'
           ).join('');
     } else {
       grpEl.style.display = 'none';
@@ -99,6 +98,103 @@ function setGroupColor(oldColor, newColor){
   });
   saveDB();
   renderCatManager();
+}
+
+function buildGroupPicker(catIdx, currentColor, groups){
+  // Container acts as custom select
+  const container = document.createElement('div');
+  container.style.cssText = 'flex:1;position:relative';
+
+  // Current value display
+  const isInGroup = groups.some(([c]) => c === currentColor);
+  const display = document.createElement('div');
+  display.id = 'grp-picker-display-'+catIdx;
+  display.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);cursor:pointer;min-height:30px';
+
+  function renderDisplay(color, label){
+    display.innerHTML = '';
+    if(color){
+      const dot = document.createElement('div');
+      dot.style.cssText = 'width:12px;height:12px;border-radius:50%;background:'+color+';flex-shrink:0';
+      display.appendChild(dot);
+    }
+    const txt = document.createElement('span');
+    txt.style.cssText = 'flex:1;color:var(--text)';
+    txt.textContent = label || '— без группы —';
+    display.appendChild(txt);
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'color:var(--muted);font-size:10px';
+    arrow.textContent = '▾';
+    display.appendChild(arrow);
+  }
+
+  if(isInGroup){
+    const grp = groups.find(([c]) => c === currentColor);
+    const names = grp ? grp[1].filter(m => m.idx !== catIdx).map(m => m.name).join(', ') : '';
+    renderDisplay(currentColor, names);
+  } else {
+    renderDisplay(null, null);
+  }
+
+  // Dropdown panel
+  const dropdown = document.createElement('div');
+  dropdown.style.cssText = 'display:none;position:absolute;left:0;right:0;top:100%;margin-top:2px;background:var(--card);border:0.5px solid var(--border2);border-radius:var(--r-sm);z-index:999;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+
+  function closeDropdown(){ dropdown.style.display = 'none'; }
+  function openDropdown(){ dropdown.style.display = 'block'; }
+
+  // Option: no group
+  const noneRow = document.createElement('div');
+  noneRow.style.cssText = 'padding:8px 10px;cursor:pointer;font-size:13px;color:var(--muted)';
+  noneRow.textContent = '— без группы —';
+  noneRow.addEventListener('click', function(){
+    renderDisplay(null, null);
+    closeDropdown();
+    // Remove from group — restore individual color
+    const cp = document.getElementById('cat-color-inp-'+catIdx);
+    if(cp){ cp.value = CAT_COLORS[catIdx % CAT_COLORS.length]; setCatColor(catIdx, cp.value); }
+  });
+  dropdown.appendChild(noneRow);
+
+  // One row per group
+  groups.forEach(([grpColor, members]) => {
+    const names = members.filter(m => m.idx !== catIdx).map(m => m.name);
+    if(!names.length) return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-top:0.5px solid var(--border)';
+    row.addEventListener('mouseover', function(){ this.style.background='var(--bg)'; });
+    row.addEventListener('mouseout',  function(){ this.style.background=''; });
+    const dot = document.createElement('div');
+    dot.style.cssText = 'width:12px;height:12px;border-radius:50%;background:'+grpColor+';flex-shrink:0';
+    const chipsWrap = document.createElement('div');
+    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;flex:1';
+    names.forEach(n => {
+      const chip = document.createElement('span');
+      chip.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:20px;background:'+grpColor+'22;color:'+grpColor+';border:1px solid '+grpColor+'44';
+      chip.textContent = n;
+      chipsWrap.appendChild(chip);
+    });
+    row.appendChild(dot);
+    row.appendChild(chipsWrap);
+    row.addEventListener('click', function(){
+      renderDisplay(grpColor, names.join(', '));
+      closeDropdown();
+      setCatColor(catIdx, grpColor);
+      const cp = document.getElementById('cat-color-inp-'+catIdx);
+      if(cp) cp.value = grpColor;
+    });
+    dropdown.appendChild(row);
+  });
+
+  display.addEventListener('click', function(e){
+    e.stopPropagation();
+    dropdown.style.display === 'none' ? openDropdown() : closeDropdown();
+  });
+  document.addEventListener('click', closeDropdown, {once: false});
+
+  container.appendChild(display);
+  container.appendChild(dropdown);
+  return container;
 }
 
 function startEditCat(i){
@@ -157,36 +253,9 @@ function startEditCat(i){
     lbl.style.cssText = 'font-size:12px;color:var(--muted);white-space:nowrap';
     lbl.textContent = 'Группа:';
 
-    const sel = document.createElement('select');
-    sel.id = 'cat-group-sel-'+i;
-    sel.style.cssText = 'flex:1;padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)';
-
-    // Option: no group
-    const optNone = document.createElement('option');
-    optNone.value = '';
-    optNone.textContent = '— без группы —';
-    sel.appendChild(optNone);
-
-    // One option per existing group
-    groups.forEach(([grpColor, members]) => {
-      const opt = document.createElement('option');
-      opt.value = grpColor;
-      opt.textContent = members.filter(m => m.idx !== i).map(m => m.name).join(', ');
-      if(grpColor === color && members.length > 1) opt.selected = true;
-      sel.appendChild(opt);
-    });
-
-    sel.addEventListener('change', function(){
-      if(this.value){
-        // Join group — apply group color to this category
-        setCatColor(i, this.value);
-        // Update color picker to reflect
-        const cp = document.getElementById('cat-color-inp-'+i);
-        if(cp) cp.value = this.value;
-      }
-    });
-
-    grpRow.append(lbl, sel);
+    // Custom group picker with color swatches
+    const grpPicker = buildGroupPicker(i, color, groups);
+    grpRow.append(lbl, grpPicker);
     row.appendChild(grpRow);
   }
 

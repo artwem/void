@@ -117,14 +117,28 @@ function makeCatRow(i, spent, lim, totalLimit, inGroup){
     </div>
     <div class="progress"><div class="progress-fill ${barClass}" style="width:${bar}%"></div></div>
   `;
-  row.onclick = () => {
-    openAddExpense();
-    setTimeout(()=>{ document.getElementById('exp-cat').value = i; }, 50);
-  };
+  row.onclick = () => { openAddExpense(i); };
   return row;
 }
 
 // ─── EXPENSE CRUD ───────────────────────────────────────────────────
+let _addMode = true; // true = add to existing, false = replace
+
+function toggleAddMode(){
+  _addMode = !_addMode;
+  const vis = document.getElementById('add-mode-visual');
+  if(!vis) return;
+  if(_addMode){
+    vis.style.borderColor = 'var(--border2)';
+    vis.style.background = 'var(--card)';
+    vis.innerHTML = '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  } else {
+    vis.style.borderColor = 'var(--border2)';
+    vis.style.background = 'var(--card)';
+    vis.innerHTML = '';
+  }
+}
+
 function updateExpCatHint(){
   const cat = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value || currentDay || today();
@@ -135,13 +149,22 @@ function updateExpCatHint(){
   if(existing && existing.amount > 0){
     hint.style.display = 'block';
     spentEl.textContent = fmt(existing.amount);
+    // Reset to add mode when hint appears
+    _addMode = true;
+    const vis = document.getElementById('add-mode-visual');
+    if(vis){
+      vis.style.borderColor = 'var(--border2)';
+      vis.style.background = 'var(--card)';
+      vis.innerHTML = '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
   } else {
     hint.style.display = 'none';
   }
 }
 
-function openAddExpense(){
+function openAddExpense(prefillCat){
   editingExpenseId = null;
+  _addMode = true;
   document.getElementById('expense-modal-title').textContent='Добавить расход';
   document.getElementById('exp-delete-btn').style.display='none';
   populateCatSelect('exp-cat');
@@ -149,7 +172,8 @@ function openAddExpense(){
   document.getElementById('exp-amount').value='';
   document.getElementById('exp-comment').value='';
   openModal('modal-expense');
-  setTimeout(updateExpCatHint, 50);
+  if(prefillCat !== undefined) setTimeout(()=>{ document.getElementById('exp-cat').value = prefillCat; updateExpCatHint(); }, 50);
+  else setTimeout(updateExpCatHint, 50);
 }
 
 function editExpense(id, e){
@@ -181,9 +205,13 @@ function saveExpense(){
   } else {
     const existing = DB.expenses.find(e => e.cat===cat && e.date===date && !e._deleted);
     if(existing){
-      // Add to existing — user enters additional spend, not total
-      existing.amount = Math.round((existing.amount + amt) * 100) / 100;
-      if(comment) existing.comment = (existing.comment ? existing.comment + '; ' : '') + comment;
+      if(_addMode){
+        existing.amount = Math.round((existing.amount + amt) * 100) / 100;
+        if(comment) existing.comment = (existing.comment ? existing.comment + '; ' : '') + comment;
+      } else {
+        existing.amount = amt;
+        if(comment !== undefined) existing.comment = comment;
+      }
     } else {
       DB.expenses.push({ id:'gs_'+cat+'_'+date.replace(/-/g,''), cat, amount:amt, date, comment });
     }
