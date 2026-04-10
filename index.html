@@ -489,7 +489,13 @@
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-sync')">✕</button>
     <h2>Google Sheets</h2>
-    <div class="fgrp"><label class="flbl">URL веб-приложения Apps Script</label><input type="url" id="sync-url-input" placeholder="https://script.google.com/..."/></div>
+    <div class="fgrp">
+      <label class="flbl">URL веб-приложения Apps Script</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="url" id="sync-url-input" placeholder="https://script.google.com/..." style="flex:1"/>
+        <button class="btn danger small" onclick="clearSyncUrl()" title="Очистить URL" style="flex-shrink:0;white-space:nowrap">Очистить</button>
+      </div>
+    </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-sync')">Отмена</button>
       <button class="btn primary" onclick="saveSyncUrl()">Сохранить</button>
@@ -1616,6 +1622,11 @@ function openSyncSettings(){
   openModal('modal-sync');
 }
 
+function clearSyncUrl(){
+  document.getElementById('sync-url-input').value = '';
+  document.getElementById('sync-url-input').focus();
+}
+
 function saveSyncUrl(){
   const url = document.getElementById('sync-url-input').value.trim();
   DB.syncUrl = url;
@@ -1709,21 +1720,38 @@ function setSyncStatus(state, isoTs){
   const dot    = document.getElementById('sync-dot');
   const text   = document.getElementById('sync-text');
   if(!widget) return;
-  // Only show if URL configured
-  if(!DB.syncUrl && state !== 'error') { widget.style.display = 'none'; return; }
+  if(!DB.syncUrl){ widget.style.display = 'none'; return; }
   widget.style.display = 'flex';
-  dot.className = 'sync-dot ' + state;
+
   if(state === 'syncing'){
+    dot.className = 'sync-dot syncing';
     text.textContent = 'Синхр…';
-  } else if(state === 'ok' && isoTs){
-    const d = new Date(isoTs);
-    const hhmm = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
-    text.textContent = new Date().toDateString()===d.toDateString() ? hhmm : d.getDate()+'.'+(d.getMonth()+1)+' '+hhmm;
-  } else if(state === 'error'){
-    text.textContent = 'Ошибка';
-  } else {
-    text.textContent = 'Не синхр.';
+    return;
   }
+
+  if(state === 'error'){
+    // On error — show last sync time in amber, not the word "Ошибка"
+    const lastSync = localStorage.getItem('lastSync') || sessionStorage.getItem('lastSync');
+    if(lastSync){ _renderSyncTime(dot, text, lastSync, true); }
+    else { dot.className = 'sync-dot none'; text.textContent = 'Не синхр.'; }
+    return;
+  }
+
+  if(state === 'ok' && isoTs){ _renderSyncTime(dot, text, isoTs, false); return; }
+
+  dot.className = 'sync-dot none';
+  text.textContent = 'Не синхр.';
+}
+
+function _renderSyncTime(dot, text, isoTs, wasError){
+  const d = new Date(isoTs);
+  const diffMin = (Date.now() - d) / 60000;
+  const hhmm = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+  text.textContent = new Date().toDateString()===d.toDateString()
+    ? hhmm : d.getDate()+'.'+(d.getMonth()+1)+' '+hhmm;
+  if(wasError)        dot.className = 'sync-dot error';
+  else if(diffMin < 5) dot.className = 'sync-dot ok';      // green = fresh
+  else                 dot.className = 'sync-dot syncing';  // amber = stale
 }
 
 function syncWidgetTap(){
@@ -1734,8 +1762,33 @@ function syncWidgetTap(){
 function initSyncWidget(){
   if(!DB.syncUrl) return;
   const lastSync = localStorage.getItem('lastSync') || sessionStorage.getItem('lastSync');
-  // 'none' = grey (never synced, not an error), 'ok' = green
   setSyncStatus(lastSync ? 'ok' : 'none', lastSync);
+}
+
+// ── Автосинхронизация каждые 5 минут ─────────────────────────────────
+let _autoSyncTimer = null;
+
+function startAutoSync(){
+  if(!DB.syncUrl || _autoSyncTimer) return;
+  _autoSyncTimer = setInterval(async () => {
+    if(!DB.syncUrl || document.hidden) return;
+    if(!DB._dirty) return; // nothing changed — skip
+    try {
+      const data = buildPayload();
+      const d = await syncRequest('push', data);
+      if(d && !d.error){
+        DB._dirty = false;
+        const ts = new Date().toISOString();
+        localStorage.setItem('lastSync', ts);
+        sessionStorage.setItem('lastSync', ts);
+        setSyncStatus('ok', ts);
+      }
+    } catch(e) {}
+  }, 5 * 60 * 1000);
+}
+
+function stopAutoSync(){
+  if(_autoSyncTimer){ clearInterval(_autoSyncTimer); _autoSyncTimer = null; }
 }
 
 // ── Loader кода Apps Script ───────────────────────────────────────────
@@ -1991,7 +2044,7 @@ function init(){
   if(typeof renderBudget === 'function') renderBudget();
   // Auto-sync on start if URL configured
   initSyncWidget();
-  if(DB.syncUrl) autoSyncOnStart();
+  if(DB.syncUrl){ autoSyncOnStart(); startAutoSync(); }
   // Auto-push on page close
   // Автопуш при закрытии отключён — используй кнопку «Выгрузить»
 }

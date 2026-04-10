@@ -10,7 +10,7 @@ function init(){
   if(typeof renderBudget === 'function') renderBudget();
   // Auto-sync on start if URL configured
   initSyncWidget();
-  if(DB.syncUrl) autoSyncOnStart();
+  if(DB.syncUrl){ autoSyncOnStart(); startAutoSync(); }
   // Auto-push on page close
   // Автопуш при закрытии отключён — используй кнопку «Выгрузить»
 }
