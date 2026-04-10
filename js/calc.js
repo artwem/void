@@ -52,9 +52,6 @@ function calcUpdate(){
       balance *= Math.pow(1 + r/365, daysInMonth);
     } else if(cap==='monthly'){
       balance *= (1 + r/12);
-    } else if(cap==='yearly'){
-      // Apply 1/12 of annual compounding per month
-      balance *= Math.pow(1 + r, 1/12);
     }
 
     balances.push(Math.round(balance));
@@ -112,25 +109,114 @@ function calcUpdate(){
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888',maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:'rgba(128,128,128,.08)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888',maxTicksLimit:6}}}}
   });
 
-  // Yearly table
+  // Store data for table toggle
+  window._calcData = {balances, invested, months};
+  renderCalcTable();
+}
+
+function renderCalcTable(){
+  const d = window._calcData;
+  if(!d) return;
+  const {balances, invested, months} = d;
+  const byMonth = document.getElementById('calc-table-month-btn') &&
+                  document.getElementById('calc-table-month-btn').classList.contains('active');
+
   const table = document.getElementById('calc-table');
-  let html='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-  html+='<tr style="background:var(--bg)"><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:500">Год</th><th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Вложено</th><th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Проценты</th><th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Итого</th></tr>';
-  for(let yr=1; yr<=Math.ceil(months/12); yr++){
-    const mo = Math.min(yr*12, months) - 1;
-    const tot = balances[mo]||0;
-    const inv = invested[mo]||0;
-    const prc = tot - inv;
-    const isLast = yr===Math.ceil(months/12);
-    html+=`<tr style="${isLast?'font-weight:600;background:var(--bg)':''}border-top:0.5px solid var(--border)">
-      <td style="padding:8px 10px">${yr} год</td>
-      <td style="padding:8px 10px;text-align:right;color:var(--muted)">${fmtCalc(inv)}</td>
-      <td style="padding:8px 10px;text-align:right;color:var(--green)">${fmtCalc(prc)}</td>
-      <td style="padding:8px 10px;text-align:right">${fmtCalc(tot)}</td>
-    </tr>`;
+  let html = '<div style="display:flex;gap:6px;padding:0 14px 10px">'
+    + '<button class="cu-btn'+(byMonth?'':' active')+'" id="calc-table-year-btn" onclick="setCalcTableView(false)">По годам</button>'
+    + '<button class="cu-btn'+(byMonth?' active':'')+'" id="calc-table-month-btn" onclick="setCalcTableView(true)">По месяцам</button>'
+    + '</div>';
+
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  const colLabel = byMonth ? 'Месяц' : 'Год';
+  html += '<tr style="background:var(--bg)">'
+    + '<th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:500">'+colLabel+'</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Вложено</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Проценты</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Итого</th>'
+    + '</tr>';
+
+  if(byMonth){
+    for(let mo=1; mo<=months; mo++){
+      const tot = balances[mo-1]||0;
+      const inv = invested[mo-1]||0;
+      const prc = tot - inv;
+      const isLast = mo===months;
+      const label = mo < 12 ? mo+' мес'
+        : (mo%12===0 ? mo/12+' лет' : Math.floor(mo/12)+'г '+mo%12+'м');
+      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
+        + '<td style="padding:6px 10px">'+label+'</td>'
+        + '<td style="padding:6px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
+        + '<td style="padding:6px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
+        + '<td style="padding:6px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
+        + '</tr>';
+    }
+  } else {
+    for(let yr=1; yr<=Math.ceil(months/12); yr++){
+      const mo = Math.min(yr*12, months) - 1;
+      const tot = balances[mo]||0;
+      const inv = invested[mo]||0;
+      const prc = tot - inv;
+      const isLast = yr===Math.ceil(months/12);
+      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
+        + '<td style="padding:8px 10px">'+yr+' год</td>'
+        + '<td style="padding:8px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
+        + '<td style="padding:8px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
+        + '<td style="padding:8px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
+        + '</tr>';
+    }
   }
-  html+='</table>';
-  table.innerHTML=html;
+  html += '</table>';
+  table.innerHTML = html;
+}
+
+function setCalcTableView(byMonth){
+  // Re-render table with new view
+  const d = window._calcData;
+  if(!d) return;
+  const {balances, invested, months} = d;
+  const table = document.getElementById('calc-table');
+
+  let html = '<div style="display:flex;gap:6px;padding:0 14px 10px">'
+    + '<button class="cu-btn'+(byMonth?'':' active')+'" id="calc-table-year-btn" onclick="setCalcTableView(false)">По годам</button>'
+    + '<button class="cu-btn'+(byMonth?' active':'')+'" id="calc-table-month-btn" onclick="setCalcTableView(true)">По месяцам</button>'
+    + '</div>';
+
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<tr style="background:var(--bg)">'
+    + '<th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:500">'+(byMonth?'Месяц':'Год')+'</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Вложено</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Проценты</th>'
+    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Итого</th>'
+    + '</tr>';
+
+  if(byMonth){
+    for(let mo=1; mo<=months; mo++){
+      const tot = balances[mo-1]||0, inv = invested[mo-1]||0, prc = tot-inv;
+      const isLast = mo===months;
+      const label = mo<12 ? mo+' мес' : (mo%12===0 ? mo/12+' лет' : Math.floor(mo/12)+'г '+mo%12+'м');
+      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
+        + '<td style="padding:6px 10px">'+label+'</td>'
+        + '<td style="padding:6px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
+        + '<td style="padding:6px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
+        + '<td style="padding:6px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
+        + '</tr>';
+    }
+  } else {
+    for(let yr=1; yr<=Math.ceil(months/12); yr++){
+      const mo = Math.min(yr*12,months)-1;
+      const tot = balances[mo]||0, inv = invested[mo]||0, prc = tot-inv;
+      const isLast = yr===Math.ceil(months/12);
+      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
+        + '<td style="padding:8px 10px">'+yr+' год</td>'
+        + '<td style="padding:8px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
+        + '<td style="padding:8px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
+        + '<td style="padding:8px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
+        + '</tr>';
+    }
+  }
+  html += '</table>';
+  table.innerHTML = html;
 }
 
 function fmtCalc(n){
