@@ -1420,9 +1420,12 @@ function renderSettings(){
   const hasSyncUrl = !!DB.syncUrl;
   document.getElementById('sync-url-display').textContent =
     hasSyncUrl ? DB.syncUrl.slice(0,40)+'…' : 'Не задан';
-  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row'].forEach(id=>{
+  
+  // Добавлен 'sync-interval-row' в массив
+  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row'].forEach(id=>{
     document.getElementById(id).style.display = hasSyncUrl ? 'flex' : 'none';
   });
+  
   const lastSync = localStorage.getItem('lastSync') || sessionStorage.getItem('lastSync');
   if(lastSync){
     const d = new Date(lastSync);
