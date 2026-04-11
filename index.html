@@ -401,6 +401,7 @@
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="asset-amount" placeholder="0" inputmode="decimal"/></div>
     <div class="fgrp"><label class="flbl">Дата (рекомендуется 1 или 16)</label><input type="date" id="asset-date"/></div>
     <div class="btn-row">
+      <button class="btn danger small" id="asset-delete-date-btn" style="display:none" onclick="deleteAssetDate(this.dataset.date)">Удалить дату</button>
       <button class="btn" onclick="closeModal('modal-asset')">Отмена</button>
       <button class="btn primary" onclick="saveAsset()">Сохранить</button>
     </div>
@@ -1314,8 +1315,9 @@ function renderAssetsHistory(rows, showAll){
       ? '<span style="font-size:10px;margin-left:6px;color:'+(diff>=0?'#1d9e75':'var(--red)')+'">'+
         (diff>=0?'+':'')+fmtShort(diff)+'₽</span>'
       : '';
-    html += '<tr style="border-top:0.5px solid var(--border)">'
-      + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+'</td>'
+    const dateAttr = 'openEditAssetDate(&quot;'+r.date+'&quot;)';
+    html += '<tr style="border-top:0.5px solid var(--border);cursor:pointer" onclick="'+dateAttr+'" title="Редактировать / удалить">'
+      + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+' <span style=\"opacity:.5;font-size:10px\">✎</span></td>'
       + '<td style="padding:7px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)">'+fmt(r.total)+diffStr+'</td>'
       + '</tr>';
   });
@@ -1433,6 +1435,8 @@ function openAssetModal(){
   }).join('');
   document.getElementById('asset-date').value = today();
   document.getElementById('asset-amount').value='';
+  const delBtn = document.getElementById('asset-delete-date-btn');
+  if(delBtn) delBtn.style.display = 'none';
   openModal('modal-asset');
 }
 
@@ -1565,10 +1569,49 @@ function addBank(){
 }
 
 function removeBank(type, i){
-  if(type==='credit') DB.creditBanks.splice(i,1);
-  else DB.banks.splice(i,1);
+  const arr = type === 'credit' ? DB.creditBanks : DB.banks;
+  const bankName = arr[i];
+  arr.splice(i, 1);
+  // Remove all asset records for this bank
+  DB.assets = DB.assets.filter(a => (a.bankName || '') !== bankName);
   saveDB();
   renderBankManager();
+  renderAssets();
+  toast('Удалено: ' + bankName);
+}
+
+// ─── ASSET RECORD EDIT / DELETE ─────────────────────────────────────
+function openEditAssetDate(date){
+  // Open modal pre-filled for editing a specific date
+  const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
+  document.getElementById('asset-bank').innerHTML = allBanks.map((b,i) => {
+    const credit = i >= (DB.banks||[]).length;
+    return '<option value="'+i+'">'+b+(credit?' (кредит)':'')+'</option>';
+  }).join('');
+  document.getElementById('asset-date').value = date;
+  // Pre-fill amount from most recent entry for first bank on this date
+  const existing = DB.assets.filter(a => a.date === date);
+  if(existing.length > 0){
+    const bankIdx = allBanks.indexOf(existing[0].bankName);
+    if(bankIdx >= 0) document.getElementById('asset-bank').value = bankIdx;
+    document.getElementById('asset-amount').value = existing[0].amount;
+  } else {
+    document.getElementById('asset-amount').value = '';
+  }
+  document.getElementById('asset-comment').value = '';
+  // Show delete-date button
+  const delBtn = document.getElementById('asset-delete-date-btn');
+  if(delBtn) { delBtn.style.display = 'block'; delBtn.dataset.date = date; }
+  openModal('modal-asset');
+}
+
+function deleteAssetDate(date){
+  if(!date) return;
+  DB.assets = DB.assets.filter(a => a.date !== date);
+  saveDB();
+  closeModal('modal-asset');
+  renderAssets();
+  toast('Записи за ' + date + ' удалены');
 }
 
 
