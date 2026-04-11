@@ -15,7 +15,7 @@ function renderSettings(){
       d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
   }
   const intervalInput = document.getElementById('sync-interval-input');
-  if(intervalInput) intervalInput.value = getSyncInterval();
+  if(intervalInput) intervalInput.value = getSyncInterval(); // seconds
   const lims = getLimits(currentMonth.y, currentMonth.m);
   document.getElementById('cat-settings-list').innerHTML = DB.categories.map((c,i) => `
     <div class="setting-row">

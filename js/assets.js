@@ -4,6 +4,53 @@ function isCredit(bankName){
   return (DB.creditBanks||[]).includes(bankName);
 }
 
+function renderAssetsHistory(rows, showAll){
+  const tbl = document.getElementById('assets-history-table');
+  const LIMIT = 5;
+  const visible = showAll ? rows : rows.slice(0, LIMIT);
+  const hasMore = rows.length > LIMIT;
+
+  let html = '<tr style="background:var(--bg)">'
+    + '<th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:500;font-size:11px">Дата</th>'
+    + '<th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:500;font-size:11px">Общий актив</th>'
+    + '</tr>';
+
+  visible.forEach((r, idx) => {
+    const prev = rows[rows.indexOf(r) + 1];
+    const diff = prev ? r.total - prev.total : null;
+    const diffStr = diff !== null
+      ? '<span style="font-size:10px;margin-left:6px;color:'+(diff>=0?'#1d9e75':'var(--red)')+'">'+
+        (diff>=0?'+':'')+fmtShort(diff)+'₽</span>'
+      : '';
+    html += '<tr style="border-top:0.5px solid var(--border)">'
+      + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+'</td>'
+      + '<td style="padding:7px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)">'+fmt(r.total)+diffStr+'</td>'
+      + '</tr>';
+  });
+
+  if(hasMore && !showAll){
+    html += '<tr><td colspan="2" style="padding:8px;text-align:center">'
+      + '<button class="btn small" style="font-size:12px;width:100%" onclick="expandAssetsHistory()">'
+      + 'Показать все ' + rows.length + ' записей</button></td></tr>';
+  } else if(hasMore && showAll){
+    html += '<tr><td colspan="2" style="padding:8px;text-align:center">'
+      + '<button class="btn small" style="font-size:12px;width:100%" onclick="collapseAssetsHistory()">'
+      + 'Скрыть ▲</button></td></tr>';
+  }
+
+  tbl.innerHTML = html;
+}
+
+let _assetsHistoryRows = [];
+
+function expandAssetsHistory(){
+  renderAssetsHistory(_assetsHistoryRows, true);
+}
+
+function collapseAssetsHistory(){
+  renderAssetsHistory(_assetsHistoryRows, false);
+}
+
 function renderAssets(){
   const byBank={};
   const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
@@ -76,23 +123,10 @@ function renderAssets(){
   const tbl = document.getElementById('assets-history-table');
   if(wrap && tbl && allDates.length > 0){
     wrap.style.display = 'block';
-    // Rebuild full data array with full dates
     const rows = allDates.map((date, idx) => ({date, total: data[idx]}))
-                         .sort((a,b) => b.date.localeCompare(a.date)); // newest first
-    tbl.innerHTML = '<tr style="background:var(--bg)">'
-      + '<th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:500;font-size:11px">Дата</th>'
-      + '<th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:500;font-size:11px">Общий актив</th>'
-      + '</tr>'
-      + rows.map((r, idx) => {
-          const prev = rows[idx+1];
-          const diff = prev ? r.total - prev.total : null;
-          const diffStr = diff !== null
-            ? '<span style="font-size:10px;margin-left:6px;color:'+(diff>=0?'var(--green,#1d9e75)':'var(--red)')+'">'+
-              (diff>=0?'+':'')+fmtShort(diff)+'₽</span>'
-            : '';
-          const isLast = idx === rows.length-1;
-          return '<tr style="border-top:0.5px solid var(--border)'+(isLast?';opacity:.5':'')+'">'            + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+'</td>'            + '<td style="padding:7px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)">'+fmt(r.total)+diffStr+'</td>'            + '</tr>';
-        }).join('');
+                         .sort((a,b) => b.date.localeCompare(a.date));
+    _assetsHistoryRows = rows;
+    renderAssetsHistory(rows, false);
   } else if(wrap){
     wrap.style.display = 'none';
   }

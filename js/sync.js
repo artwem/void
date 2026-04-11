@@ -185,26 +185,29 @@ function initSyncWidget(){
 let _autoSyncTimer = null;
 
 function getSyncInterval(){
-  const v = parseInt(localStorage.getItem('syncInterval') || '5');
-  return Math.max(1, Math.min(60, isNaN(v) ? 5 : v));
+  const v = parseInt(localStorage.getItem('syncInterval') || '15');
+  return Math.max(5, Math.min(3600, isNaN(v) ? 15 : v));
 }
 
 function saveSyncInterval(val){
-  const mins = Math.max(1, Math.min(60, parseInt(val) || 5));
-  document.getElementById('sync-interval-input').value = mins;
-  localStorage.setItem('syncInterval', String(mins));
-  // Restart timer with new interval
+  const secs = Math.max(5, Math.min(3600, parseInt(val) || 15));
+  document.getElementById('sync-interval-input').value = secs;
+  localStorage.setItem('syncInterval', String(secs));
   if(_autoSyncTimer){ clearInterval(_autoSyncTimer); _autoSyncTimer = null; }
   startAutoSync();
-  toast('Интервал: ' + mins + ' мин');
+  toast('Интервал: ' + secs + ' с');
 }
+
+let _syncInFlight = false;
 
 function startAutoSync(){
   if(!DB.syncUrl || _autoSyncTimer) return;
-  const ms = getSyncInterval() * 60 * 1000;
+  const ms = getSyncInterval() * 1000;
   _autoSyncTimer = setInterval(async () => {
     if(!DB.syncUrl || document.hidden) return;
     if(!DB._dirty) return;
+    if(_syncInFlight) return; // previous push still running — skip
+    _syncInFlight = true;
     try {
       const data = buildPayload();
       const d = await syncRequest('push', data);
@@ -220,6 +223,7 @@ function startAutoSync(){
         setSyncStatus('ok', ts);
       }
     } catch(e) {}
+    _syncInFlight = false;
   }, ms);
 }
 
