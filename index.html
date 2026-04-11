@@ -132,6 +132,10 @@
       <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
     </div>
   </div>
+  <div id="assets-history-wrap" style="display:none;padding:0 16px 8px">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 0 6px">История</div>
+    <table id="assets-history-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
+  </div>
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span></div>
   <div class="settings-list" id="assets-list"></div>
   <div style="padding:8px 16px">
@@ -204,7 +208,7 @@
       <div style="position:relative;height:200px"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
     </div>
     <div class="chart-card" style="padding:0;overflow:hidden">
-      <div style="padding:12px 14px 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">График по годам</div>
+      <div style="padding:12px 14px 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">График</div>
       <div id="calc-table" style="overflow-x:auto"></div>
     </div>
     <div class="page-end"></div>
@@ -266,6 +270,10 @@
   <div class="settings-list">
     <div class="setting-row" onclick="exportCSV()">
       <span class="setting-label">📥 Экспорт CSV</span>
+      <span class="setting-chevron">›</span>
+    </div>
+    <div class="setting-row" onclick="openModal('modal-about')">
+      <span class="setting-label">ℹ О приложении</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" onclick="confirmClearData()">
@@ -511,6 +519,49 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: ABOUT -->
+<div class="overlay" id="modal-about">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-about')">✕</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <svg width="44" height="44" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="abg" cx="40%" cy="38%" r="65%">
+            <stop offset="0%" stop-color="#222222"/>
+            <stop offset="100%" stop-color="#000000"/>
+          </radialGradient>
+          <clipPath id="ac"><circle cx="100" cy="100" r="95"/></clipPath>
+        </defs>
+        <circle cx="100" cy="100" r="95" fill="url(#abg)"/>
+        <path d="M100 100 L100 5 A95 95 0 0 1 182.3 147.5 Z" fill="#1e1e1e" clip-path="url(#ac)"/>
+        <path d="M100 100 L182.3 147.5 A95 95 0 0 1 17.7 147.5 Z" fill="#141414" clip-path="url(#ac)"/>
+        <path d="M100 100 L17.7 147.5 A95 95 0 0 1 100 5 Z" fill="#191919" clip-path="url(#ac)"/>
+        <line x1="100" y1="100" x2="100" y2="5" stroke="white" stroke-width="3" opacity="0.5"/>
+        <line x1="100" y1="100" x2="182.3" y2="147.5" stroke="white" stroke-width="3" opacity="0.5"/>
+        <line x1="100" y1="100" x2="17.7" y2="147.5" stroke="white" stroke-width="3" opacity="0.5"/>
+        <circle cx="100" cy="100" r="95" fill="none" stroke="white" stroke-width="1.5" opacity="0.12"/>
+      </svg>
+      <div>
+        <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
+      </div>
+    </div>
+    <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
+    <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с месячными лимитами, веди учёт активов и кредитов, рассчитывай рост накоплений. Все данные хранятся локально на устройстве и синхронизируются с Google Sheets по твоему желанию.</p>
+    <div style="margin-top:20px;padding-top:16px;border-top:0.5px solid var(--border)">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">V — Visual</span>
+        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">O — Overview</span>
+        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">I — of Income</span>
+        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">D — &amp; Debt</span>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:20px">
+      <button class="btn primary" onclick="closeModal('modal-about')" style="width:100%">Закрыть</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL: CONFIRM CLEAR -->
 <div class="overlay" id="modal-confirm-clear">
@@ -1324,6 +1375,32 @@ function renderAssets(){
       data:{labels,datasets:[{data,borderColor:'#185fa5',backgroundColor:'rgba(24,95,165,.08)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#185fa5',borderWidth:2}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>fmt(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888'}},y:{grid:{color:'rgba(128,128,128,.1)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}}}
     });
+  }
+
+  // History table
+  const wrap = document.getElementById('assets-history-wrap');
+  const tbl = document.getElementById('assets-history-table');
+  if(wrap && tbl && allDates.length > 0){
+    wrap.style.display = 'block';
+    // Rebuild full data array with full dates
+    const rows = allDates.map((date, idx) => ({date, total: data[idx]}))
+                         .sort((a,b) => b.date.localeCompare(a.date)); // newest first
+    tbl.innerHTML = '<tr style="background:var(--bg)">'
+      + '<th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:500;font-size:11px">Дата</th>'
+      + '<th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:500;font-size:11px">Общий актив</th>'
+      + '</tr>'
+      + rows.map((r, idx) => {
+          const prev = rows[idx+1];
+          const diff = prev ? r.total - prev.total : null;
+          const diffStr = diff !== null
+            ? '<span style="font-size:10px;margin-left:6px;color:'+(diff>=0?'var(--green,#1d9e75)':'var(--red)')+'">'+
+              (diff>=0?'+':'')+fmtShort(diff)+'₽</span>'
+            : '';
+          const isLast = idx === rows.length-1;
+          return '<tr style="border-top:0.5px solid var(--border)'+(isLast?';opacity:.5':'')+'">'            + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+'</td>'            + '<td style="padding:7px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)">'+fmt(r.total)+diffStr+'</td>'            + '</tr>';
+        }).join('');
+  } else if(wrap){
+    wrap.style.display = 'none';
   }
 }
 

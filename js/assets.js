@@ -70,6 +70,32 @@ function renderAssets(){
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>fmt(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888'}},y:{grid:{color:'rgba(128,128,128,.1)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}}}
     });
   }
+
+  // History table
+  const wrap = document.getElementById('assets-history-wrap');
+  const tbl = document.getElementById('assets-history-table');
+  if(wrap && tbl && allDates.length > 0){
+    wrap.style.display = 'block';
+    // Rebuild full data array with full dates
+    const rows = allDates.map((date, idx) => ({date, total: data[idx]}))
+                         .sort((a,b) => b.date.localeCompare(a.date)); // newest first
+    tbl.innerHTML = '<tr style="background:var(--bg)">'
+      + '<th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:500;font-size:11px">Дата</th>'
+      + '<th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:500;font-size:11px">Общий актив</th>'
+      + '</tr>'
+      + rows.map((r, idx) => {
+          const prev = rows[idx+1];
+          const diff = prev ? r.total - prev.total : null;
+          const diffStr = diff !== null
+            ? '<span style="font-size:10px;margin-left:6px;color:'+(diff>=0?'var(--green,#1d9e75)':'var(--red)')+'">'+
+              (diff>=0?'+':'')+fmtShort(diff)+'₽</span>'
+            : '';
+          const isLast = idx === rows.length-1;
+          return '<tr style="border-top:0.5px solid var(--border)'+(isLast?';opacity:.5':'')+'">'            + '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r.date+'</td>'            + '<td style="padding:7px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)">'+fmt(r.total)+diffStr+'</td>'            + '</tr>';
+        }).join('');
+  } else if(wrap){
+    wrap.style.display = 'none';
+  }
 }
 
 // ─── ASSET CRUD ─────────────────────────────────────────────────────
