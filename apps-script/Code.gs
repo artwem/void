@@ -3,7 +3,7 @@
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 
-const SHEET_DAYS     = 'По дням';
+const SHEET_DAYS     = 'По дням'; // prefix — actual sheets: 'По дням 2026', 'По дням 2027', etc.
 const SHEET_TEMPLATE = 'Шаблон';
 const SHEET_COMMENTS = 'Комментарии';
 const SHEET_ASSETS   = 'Активы';
@@ -11,13 +11,6 @@ const SHEET_INCOME   = 'Доходы';
 const SHEET_COLORS   = 'Настройки';
 const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь',
                    'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-const DEFAULT_CATS = [
-  'ЖКУ + жилье','Транспорт','Связь + интернет','Еда+Хозтовары, уход',
-  'Еда вне дома','Доставка','Одежда','Зубы','Активности','Хотелки',
-  'Развлечения','Подарки','Такси','Дом, быт, другое','Мама','Непредвиденные расходы'
-];
-const DEFAULT_LIMITS = [15000,3000,1500,20000,8000,5000,5000,3000,4000,5000,3000,3000,2000,4000,5000,5000];
-
 // POST с Content-Type: text/plain — без CORS preflight
 function doPost(e) {
   try {
@@ -93,35 +86,77 @@ function ensureSheet(ss, name, headers) {
 
 function monthSheetName(yr, mo) { return MONTHS_RU[mo] + ' ' + yr; }
 
+function daysSheetName(yr) { return SHEET_DAYS + ' ' + yr; }
+
+function getOrCreateDaysSheet(ss, yr) {
+  const name = daysSheetName(yr);
+  let ds = ss.getSheetByName(name);
+  if (ds) return ds;
+
+  // Create new year sheet — clone structure from any existing days sheet
+  ds = ss.insertSheet(name);
+  const dates = [''];
+  for (let d = new Date(yr,0,1); d.getFullYear()===yr; d.setDate(d.getDate()+1))
+    dates.push(new Date(d));
+  const totalCols = dates.length;
+  ds.getRange(1,1,1,totalCols).setValues([dates]);
+  ds.getRange(1,2,1,totalCols-1).setNumberFormat('dd.mm');
+
+  // Итого row with open-ended SUM
+  ds.getRange(2,1).setValue('Итого');
+  const formulas = [];
+  for (let c = 2; c <= totalCols; c++) {
+    const col = colLetter(c);
+    formulas.push('=IF(SUM('+col+'3:'+col+')=0,"",SUM('+col+'3:'+col+'))');
+  }
+  ds.getRange(2, 2, 1, formulas.length).setFormulas([formulas]);
+
+  // Copy categories from the most recent existing days sheet
+  const existing = ss.getSheets()
+    .filter(s => s.getName().startsWith(SHEET_DAYS + ' '))
+    .filter(s => s.getName() !== name)
+    .sort((a,b) => b.getName().localeCompare(a.getName()));
+  if (existing.length) {
+    const src = existing[0].getDataRange().getValues();
+    let row = 3;
+    for (let r = 1; r < src.length; r++) {
+      const cat = String(src[r][0]||'');
+      if (cat && cat !== 'Итого') { ds.getRange(row,1).setValue(cat); row++; }
+    }
+  }
+  return ds;
+}
+
 // ── ПЕРВЫЙ ЗАПУСК: создать нужные листы ───────────────────────────────
 function setupSheets(ss) {
+  // Template sheet — empty, user fills categories from app
   if (!ss.getSheetByName(SHEET_TEMPLATE)) {
     const t = ss.insertSheet(SHEET_TEMPLATE);
-    const rows = [['Статья Расходов','Сумма/Мес','Доля Общая','Доля Лимита','Лимиты']];
-    DEFAULT_CATS.forEach((c,i) => rows.push([c,0,0,0,DEFAULT_LIMITS[i]||0]));
-    rows.push(['Итого',0,0,0,'=SUM(E2:E'+(rows.length)+')']);
-    t.getRange(1,1,rows.length,5).setValues(rows);
+    t.getRange(1,1,1,5).setValues([['Статья Расходов','Сумма/Мес','Доля Общая','Доля Лимита','Лимиты']]);
+    t.getRange(2,1).setValue('Итого');
+    t.getRange(2,5).setFormula('=SUM(E3:E1000)');
   }
-  if (!ss.getSheetByName(SHEET_DAYS)) {
-    const ds = ss.insertSheet(SHEET_DAYS);
-    const yr = new Date().getFullYear();
-    const dates = [''];
-    for (let d = new Date(yr,0,1); d.getFullYear()===yr; d.setDate(d.getDate()+1))
-      dates.push(new Date(d));
-    ds.getRange(1,1,1,dates.length).setValues([dates]);
-    ds.getRange(1,2,1,dates.length-1).setNumberFormat('dd.mm');
-    const td = ss.getSheetByName(SHEET_TEMPLATE).getDataRange().getValues();
-    let row = 2;
-    for (let r = 1; r < td.length; r++) {
-      const c = td[r][0];
-      if (c && String(c) !== 'Итого') { ds.getRange(row,1).setValue(c); row++; }
-    }
-    ds.getRange(row,1).setValue('Итого');
+
+  // По дням YYYY — create sheet for current year if none exists yet
+  const curYr = new Date().getFullYear();
+  if (!ss.getSheetByName(daysSheetName(curYr))) {
+    getOrCreateDaysSheet(ss, curYr);
   }
+  // Migrate legacy 'По дням' sheet if exists — rename to 'По дням YYYY'
+  const legacyDays = ss.getSheetByName(SHEET_DAYS);
+  if (legacyDays) {
+    legacyDays.setName(daysSheetName(curYr));
+  }
+
   ensureSheet(ss, SHEET_ASSETS, ['Общий актив','Дата']);
-  ensureSheet(ss, SHEET_INCOME, ['id','date','source','amount','comment','month']);
-  ensureSheet(ss, SHEET_COMMENTS, ['catIdx','date','comment','category']);
-  ensureSheet(ss, SHEET_COLORS, ['Категория','Цвет']);
+
+  // Hidden service sheets
+  const incSh = ensureSheet(ss, SHEET_INCOME,   ['id','date','source','amount','comment','month']);
+  const commSh = ensureSheet(ss, SHEET_COMMENTS, ['catIdx','date','comment','category']);
+  const colSh  = ensureSheet(ss, SHEET_COLORS,   ['Категория','Цвет']);
+  if (incSh.isSheetHidden()  === false) incSh.hideSheet();
+  if (commSh.isSheetHidden() === false) commSh.hideSheet();
+  if (colSh.isSheetHidden()  === false) colSh.hideSheet();
 }
 
 function getOrCreateMonthSheet(ss, yr, mo) {
@@ -141,37 +176,52 @@ function pullAll() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   setupSheets(ss);
 
-  const daysSheet = ss.getSheetByName(SHEET_DAYS);
-  const daysData = daysSheet.getDataRange().getValues();
-  const header = daysData[0];
+  // Collect categories from most recent days sheet
+  const allDaysSheets = ss.getSheets()
+    .filter(s => s.getName().startsWith(SHEET_DAYS + ' '))
+    .sort((a,b) => b.getName().localeCompare(a.getName())); // newest first
 
-  // Карта дата → колонка
-  const dateColMap = {};
-  for (let c = 1; c < header.length; c++) {
-    const ds = cellToDateStr(header[c]);
-    if (ds) dateColMap[ds] = c;
-  }
-
-  // Карта категория → строка
+  // Use newest sheet for category list
+  const primarySheet = allDaysSheets[0] || ss.getSheetByName(SHEET_DAYS);
+  const primaryData = primarySheet ? primarySheet.getDataRange().getValues() : [[]];
   const catRowMap = {};
   const categories = [];
-  for (let r = 1; r < daysData.length; r++) {
-    const cat = String(daysData[r][0] || '');
+  for (let r = 1; r < primaryData.length; r++) {
+    const cat = String(primaryData[r][0] || '');
     if (cat && cat !== 'Итого') { catRowMap[cat] = r; categories.push(cat); }
   }
 
-  // Расходы из матрицы
+  // Read expenses from ALL year sheets
   const expenseMap = {};
-  for (const cat of categories) {
-    const ri = catRowMap[cat];
-    const ci = categories.indexOf(cat);
-    for (const [ds, col] of Object.entries(dateColMap)) {
-      const v = daysData[ri][col];
-      if (v === null || v === '' || v === undefined) continue;
-      const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^\d.]/g,''));
-      if (!isNaN(num) && num > 0) {
-        const key = ci + '_' + ds.replace(/-/g,'');
-        expenseMap[key] = { id:'gs_'+key, cat:ci, amount:num, date:ds, comment:'' };
+  for (const daysSheet of allDaysSheets) {
+    const daysData = daysSheet.getDataRange().getValues();
+    const header = daysData[0];
+
+    const dateColMap = {};
+    for (let c = 1; c < header.length; c++) {
+      const ds = cellToDateStr(header[c]);
+      if (ds) dateColMap[ds] = c;
+    }
+
+    // Build local catRowMap for this sheet (may differ from primary)
+    const localCatRow = {};
+    for (let r = 1; r < daysData.length; r++) {
+      const cat = String(daysData[r][0] || '');
+      if (cat && cat !== 'Итого') localCatRow[cat] = r;
+    }
+
+    for (const cat of categories) {
+      const ri = localCatRow[cat];
+      if (ri === undefined) continue;
+      const ci = categories.indexOf(cat);
+      for (const [ds, col] of Object.entries(dateColMap)) {
+        const v = daysData[ri][col];
+        if (v === null || v === '' || v === undefined) continue;
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^\d.]/g,''));
+        if (!isNaN(num) && num > 0) {
+          const key = ci + '_' + ds.replace(/-/g,'');
+          expenseMap[key] = { id:'gs_'+key, cat:ci, amount:num, date:ds, comment:'' };
+        }
       }
     }
   }
@@ -312,41 +362,64 @@ function pushAll(data) {
     // Also rename in color sheet if bank names are stored there (future-proof)
   }
 
-  // --- 1. Переименования категорий ---
+  // --- 1. Переименования и новые категории — во ВСЕХ листах «По дням YYYY» ---
   const renames = data.catRenames || [];
-  const dsSh = ss.getSheetByName(SHEET_DAYS);
+  const allDaysSheetsForPush = ss.getSheets()
+    .filter(s => s.getName().startsWith(SHEET_DAYS + ' '))
+    .sort((a,b) => b.getName().localeCompare(a.getName()));
+
+  // Use newest sheet as primary for category management
+  const curYrForPush = new Date().getFullYear();
+  const primaryDsSh = allDaysSheetsForPush[0] || getOrCreateDaysSheet(ss, curYrForPush);
+
+  // Apply renames to ALL year sheets
   if (renames.length) {
-    const dsRenameData = dsSh.getDataRange().getValues();
-    renames.forEach(function(r) {
-      for (let row = 1; row < dsRenameData.length; row++) {
-        if (String(dsRenameData[row][0]) === r.from) {
-          dsSh.getRange(row+1, 1).setValue(r.to);
-          dsRenameData[row][0] = r.to;
+    allDaysSheetsForPush.forEach(function(sh) {
+      const d = sh.getDataRange().getValues();
+      renames.forEach(function(r) {
+        for (let row = 1; row < d.length; row++) {
+          if (String(d[row][0]) === r.from) {
+            sh.getRange(row+1, 1).setValue(r.to);
+            d[row][0] = r.to;
+          }
         }
-      }
+      });
     });
   }
 
-  // --- 1b. Новые категории — только в По дням (Шаблон формулами сам подтянет) ---
-  const dsData = dsSh.getDataRange().getValues();
-  const catRowMap = {};
-  for (let r = 1; r < dsData.length; r++) {
-    const c = String(dsData[r][0]||'');
-    if (c && c !== 'Итого') catRowMap[c] = r;
-  }
-  for (const cat of categories) {
-    if (catRowMap[cat] || cat === 'Итого') continue;
-    let iRow = dsSh.getLastRow();
-    for (let r = 1; r <= dsSh.getLastRow(); r++) {
-      if (dsSh.getRange(r,1).getValue()==='Итого') { iRow = r; break; }
+  // Add new categories to ALL year sheets
+  function ensureCatInSheet(sh, cat) {
+    const d = sh.getDataRange().getValues();
+    const existing = {};
+    for (let r = 1; r < d.length; r++) {
+      const c = String(d[r][0]||'');
+      if (c && c !== 'Итого') existing[c] = r;
     }
-    dsSh.insertRowBefore(iRow);
-    dsSh.getRange(iRow,1).setValue(cat);
-    catRowMap[cat] = iRow-1;
+    if (existing[cat] || cat === 'Итого') return existing;
+    // Find Итого row
+    let iRow = sh.getLastRow();
+    for (let r = 1; r <= sh.getLastRow(); r++) {
+      if (sh.getRange(r,1).getValue() === 'Итого') { iRow = r; break; }
+    }
+    sh.insertRowBefore(iRow);
+    sh.getRange(iRow, 1).setValue(cat);
+    existing[cat] = iRow - 1;
+    return existing;
   }
 
-  // --- 1c. Сохранить цвета категорий на лист "Настройки" ---
-  // --- 1c. Сохранить цвета категорий: Категория | Цвет ---
+  // Build catRowMap from primary sheet after adding new cats
+  const catRowMap = {};
+  for (const cat of categories) {
+    allDaysSheetsForPush.forEach(sh => ensureCatInSheet(sh, cat));
+  }
+  // Rebuild from primary
+  const primaryData = primaryDsSh.getDataRange().getValues();
+  for (let r = 1; r < primaryData.length; r++) {
+    const c = String(primaryData[r][0]||'');
+    if (c && c !== 'Итого') catRowMap[c] = r;
+  }
+
+  // --- 1c. Цвета категорий → лист "Настройки" ---
   const catColors = data.catColors || {};
   {
     const colorSh = ensureSheet(ss, SHEET_COLORS, ['Категория','Цвет']);
@@ -377,46 +450,51 @@ function pushAll(data) {
     written.colors = Object.keys(catColors).length;
   }
 
-  // --- 2. Расходы → ячейки в "По дням" ---
-  // Перечитываем после возможного добавления строк
-  const freshData = dsSh.getDataRange().getValues();
-  const freshHeader = freshData[0];
-  const freshCatMap = {};
-  for (let r = 1; r < freshData.length; r++) {
-    const c = String(freshData[r][0]||'');
-    if (c && c !== 'Итого') freshCatMap[c] = r;
-  }
-  const dateColMap = {};
-  for (let c = 1; c < freshHeader.length; c++) {
-    const ds = cellToDateStr(freshHeader[c]);
-    if (ds) dateColMap[ds] = c;
-  }
-
-  // Группируем расходы по ячейке
-  // amount=0 или _deleted=true → пишем 0 (очищаем ячейку)
-  const cellMap = {};
+  // --- 2. Расходы → ячейки в нужный лист «По дням YYYY» ---
+  // Group expenses by year, write to corresponding sheet
+  const expByYear = {};
   const commentMap = {};
   for (const exp of (data.expenses||[])) {
     const catName = categories[exp.cat];
-    if (!catName) continue;
-    const col = dateColMap[exp.date];
-    const row = freshCatMap[catName];
-    if (col===undefined || row===undefined) continue;
-    const key = row+'_'+col;
-    if (exp._deleted || exp.amount === 0) {
-      cellMap[key] = 0; // явно обнуляем
-    } else {
-      // Если уже есть значение — берём максимум (не суммируем, т.к. приложение хранит итог)
-      cellMap[key] = exp.amount;
-    }
+    if (!catName || !exp.date) continue;
+    const yr = exp.date.slice(0,4);
+    if (!expByYear[yr]) expByYear[yr] = [];
+    expByYear[yr].push(exp);
     if (exp.comment && !exp._deleted) {
       commentMap[exp.cat+'_'+exp.date] = { cat:exp.cat, date:exp.date, comment:exp.comment, catName };
     }
   }
-  for (const [key,amount] of Object.entries(cellMap)) {
-    const [r,c] = key.split('_').map(Number);
-    dsSh.getRange(r+1,c+1).setValue(amount === 0 ? '' : amount);
-    written.cells++;
+
+  for (const [yr, exps] of Object.entries(expByYear)) {
+    const yrNum = parseInt(yr);
+    const sh = getOrCreateDaysSheet(ss, yrNum);
+    const freshData = sh.getDataRange().getValues();
+    const freshHeader = freshData[0];
+    const freshCatMap = {};
+    for (let r = 1; r < freshData.length; r++) {
+      const c = String(freshData[r][0]||'');
+      if (c && c !== 'Итого') freshCatMap[c] = r;
+    }
+    const dateColMap = {};
+    for (let c = 1; c < freshHeader.length; c++) {
+      const ds = cellToDateStr(freshHeader[c]);
+      if (ds) dateColMap[ds] = c;
+    }
+    const cellMap = {};
+    for (const exp of exps) {
+      const catName = categories[exp.cat];
+      if (!catName) continue;
+      const col = dateColMap[exp.date];
+      const row = freshCatMap[catName];
+      if (col===undefined || row===undefined) continue;
+      const key = row+'_'+col;
+      cellMap[key] = (exp._deleted || exp.amount === 0) ? 0 : exp.amount;
+    }
+    for (const [key,amount] of Object.entries(cellMap)) {
+      const [r,c] = key.split('_').map(Number);
+      sh.getRange(r+1,c+1).setValue(amount === 0 ? '' : amount);
+      written.cells++;
+    }
   }
 
   // --- 3. Комментарии ---
@@ -485,13 +563,15 @@ function pushAll(data) {
     // Add missing regular banks: insert before the first credit column (or before last col if no credits)
     for (const bank of regularBanks) {
       if (colMap[bank]) continue;
-      // Find insertion point: before first credit bank column, or before Общий актив if it got shifted
       const creditCols = creditBanksList.map(b => colMap[b]).filter(Boolean);
-      const firstCreditCol = creditCols.length ? Math.min(...creditCols) : aSh.getLastColumn() + 1;
-      // insertColumnBefore shifts everything right, then clear the new column and set header
-      aSh.insertColumnBefore(firstCreditCol);
-      aSh.getRange(1, firstCreditCol, aSh.getLastRow(), 1).clearContent();
-      aSh.getRange(1, firstCreditCol).setValue(bank);
+      if (creditCols.length) {
+        const firstCreditCol = Math.min(...creditCols);
+        aSh.insertColumnBefore(firstCreditCol);
+        aSh.getRange(1, firstCreditCol, aSh.getLastRow(), 1).clearContent();
+        aSh.getRange(1, firstCreditCol).setValue(bank);
+      } else {
+        aSh.getRange(1, aSh.getLastColumn() + 1).setValue(bank);
+      }
       colMap = getColMap();
     }
 
