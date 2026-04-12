@@ -137,15 +137,14 @@ function setupSheets(ss) {
     t.getRange(2,5).setFormula('=SUM(E3:E1000)');
   }
 
-  // По дням YYYY — create sheet for current year if none exists yet
+  // По дням YYYY — migrate legacy sheet first, then create if needed
   const curYr = new Date().getFullYear();
+  const legacyDays = ss.getSheetByName(SHEET_DAYS);
+  if (legacyDays && !ss.getSheetByName(daysSheetName(curYr))) {
+    legacyDays.setName(daysSheetName(curYr));
+  }
   if (!ss.getSheetByName(daysSheetName(curYr))) {
     getOrCreateDaysSheet(ss, curYr);
-  }
-  // Migrate legacy 'По дням' sheet if exists — rename to 'По дням YYYY'
-  const legacyDays = ss.getSheetByName(SHEET_DAYS);
-  if (legacyDays) {
-    legacyDays.setName(daysSheetName(curYr));
   }
 
   ensureSheet(ss, SHEET_ASSETS, ['Общий актив','Дата']);
@@ -370,7 +369,7 @@ function pushAll(data) {
 
   // Use newest sheet as primary for category management
   const curYrForPush = new Date().getFullYear();
-  const primaryDsSh = allDaysSheetsForPush[0] || getOrCreateDaysSheet(ss, curYrForPush);
+  const primaryDsSh = allDaysSheetsForPush[0] || ss.getSheetByName(daysSheetName(curYrForPush));
 
   // Apply renames to ALL year sheets
   if (renames.length) {

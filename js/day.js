@@ -1,37 +1,15 @@
 // ─── RENDER: DAY ────────────────────────────────────────────────────
-function openDayCalendar(){
-  const inp = document.getElementById('day-cal-input');
-  if(!inp) return;
-  inp.value = currentDay;
-  // Append to body so iOS can find it, then trigger
-  document.body.appendChild(inp);
-  inp.style.cssText = 'position:fixed;top:50%;left:50%;opacity:0;width:1px;height:1px;pointer-events:none';
-  inp.focus();
-  inp.click();
-  // Remove from body after interaction (clean up)
-  setTimeout(function(){
-    if(inp.parentNode === document.body){
-      document.body.removeChild(inp);
-      // Re-attach to day-hdr for next use
-      const hdr = document.querySelector('.day-hdr');
-      if(hdr) hdr.appendChild(inp);
-    }
-  }, 10000);
-}
-
 function onDayCalChange(val){
   if(!val) return;
   currentDay = val;
   renderDay();
-  // Re-attach input to day-hdr
-  const inp = document.getElementById('day-cal-input');
-  const hdr = document.querySelector('.day-hdr');
-  if(inp && hdr && inp.parentNode !== hdr) hdr.appendChild(inp);
 }
 
 function renderDay(){
   const d = new Date(currentDay+'T12:00:00');
   const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  const calInp = document.getElementById('day-cal-input');
+  if(calInp) calInp.value = currentDay;
   document.getElementById('day-label').textContent =
     weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
   const entries = getDayExpenses(currentDay);
