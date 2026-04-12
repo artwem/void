@@ -12,7 +12,7 @@ function renderStats(){
   if(charts.monthly) charts.monthly.destroy();
   charts.monthly=new Chart(document.getElementById('chartMonthly'),{
     type:'bar',
-    data:{labels:last6.map(x=>x.label),datasets:[{data:last6.map(x=>Math.round(x.total)),backgroundColor:last6.map((_,i)=>i===5?'#1a1a18':'#c8c7c0'),borderRadius:5,borderSkipped:false}]},
+    data:{labels:last6.map(x=>x.label),datasets:[{data:last6.map(x=>Math.round(x.total)),backgroundColor:last6.map((_,i)=>i===5?'#185fa5':'rgba(128,128,128,0.35)'),borderRadius:5,borderSkipped:false}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>fmt(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#888'}},y:{grid:{color:'rgba(128,128,128,.1)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}}}
   });
   const {y,m}=currentMonth;
@@ -25,7 +25,7 @@ function renderStats(){
   charts.pie=new Chart(document.getElementById('chartPie'),{
     type:'doughnut',
     data:{labels:nonZero.map(x=>DB.categories[x.i]),datasets:[{data:nonZero.map(x=>x.v),backgroundColor:nonZero.map(x=>getCatColor(x.i)),borderWidth:2,borderColor:'rgba(0,0,0,0)'}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:'right',labels:{font:{size:10},padding:6,boxWidth:10,generateLabels:chart=>{const d=chart.data;return d.labels.map((l,i)=>({text:l.length>13?l.slice(0,13)+'…':l,fillStyle:d.datasets[0].backgroundColor[i],strokeStyle:'transparent',lineWidth:0,index:i}));}}}}}
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:'right',labels:{color:'var(--text)',font:{size:10},padding:6,boxWidth:10,generateLabels:chart=>{const d=chart.data;return d.labels.map((l,i)=>({text:l.length>13?l.slice(0,13)+'…':l,fillStyle:d.datasets[0].backgroundColor[i],strokeStyle:'transparent',lineWidth:0,index:i}));}}}}}
   });
   const sorted=[...nonZero].sort((a,b)=>b.v-a.v).slice(0,7);
   const topH=Math.max(140,sorted.length*36+40);

@@ -14,6 +14,7 @@ function renderIncome(){
   }
   const {y, m} = currentIncomeMonth;
   document.getElementById('income-month-label').textContent = MONTHS_RU[m]+' '+y;
+  syncIncomeMonthInput();
 
   const incomes = getIncomeMonthExpenses(y, m);
   const totalIncome = incomes.reduce((s,i) => s+i.amount, 0);
@@ -50,6 +51,19 @@ function renderIncome(){
   });
 }
 
+function onIncomeMonthChange(val){
+  if(!val) return;
+  const [y,m] = val.split('-').map(Number);
+  currentIncomeMonth = {y, m:m-1};
+  renderIncome();
+}
+
+function syncIncomeMonthInput(){
+  if(!currentIncomeMonth) return;
+  const inp = document.getElementById('income-month-inp');
+  if(inp) inp.value = currentIncomeMonth.y+'-'+String(currentIncomeMonth.m+1).padStart(2,'0');
+}
+
 function changeIncomeMonth(d){
   if(!currentIncomeMonth){
     const now = new Date();
@@ -59,6 +73,7 @@ function changeIncomeMonth(d){
   if(currentIncomeMonth.m > 11){currentIncomeMonth.m = 0; currentIncomeMonth.y++;}
   if(currentIncomeMonth.m < 0){currentIncomeMonth.m = 11; currentIncomeMonth.y--;}
   renderIncome();
+  syncIncomeMonthInput();
 }
 
 function openAddIncome(){

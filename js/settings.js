@@ -1,12 +1,20 @@
 // ─── RENDER: SETTINGS ───────────────────────────────────────────────
+function openSpreadsheet(){
+  const url = localStorage.getItem('spreadsheetUrl');
+  if(url) window.open(url, '_blank');
+  else toast('Сначала проверьте подключение (⚡)');
+}
+
 function renderSettings(){
   const hasSyncUrl = !!DB.syncUrl;
   document.getElementById('sync-url-display').textContent =
     hasSyncUrl ? DB.syncUrl.slice(0,40)+'…' : 'Не задан';
-  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row'].forEach(id=>{
+  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row','sync-sheet-row'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = hasSyncUrl ? 'flex' : 'none';
   });
+  const sheetRow = document.getElementById('sync-sheet-row');
+  if(sheetRow) sheetRow.style.display = (hasSyncUrl && localStorage.getItem('spreadsheetUrl')) ? 'flex' : 'none';
   const lastSync = localStorage.getItem('lastSync') || sessionStorage.getItem('lastSync');
   if(lastSync){
     const d = new Date(lastSync);

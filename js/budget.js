@@ -2,6 +2,7 @@
 function renderBudget(){
   const {y,m} = currentMonth;
   document.getElementById('month-label').textContent = MONTHS_RU[m]+' '+y;
+  syncBudgetMonthInput();
   const limits = getLimits(y,m);
   const list = document.getElementById('cat-list');
   list.innerHTML = '';

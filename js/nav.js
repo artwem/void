@@ -37,6 +37,19 @@ function changeMonth(d){
   if(currentMonth.m>11){currentMonth.m=0;currentMonth.y++;}
   if(currentMonth.m<0){currentMonth.m=11;currentMonth.y--;}
   renderBudget();
+  syncBudgetMonthInput();
+}
+
+function syncBudgetMonthInput(){
+  const inp = document.getElementById('budget-month-inp');
+  if(inp) inp.value = currentMonth.y+'-'+String(currentMonth.m+1).padStart(2,'0');
+}
+
+function onBudgetMonthChange(val){
+  if(!val) return;
+  const [y,m] = val.split('-').map(Number);
+  currentMonth = {y, m:m-1};
+  renderBudget();
 }
 
 // ─── DAY NAV ────────────────────────────────────────────────────────

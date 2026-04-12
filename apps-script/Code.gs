@@ -16,7 +16,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     const action = body.action || '';
-    if (action === 'ping') return out({ ok: true, version: '9.2' });
+    if (action === 'ping') return out({ ok: true, version: '9.2', spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl() });
     if (action === 'pull') return out(pullAll());
     if (action === 'push') return out({ success: true, written: pushAll(body.data || {}) });
     return out({ error: 'Unknown action: ' + action });
@@ -28,7 +28,7 @@ function doPost(e) {
 // GET оставляем для проверки вручную в браузере
 function doGet(e) {
   const action = (e.parameter && e.parameter.action) || '';
-  if (action === 'ping') return out({ ok: true, version: '9.2' });
+  if (action === 'ping') return out({ ok: true, version: '9.2', spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl() });
   if (action === 'pull') return out(pullAll());
   return out({ info: 'Budget Tracker API v9.2. Use POST for push.' });
 }

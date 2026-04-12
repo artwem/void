@@ -75,6 +75,10 @@ async function testSync(){
   try {
     const d = await syncRequest('ping');
     el.textContent = d.ok ? '✓ Подключено' : '✗ Ошибка';
+    if(d.ok && d.spreadsheetUrl){
+      localStorage.setItem('spreadsheetUrl', d.spreadsheetUrl);
+      renderSettings();
+    }
     toast(d.ok ? 'Подключение успешно!' : 'Ошибка: '+(d.error||'?'));
   } catch(e) {
     el.textContent = '✗ Недоступно';
