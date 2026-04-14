@@ -123,12 +123,12 @@ function getOrCreateDaysSheet(ss, yr) {
 
   // Итого row with open-ended SUM
   ds.getRange(2,1).setValue('Итого');
-  // setFormulaR1C1 is locale-independent — R[1]C means same col, row offset
-  // Write one formula per date column using R1C1 notation
+  const formulas = [];
   for (let c = 2; c <= totalCols; c++) {
-    // R3C[0] = from row 3, same column; R[0]C[0] = open end of column
-    ds.getRange(2, c).setFormulaR1C1('=IF(SUM(R3C[0]:R50000C[0])=0,"",SUM(R3C[0]:R50000C[0]))');
+    const col = colLetter(c);
+    formulas.push('=IF(SUM('+col+'3:'+col+')=0,"",SUM('+col+'3:'+col+'))');
   }
+  ds.getRange(2, 2, 1, formulas.length).setFormulas([formulas]);
 
   // Copy categories from the most recent existing days sheet
   const existing = ss.getSheets()
@@ -154,7 +154,7 @@ function setupSheets(ss) {
     t.getRange(1,1,1,5).setValues([['Статья Расходов','Сумма/Мес','Доля Общая','Доля Лимита','Лимиты']]);
     // Row 2 = Итого (fixed, never moves)
     t.getRange(2,1).setValue('Итого');
-    t.getRange(2,5).setFormulaR1C1('=SUM(R3C[0]:R50000C[0])');
+    t.getRange(2,5).setFormula('=SUM(E3:E)');
     // Rows 3+ = default categories
     DEFAULT_CATS.forEach((cat, i) => {
       t.getRange(i+3, 1).setValue(cat);
