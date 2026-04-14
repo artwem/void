@@ -123,12 +123,7 @@ function getOrCreateDaysSheet(ss, yr) {
 
   // Итого row with open-ended SUM
   ds.getRange(2,1).setValue('Итого');
-  const formulas = [];
-  for (let c = 2; c <= totalCols; c++) {
-    const col = colLetter(c);
-    formulas.push('=IF(SUM('+col+'3:'+col+')=0,"",SUM('+col+'3:'+col+'))');
-  }
-  ds.getRange(2, 2, 1, formulas.length).setFormulas([formulas]);
+  // Итого считается при push — без формул, нет проблем с локалью
 
   // Copy categories from the most recent existing days sheet
   const existing = ss.getSheets()
@@ -154,7 +149,7 @@ function setupSheets(ss) {
     t.getRange(1,1,1,5).setValues([['Статья Расходов','Сумма/Мес','Доля Общая','Доля Лимита','Лимиты']]);
     // Row 2 = Итого (fixed, never moves)
     t.getRange(2,1).setValue('Итого');
-    t.getRange(2,5).setFormula('=SUM(E3:E)');
+    // Итого в Шаблоне — просто метка, значение не используется
     // Rows 3+ = default categories
     DEFAULT_CATS.forEach((cat, i) => {
       t.getRange(i+3, 1).setValue(cat);
@@ -510,9 +505,12 @@ function pushAll(data) {
     const freshData = sh.getDataRange().getValues();
     const freshHeader = freshData[0];
     const freshCatMap = {};
+    // Find Итого row index
+    let itogoRow = -1;
     for (let r = 1; r < freshData.length; r++) {
       const c = String(freshData[r][0]||'');
-      if (c && c !== 'Итого') freshCatMap[c] = r;
+      if (c === 'Итого') itogoRow = r;
+      else if (c) freshCatMap[c] = r;
     }
     const dateColMap = {};
     for (let c = 1; c < freshHeader.length; c++) {
@@ -520,6 +518,7 @@ function pushAll(data) {
       if (ds) dateColMap[ds] = c;
     }
     const cellMap = {};
+    const touchedCols = new Set(); // date columns that changed
     for (const exp of exps) {
       const catName = categories[exp.cat];
       if (!catName) continue;
@@ -528,11 +527,23 @@ function pushAll(data) {
       if (col===undefined || row===undefined) continue;
       const key = row+'_'+col;
       cellMap[key] = (exp._deleted || exp.amount === 0) ? 0 : exp.amount;
+      touchedCols.add(col);
     }
     for (const [key,amount] of Object.entries(cellMap)) {
       const [r,c] = key.split('_').map(Number);
       sh.getRange(r+1,c+1).setValue(amount === 0 ? '' : amount);
       written.cells++;
+    }
+    // Recalculate Итого only for touched date columns
+    if (itogoRow >= 0 && touchedCols.size > 0) {
+      // Re-read column data after writes
+      const lastRow = sh.getLastRow();
+      touchedCols.forEach(col => {
+        const colData = sh.getRange(3, col+1, lastRow - 2, 1).getValues();
+        let total = 0;
+        colData.forEach(row => { total += parseFloat(row[0]) || 0; });
+        sh.getRange(itogoRow+1, col+1).setValue(total || '');
+      });
     }
   }
 

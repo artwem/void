@@ -186,9 +186,13 @@ function editExpense(id, e){
   document.getElementById('exp-delete-btn').style.display='block';
   populateCatSelect('exp-cat');
   document.getElementById('exp-cat').value = exp.cat;
-  document.getElementById('exp-amount').value = '';
+  document.getElementById('exp-amount').value = exp.amount;
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
+  // При редактировании — по умолчанию перезаписываем, не добавляем
+  _addMode = false;
+  const vis = document.getElementById('add-mode-visual');
+  if(vis){ vis.style.background='var(--card)'; vis.style.borderColor='var(--border2)'; vis.innerHTML=''; }
   openModal('modal-expense');
   setTimeout(updateExpCatHint, 50);
 }
