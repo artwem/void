@@ -1022,10 +1022,11 @@ function updateExpCatHint(){
   const spentEl = document.getElementById('exp-cat-spent');
   if(isNaN(cat) || !hint) return;
   const existing = DB.expenses.find(e => e.cat===cat && e.date===date && !e._deleted);
-  if(existing && existing.amount > 0){
+  // Show hint only when there's a DIFFERENT record (not the one currently being edited)
+  const isOther = existing && existing.id !== editingExpenseId;
+  if(isOther && existing.amount > 0){
     hint.style.display = 'block';
     spentEl.textContent = fmt(existing.amount);
-    // Reset to add mode when hint appears
     _addMode = true;
     setAddModeVisual(true);
   } else {
