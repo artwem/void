@@ -75,6 +75,7 @@ function loadDB(){
   if(!DB.incomes) DB.incomes = [];
   if(!DB.catRenames) DB.catRenames = [];
   if(!DB.bankRenames) DB.bankRenames = [];
+  if(!DB.bankDeletions) DB.bankDeletions = [];
   if(!DB.categories) DB.categories = [];
   if(!DB.limits) DB.limits = {};
   // First run — no data at all: populate with defaults so app isn't empty

@@ -130,6 +130,7 @@ async function pushToSheets(){
     const w = d.written || {};
     DB.catRenames = [];
     DB.bankRenames = [];
+    DB.bankDeletions = [];
     // Clean up _deleted expenses — already zeroed in sheet
     DB.expenses = DB.expenses.filter(e => !e._deleted);
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
@@ -225,6 +226,7 @@ function startAutoSync(){
         DB._dirty = false;
         DB.catRenames = [];
         DB.bankRenames = [];
+        DB.bankDeletions = [];
         DB.expenses = DB.expenses.filter(e => !e._deleted);
         const ts = new Date().toISOString();
         localStorage.setItem('lastSync', ts);

@@ -386,6 +386,17 @@ function pushAll(data) {
     // Also rename in color sheet if bank names are stored there (future-proof)
   }
 
+  // --- 0b. Delete columns for removed banks ---
+  const bankDeletions = data.bankDeletions || [];
+  if (bankDeletions.length) {
+    const aShDel = ss.getSheetByName(SHEET_ASSETS);
+    if (aShDel) {
+      const delColMap = _getColMap(aShDel);
+      const colsToDel = bankDeletions.map(nm => delColMap[nm]).filter(Boolean).sort((a,b)=>b-a);
+      colsToDel.forEach(c => aShDel.deleteColumn(c));
+    }
+  }
+
   // --- 1. Переименования и новые категории — во ВСЕХ листах «По дням YYYY» ---
   const renames = data.catRenames || [];
   const allDaysSheetsForPush = ss.getSheets()

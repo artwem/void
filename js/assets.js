@@ -105,26 +105,39 @@ function renderAssets(){
   document.getElementById('total-val').textContent=fmt(total);
   const list=document.getElementById('assets-list');
   list.innerHTML='';
-  // Normal banks first, then credit
-  const sorted = Object.entries(byBank).sort((a,b)=>{
-    const ac=isCredit(a[0]),bc=isCredit(b[0]);
-    return ac===bc?0:ac?1:-1;
-  });
-  sorted.forEach(([name,data])=>{
-    const credit=isCredit(name);
-    const row=document.createElement('div');
-    row.className='asset-row';
-    row.innerHTML=`
-      <span class="asset-name">${name}${credit?' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>':''}</span>
-      <span class="asset-amount" style="${credit?'color:var(--red)':''}">${credit?'−':''}${fmt(data.latest)}</span>`;
-    list.appendChild(row);
-  });
-  if(!sorted.length) list.innerHTML='<div style="padding:20px 0;text-align:center;color:var(--muted);font-size:13px">Нет данных</div>';
-  const blist=document.getElementById('banks-display');
-  blist.innerHTML=[
-    ...(DB.banks||[]).map(b=>`<div class="asset-row"><span class="asset-name">${b}</span><span style="font-size:11px;color:var(--hint)">счёт</span></div>`),
-    ...(DB.creditBanks||[]).map(b=>`<div class="asset-row"><span class="asset-name">${b}</span><span style="font-size:11px;color:var(--red)">кредит</span></div>`)
-  ].join('');
+  // All registered banks — regular first, credit last
+  const allBanksOrdered = [...(DB.banks||[]), ...(DB.creditBanks||[])];
+  if(!allBanksOrdered.length){
+    list.innerHTML='<div style="padding:20px 0;text-align:center;color:var(--muted);font-size:13px">Нет банков. Нажмите «Управлять»</div>';
+  } else {
+    allBanksOrdered.forEach(name => {
+      const credit = isCredit(name);
+      const data = byBank[name] || {latest:0, date:''};
+      const hasData = !!data.date;
+      const row = document.createElement('div');
+      row.className = 'asset-row';
+      row.style.cssText = 'gap:8px';
+      const namePart = document.createElement('div');
+      namePart.style.cssText = 'flex:1;min-width:0';
+      const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
+      namePart.innerHTML = `<div class="asset-name">${name}${creditBadge}</div>`
+        + (hasData ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`
+                   : `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`);
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'asset-amount';
+      amtSpan.style.color = credit ? 'var(--red)' : '';
+      amtSpan.textContent = hasData ? (credit ? '−' : '') + fmt(data.latest) : '—';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn small';
+      editBtn.textContent = '✎';
+      editBtn.style.cssText = 'width:36px;height:36px;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0';
+      editBtn.addEventListener('click', () => openAssetModal(name));
+      row.appendChild(namePart);
+      row.appendChild(amtSpan);
+      row.appendChild(editBtn);
+      list.appendChild(row);
+    });
+  }
   // Chart
   const assetsSorted=[...DB.assets].sort((a,b)=>a.date.localeCompare(b.date));
   const byDate={};
@@ -170,7 +183,7 @@ function renderAssets(){
 }
 
 // ─── ASSET CRUD ─────────────────────────────────────────────────────
-function openAssetModal(){
+function openAssetModal(prefillBankName){
   const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
   document.getElementById('asset-bank').innerHTML = allBanks.map((b,i)=>{
     const credit = i >= (DB.banks||[]).length;
@@ -178,6 +191,10 @@ function openAssetModal(){
   }).join('');
   document.getElementById('asset-date').value = today();
   document.getElementById('asset-amount').value='';
+  if(prefillBankName !== undefined){
+    const idx = allBanks.indexOf(prefillBankName);
+    if(idx >= 0) document.getElementById('asset-bank').value = idx;
+  }
   const delBtn = document.getElementById('asset-delete-date-btn');
   if(delBtn) delBtn.style.display = 'none';
   openModal('modal-asset');
@@ -314,9 +331,11 @@ function addBank(){
 function removeBank(type, i){
   const arr = type === 'credit' ? DB.creditBanks : DB.banks;
   const bankName = arr[i];
+  const hasHistory = (DB.assets||[]).some(a => (a.bankName || '') === bankName);
+  if(hasHistory){ toast('Нельзя удалить: у банка есть история данных'); return; }
   arr.splice(i, 1);
-  // Remove all asset records for this bank
-  DB.assets = DB.assets.filter(a => (a.bankName || '') !== bankName);
+  if(!DB.bankDeletions) DB.bankDeletions = [];
+  DB.bankDeletions.push(bankName);
   saveDB();
   renderBankManager();
   renderAssets();

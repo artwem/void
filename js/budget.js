@@ -150,9 +150,12 @@ function updateExpCatHint(){
   if(existing && existing.amount > 0){
     hint.style.display = 'block';
     spentEl.textContent = fmt(existing.amount);
-    // Reset to add mode when hint appears
-    _addMode = true;
-    setAddModeVisual(true);
+    // When adding new: default to add mode
+    // When editing the same record: keep _addMode as-is (set by editExpense)
+    if(!editingExpenseId || existing.id !== editingExpenseId){
+      _addMode = true;
+      setAddModeVisual(true);
+    }
   } else {
     hint.style.display = 'none';
   }
