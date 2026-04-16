@@ -230,8 +230,8 @@ function renderBankManager(){
     var t = type, ix = i;
     return '<div class="setting-row" style="cursor:default;gap:6px" id="bank-row-'+t+'-'+ix+'">'
       + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditBank(&quot;'+t+'&quot;,'+ix+')">'+b+badge+'</span>'
-      + '<button class="btn small" style="padding:5px 8px;flex-shrink:0" onclick="startEditBank(&quot;'+t+'&quot;,'+ix+')" title="Переименовать">✎</button>'
-      + '<button class="btn danger small" onclick="removeBank(&quot;'+t+'&quot;,'+ix+')">✕</button>'
+      + '<button class="btn small icon-btn" onclick="startEditBank(&quot;'+t+'&quot;,'+ix+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      + '<button class="btn danger small icon-btn" onclick="removeBank(&quot;'+t+'&quot;,'+ix+')"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>'
       + '</div>';
   }
   const normalRows = (DB.banks||[]).map((b,i) => bankRow(b,'normal',i)).join('');

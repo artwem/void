@@ -133,12 +133,14 @@ function mergePullData(d){
   }
 
   // Merge banks — add any new banks from sheet not yet in app
+  // Skip banks pending deletion (bankDeletions queue) — they were intentionally removed
+  const pendingDeletes = new Set(DB.bankDeletions || []);
   if(d.banks && d.banks.length){
-    d.banks.forEach(b => { if(!DB.banks.includes(b)) DB.banks.push(b); });
+    d.banks.forEach(b => { if(!DB.banks.includes(b) && !pendingDeletes.has(b)) DB.banks.push(b); });
   }
   if(d.creditBanks && d.creditBanks.length){
     if(!DB.creditBanks) DB.creditBanks = [];
-    d.creditBanks.forEach(b => { if(!DB.creditBanks.includes(b)) DB.creditBanks.push(b); });
+    d.creditBanks.forEach(b => { if(!DB.creditBanks.includes(b) && !pendingDeletes.has(b)) DB.creditBanks.push(b); });
   }
 }
 
