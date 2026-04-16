@@ -444,7 +444,6 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="asset-amount" placeholder="0" inputmode="decimal"/></div>
     <div class="fgrp"><label class="flbl">Дата (рекомендуется 1 или 16)</label><input type="date" id="asset-date"/></div>
     <div class="btn-row">
-      <button class="btn danger small" id="asset-delete-date-btn" style="display:none" onclick="deleteAssetDate(this.dataset.date)">Удалить дату</button>
       <button class="btn" onclick="closeModal('modal-asset')">Отмена</button>
       <button class="btn primary" onclick="saveAsset()">Сохранить</button>
     </div>
@@ -1155,7 +1154,7 @@ function openCatExpenses(catIdx) {
 
 function renderCatExpensesList(catIdx, y, m) {
   const exps = getMonthExpenses(y, m).filter(e => e.cat === catIdx);
-  exps.sort((a, b) => a.date < b.date ? -1 : 1);
+  exps.sort((a, b) => b.date < a.date ? -1 : 1);
   const list = document.getElementById('cat-exp-list');
   if (!exps.length) {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px 0;text-align:center">Нет расходов за этот месяц</p>';
@@ -1642,9 +1641,8 @@ function renderAssetsHistory(rows, showAll){
     const td3 = tr.insertCell();
     td3.style.cssText = 'padding:8px 6px;text-align:center;width:44px';
     const editBtn = document.createElement('button');
-    editBtn.className = 'btn small';
-    editBtn.textContent = '✎';
-    editBtn.style.cssText = 'width:36px;height:36px;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center';
+    editBtn.className = 'btn small icon-btn';
+    editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
     editBtn.addEventListener('click', function(e){ e.stopPropagation(); openEditAssetDate(_date); });
     td3.appendChild(editBtn);
   });
@@ -1785,8 +1783,6 @@ function openAssetModal(prefillBankName){
     const idx = allBanks.indexOf(prefillBankName);
     if(idx >= 0) document.getElementById('asset-bank').value = idx;
   }
-  const delBtn = document.getElementById('asset-delete-date-btn');
-  if(delBtn) delBtn.style.display = 'none';
   openModal('modal-asset');
 }
 
@@ -2017,14 +2013,6 @@ function deleteAssetDateConfirm(){
   toast('Записи за ' + _editingAssetDate + ' удалены');
 }
 
-function deleteAssetDate(date){
-  if(!date) return;
-  DB.assets = DB.assets.filter(a => a.date !== date);
-  saveDB();
-  closeModal('modal-asset');
-  renderAssets();
-  toast('Записи за ' + date + ' удалены');
-}
 
 
 // ═══ settings.js ═══

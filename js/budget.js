@@ -270,7 +270,7 @@ function openCatExpenses(catIdx) {
 
 function renderCatExpensesList(catIdx, y, m) {
   const exps = getMonthExpenses(y, m).filter(e => e.cat === catIdx);
-  exps.sort((a, b) => a.date < b.date ? -1 : 1);
+  exps.sort((a, b) => b.date < a.date ? -1 : 1);
   const list = document.getElementById('cat-exp-list');
   if (!exps.length) {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px 0;text-align:center">Нет расходов за этот месяц</p>';

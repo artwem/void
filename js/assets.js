@@ -51,9 +51,8 @@ function renderAssetsHistory(rows, showAll){
     const td3 = tr.insertCell();
     td3.style.cssText = 'padding:8px 6px;text-align:center;width:44px';
     const editBtn = document.createElement('button');
-    editBtn.className = 'btn small';
-    editBtn.textContent = '✎';
-    editBtn.style.cssText = 'width:36px;height:36px;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center';
+    editBtn.className = 'btn small icon-btn';
+    editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
     editBtn.addEventListener('click', function(e){ e.stopPropagation(); openEditAssetDate(_date); });
     td3.appendChild(editBtn);
   });
@@ -194,8 +193,6 @@ function openAssetModal(prefillBankName){
     const idx = allBanks.indexOf(prefillBankName);
     if(idx >= 0) document.getElementById('asset-bank').value = idx;
   }
-  const delBtn = document.getElementById('asset-delete-date-btn');
-  if(delBtn) delBtn.style.display = 'none';
   openModal('modal-asset');
 }
 
@@ -424,13 +421,4 @@ function deleteAssetDateConfirm(){
   closeModal('modal-asset-edit');
   renderAssets();
   toast('Записи за ' + _editingAssetDate + ' удалены');
-}
-
-function deleteAssetDate(date){
-  if(!date) return;
-  DB.assets = DB.assets.filter(a => a.date !== date);
-  saveDB();
-  closeModal('modal-asset');
-  renderAssets();
-  toast('Записи за ' + date + ' удалены');
 }
