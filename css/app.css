@@ -135,6 +135,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .sync-err{background:var(--red-bg);color:var(--red)}
 .sync-pending{background:var(--amber-bg);color:var(--amber)}
 
+/* CATEGORY EXPENSE LIST */
+.exp-list-item{display:flex;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);gap:10px}
+.exp-list-item:last-child{border-bottom:none}
+.exp-list-date{font-size:12px;color:var(--muted);min-width:34px;flex-shrink:0}
+.exp-list-body{flex:1;min-width:0}
+.exp-list-amount{font-size:14px;font-weight:600}
+.exp-list-comment{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exp-list-edit{padding:5px 10px;font-size:12px;font-weight:500;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:none;cursor:pointer;color:var(--text);font-family:inherit;flex-shrink:0}
+
 /* LIMIT EDITOR */
 .limit-edit-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border)}
 .limit-edit-name{flex:1;font-size:13px;font-weight:500}

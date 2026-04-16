@@ -58,6 +58,18 @@
   </div>
 </div>
 
+<!-- MODAL: CATEGORY EXPENSES LIST -->
+<div class="overlay" id="modal-cat-expenses">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-cat-expenses')">✕</button>
+    <h2 id="cat-exp-title">Расходы</h2>
+    <div id="cat-exp-list"></div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" onclick="openAddFromCatModal()">+ Добавить расход</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: LIMIT EDITOR -->
 <div class="overlay" id="modal-limits">
   <div class="sheet" style="position:relative">

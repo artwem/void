@@ -118,7 +118,7 @@ function makeCatRow(i, spent, lim, totalLimit, inGroup){
     </div>
     <div class="progress"><div class="progress-fill ${barClass}" style="width:${bar}%"></div></div>
   `;
-  row.onclick = () => { openAddExpense(i); };
+  row.onclick = () => { openCatExpenses(i); };
   return row;
 }
 
@@ -252,6 +252,50 @@ function deleteExpense(){
 
 function populateCatSelect(id){
   document.getElementById(id).innerHTML = DB.categories.map((c,i)=>`<option value="${i}">${c}</option>`).join('');
+}
+
+// ─── CATEGORY EXPENSES LIST ─────────────────────────────────────────
+let _catExpModalCat = null;
+
+function openCatExpenses(catIdx) {
+  _catExpModalCat = catIdx;
+  const {y, m} = currentMonth;
+  document.getElementById('cat-exp-title').textContent = DB.categories[catIdx];
+  renderCatExpensesList(catIdx, y, m);
+  openModal('modal-cat-expenses');
+}
+
+function renderCatExpensesList(catIdx, y, m) {
+  const exps = getMonthExpenses(y, m).filter(e => e.cat === catIdx);
+  exps.sort((a, b) => a.date < b.date ? -1 : 1);
+  const list = document.getElementById('cat-exp-list');
+  if (!exps.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px 0;text-align:center">Нет расходов за этот месяц</p>';
+    return;
+  }
+  list.innerHTML = exps.map(e => {
+    const [, mo, dy] = e.date.split('-');
+    return `
+      <div class="exp-list-item">
+        <div class="exp-list-date">${dy}.${mo}</div>
+        <div class="exp-list-body">
+          <div class="exp-list-amount">${fmt(e.amount)}</div>
+          ${e.comment ? `<div class="exp-list-comment">${e.comment}</div>` : ''}
+        </div>
+        <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function editExpenseFromCat(id) {
+  closeModal('modal-cat-expenses');
+  editExpense(id);
+}
+
+function openAddFromCatModal() {
+  closeModal('modal-cat-expenses');
+  openAddExpense(_catExpModalCat);
 }
 
 // ─── LIMIT EDITOR ───────────────────────────────────────────────────
