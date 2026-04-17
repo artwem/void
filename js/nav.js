@@ -13,16 +13,20 @@ function showPage(name,btn){
   if(name==='stats') renderStats();
   if(name==='assets') renderAssets();
   if(name==='calc'){
-    // Pre-fill start amount with current total assets
+    // Pre-fill start amount with current total assets (mirrors renderAssets logic)
     const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
     const byBank = {};
     (DB.assets||[]).forEach(a => {
-      const bname = a.bankName || allBanks[a.bank] || '';
-      if(!byBank[bname] || a.date > byBank[bname].date) byBank[bname] = a;
+      const bname = a.bankName || allBanks[a.bank] || '?';
+      if(!byBank[bname]) byBank[bname] = {latest: 0, date: ''};
+      if(!byBank[bname].date || a.date >= byBank[bname].date) {
+        byBank[bname].latest = a.amount;
+        byBank[bname].date = a.date;
+      }
     });
     let total = 0;
-    Object.entries(byBank).forEach(([name, a]) => {
-      total += (DB.creditBanks||[]).includes(name) ? -a.amount : a.amount;
+    Object.entries(byBank).forEach(([name, data]) => {
+      total += isCredit(name) ? -data.latest : data.latest;
     });
     if(total > 0) document.getElementById('calc-start').value = Math.round(total);
     setTimeout(calcUpdate, 50);

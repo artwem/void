@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(grep -n \"cat-row\\\\|openAddExpense\\\\|getCatColor\\\\|getCatSpent\" /c/Users/aanisimov/code/nto/js/*.js)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(grep \"_deleted\" /c/Users/aanisimov/code/nto/js/*.js)",
+      "Bash(wc *)",
+      "Bash(awk '$1 > 1 {print}')",
+      "Bash(grep *)",
+      "Bash(awk '{print $NF}')"
     ]
   }
 }
