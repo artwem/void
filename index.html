@@ -19,6 +19,7 @@
     document.head.appendChild(base);
   })();
 </script>
+<script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');if(d.theme==='dark')document.documentElement.classList.add('dark');else if(d.theme==='light')document.documentElement.classList.add('light');}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="css/app.css">
@@ -143,6 +144,15 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div class="chart-title">Доходы vs Расходы</div>
       <div style="position:relative;height:180px"><canvas id="chartIncomeVsExp"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-card">
+      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>Норма накопления</span>
+        <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
+      </div>
+      <div style="position:relative;height:160px"><canvas id="chartSavingsRate"></canvas></div>
     </div>
   </div>
   <div class="chart-wrap">
@@ -294,6 +304,14 @@ if ('serviceWorker' in navigator) {
     <div class="setting-row" id="sync-push-row" onclick="pushToSheets()" style="display:none">
       <span class="setting-label">⬆ Выгрузить в таблицу</span>
       <span class="setting-chevron">›</span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="sec-hdr"><span class="sec-title">Внешний вид</span></div>
+  <div class="settings-list">
+    <div class="setting-row" style="cursor:default">
+      <span class="setting-label">Тема</span>
+      <div id="theme-picker" style="display:flex;gap:4px"></div>
     </div>
   </div>
   <div class="spacer"></div>
@@ -588,6 +606,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.1.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1401,6 +1420,21 @@ function deleteIncome(){
 
 // ═══ stats.js ═══
 
+// ─── THEME ──────────────────────────────────────────────────────────
+function applyTheme(){
+  const theme = DB.theme || 'auto';
+  document.documentElement.classList.remove('dark','light');
+  if(theme==='dark') document.documentElement.classList.add('dark');
+  else if(theme==='light') document.documentElement.classList.add('light');
+}
+
+function setTheme(val){
+  DB.theme = val;
+  saveDB();
+  applyTheme();
+  renderSettings();
+}
+
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 function renderStats(){
   const now = new Date();
@@ -1557,6 +1591,41 @@ function renderStats(){
       borderSkipped:false
     };
   }).filter(ds=>ds.data.some(v=>v>0)); // skip empty groups
+
+  // ── 5. Норма накопления ────────────────────────────────────────────
+  const savingsRates = last6.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
+  const validRates = savingsRates.filter(v=>v!==null);
+  const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
+  const avgEl = document.getElementById('savings-rate-avg');
+  if(avgRate!==null){
+    avgEl.textContent = 'Норма сб. '+avgRate+'%';
+    avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
+  } else {
+    avgEl.textContent = '';
+  }
+  if(charts.savingsRate) charts.savingsRate.destroy();
+  charts.savingsRate = new Chart(document.getElementById('chartSavingsRate'),{
+    type:'bar',
+    data:{
+      labels: last6.map(x=>x.label),
+      datasets:[{
+        data: savingsRates.map(v=>v===null?0:v),
+        backgroundColor: savingsRates.map(v=>v===null?'rgba(128,128,128,0.2)':v>=0?'rgba(29,158,117,0.7)':'rgba(216,90,48,0.7)'),
+        borderRadius:4, borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:v=>savingsRates[v.dataIndex]===null?'Нет данных':v.raw+'%'}}
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
+        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>v+'%',font:{size:9},color:'#888'}}
+      }
+    }
+  });
 
   if(charts.grouped) charts.grouped.destroy();
   if(groupDatasets.length){
@@ -2043,6 +2112,15 @@ function renderSettings(){
   }
   const intervalInput = document.getElementById('sync-interval-input');
   if(intervalInput) intervalInput.value = getSyncInterval(); // seconds
+  const themeEl = document.getElementById('theme-picker');
+  if(themeEl){
+    const cur = DB.theme || 'auto';
+    themeEl.innerHTML = [
+      {v:'light',l:'Светлая'},
+      {v:'auto', l:'Авто'},
+      {v:'dark', l:'Тёмная'}
+    ].map(t=>`<button onclick="setTheme('${t.v}')" style="padding:4px 10px;font-size:12px;border-radius:6px;border:0.5px solid ${cur===t.v?'var(--blue)':'var(--border2)'};background:${cur===t.v?'var(--blue-bg)':'var(--card)'};color:${cur===t.v?'var(--blue)':'var(--muted)'};font-weight:${cur===t.v?'600':'400'};cursor:pointer;font-family:inherit">${t.l}</button>`).join('');
+  }
   const lims = getLimits(currentMonth.y, currentMonth.m);
   document.getElementById('cat-settings-list').innerHTML = DB.categories.map((c,i) => `
     <div class="setting-row">
@@ -2876,6 +2954,7 @@ function fmtCalc(n){
 function init(){
   initOverlays();
   loadDB();
+  applyTheme();
   const now=new Date();
   currentMonth={y:now.getFullYear(),m:now.getMonth()};
   currentDay=today();

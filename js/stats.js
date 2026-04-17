@@ -155,6 +155,41 @@ function renderStats(){
     };
   }).filter(ds=>ds.data.some(v=>v>0)); // skip empty groups
 
+  // ── 5. Норма накопления ────────────────────────────────────────────
+  const savingsRates = last6.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
+  const validRates = savingsRates.filter(v=>v!==null);
+  const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
+  const avgEl = document.getElementById('savings-rate-avg');
+  if(avgRate!==null){
+    avgEl.textContent = 'Норма сб. '+avgRate+'%';
+    avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
+  } else {
+    avgEl.textContent = '';
+  }
+  if(charts.savingsRate) charts.savingsRate.destroy();
+  charts.savingsRate = new Chart(document.getElementById('chartSavingsRate'),{
+    type:'bar',
+    data:{
+      labels: last6.map(x=>x.label),
+      datasets:[{
+        data: savingsRates.map(v=>v===null?0:v),
+        backgroundColor: savingsRates.map(v=>v===null?'rgba(128,128,128,0.2)':v>=0?'rgba(29,158,117,0.7)':'rgba(216,90,48,0.7)'),
+        borderRadius:4, borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:v=>savingsRates[v.dataIndex]===null?'Нет данных':v.raw+'%'}}
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
+        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>v+'%',font:{size:9},color:'#888'}}
+      }
+    }
+  });
+
   if(charts.grouped) charts.grouped.destroy();
   if(groupDatasets.length){
     charts.grouped = new Chart(document.getElementById('chartGrouped'),{

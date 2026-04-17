@@ -1,3 +1,18 @@
+// ─── THEME ──────────────────────────────────────────────────────────
+function applyTheme(){
+  const theme = DB.theme || 'auto';
+  document.documentElement.classList.remove('dark','light');
+  if(theme==='dark') document.documentElement.classList.add('dark');
+  else if(theme==='light') document.documentElement.classList.add('light');
+}
+
+function setTheme(val){
+  DB.theme = val;
+  saveDB();
+  applyTheme();
+  renderSettings();
+}
+
 // ─── RENDER: SETTINGS ───────────────────────────────────────────────
 function openSpreadsheet(){
   const url = localStorage.getItem('spreadsheetUrl');
@@ -24,6 +39,15 @@ function renderSettings(){
   }
   const intervalInput = document.getElementById('sync-interval-input');
   if(intervalInput) intervalInput.value = getSyncInterval(); // seconds
+  const themeEl = document.getElementById('theme-picker');
+  if(themeEl){
+    const cur = DB.theme || 'auto';
+    themeEl.innerHTML = [
+      {v:'light',l:'Светлая'},
+      {v:'auto', l:'Авто'},
+      {v:'dark', l:'Тёмная'}
+    ].map(t=>`<button onclick="setTheme('${t.v}')" style="padding:4px 10px;font-size:12px;border-radius:6px;border:0.5px solid ${cur===t.v?'var(--blue)':'var(--border2)'};background:${cur===t.v?'var(--blue-bg)':'var(--card)'};color:${cur===t.v?'var(--blue)':'var(--muted)'};font-weight:${cur===t.v?'600':'400'};cursor:pointer;font-family:inherit">${t.l}</button>`).join('');
+  }
   const lims = getLimits(currentMonth.y, currentMonth.m);
   document.getElementById('cat-settings-list').innerHTML = DB.categories.map((c,i) => `
     <div class="setting-row">
