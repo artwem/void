@@ -8,7 +8,8 @@
       "Bash(awk '$1 > 1 {print}')",
       "Bash(grep *)",
       "Bash(awk '{print $NF}')",
-      "Bash(npx --version)"
+      "Bash(npx --version)",
+      "Bash(awk *)"
     ]
   }
 }

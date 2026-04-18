@@ -339,7 +339,7 @@ if ('serviceWorker' in navigator) {
     <div class="setting-row" style="cursor:default">
       <span class="setting-label">Превышение лимита</span>
       <div id="notif-toggle-wrap">
-        <button id="notif-toggle-btn" onclick="toggleNotifications()" style="padding:4px 14px;font-size:13px;border-radius:20px;border:0.5px solid var(--border2);background:var(--card);color:var(--muted);cursor:pointer;font-family:inherit" id="notif-toggle-btn"></button>
+        <button id="notif-toggle-btn" onclick="toggleNotifications()" style="padding:4px 14px;font-size:13px;border-radius:20px;border:0.5px solid var(--border2);background:var(--card);color:var(--muted);cursor:pointer;font-family:inherit"></button>
       </div>
     </div>
     <div class="setting-row" style="cursor:default" id="notif-threshold-row">
@@ -874,6 +874,7 @@ function fmtShort(n){
   return Math.round(n)+'';
 }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function today(){
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1279,7 +1280,7 @@ function renderCatExpensesList(catIdx, y, m) {
       <div class="exp-list-date">${dy}.${mo}</div>
       <div class="exp-list-body">
         <div class="exp-list-amount">${fmt(e.amount)}</div>
-        ${e.comment ? `<div class="exp-list-comment">${e.comment}</div>` : ''}
+        ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
       <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
     </div>`;
@@ -1373,7 +1374,7 @@ function renderDay(){
       <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
       <div class="entry-info">
         <div class="entry-cat">${catName}</div>
-        ${e.comment?`<div class="entry-note">${e.comment}</div>`:''}
+        ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmt(e.amount)}</div>
       <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
@@ -1426,8 +1427,8 @@ function renderIncome(){
     row.style.cursor = 'pointer';
     row.innerHTML = `
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:500">${inc.source}</div>
-        <div style="font-size:11px;color:var(--muted)">${inc.date}${inc.comment ? ' · '+inc.comment : ''}</div>
+        <div style="font-size:14px;font-weight:500">${esc(inc.source)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
       </div>
       <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmt(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
@@ -2026,7 +2027,7 @@ function saveGoal(){
     DB.goals.push({id:uid(),name,target,saved,deadline,color:_selectedGoalColor});
   }
   saveDB(); closeModal('modal-goal');
-  if(currentPage==='assets') renderAssets(); else renderGoals();
+  renderGoals();
   toast('✓ Сохранено');
 }
 
@@ -2034,7 +2035,7 @@ function deleteGoal(){
   if(!_editingGoalId) return;
   DB.goals=(DB.goals||[]).filter(g=>g.id!==_editingGoalId);
   saveDB(); closeModal('modal-goal');
-  if(currentPage==='assets') renderAssets(); else renderGoals();
+  renderGoals();
   toast('Цель удалена');
 }
 
@@ -2666,7 +2667,7 @@ function restoreDB(input){
 function renderNotifToggle(){
   const btn = document.getElementById('notif-toggle-btn');
   if(!btn) return;
-  const perm = Notification.permission;
+  const perm = ('Notification' in window) ? Notification.permission : 'denied';
   const enabled = DB.notifsEnabled && perm === 'granted';
   btn.textContent = enabled ? 'Включены' : 'Выключены';
   btn.style.borderColor = enabled ? 'var(--green)' : 'var(--border2)';
@@ -2861,10 +2862,17 @@ async function pullFromSheets(){
   try {
     const d = await syncRequest('pull');
     if(d.error){ setSyncStatus('error'); toast('Ошибка: '+d.error); return; }
+    const conflicts = _findConflictMonths(d.limits || {});
+    if(conflicts.length){
+      _pendingPullData = d;
+      setSyncStatus('ok', new Date().toISOString());
+      _showConflictModal(conflicts);
+      return;
+    }
     mergePullData(d);
+    DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits));
     DB._dirty = false;
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
-    // Re-render whatever page is currently open
     if(currentPage==='budget') renderBudget();
     else if(currentPage==='day') renderDay();
     else if(currentPage==='stats') renderStats();
@@ -2978,6 +2986,70 @@ function saveSyncInterval(val){
 }
 
 let _syncInFlight = false;
+let _pendingPullData = null;
+
+function _findConflictMonths(sheetLimits){
+  const base  = DB._lastSyncedLimits || {};
+  const local = DB.limits || {};
+  const sheet = sheetLimits || {};
+  if(!Object.keys(base).length) return [];
+  const conflicts = [];
+  const keys = new Set([...Object.keys(local), ...Object.keys(sheet)]);
+  for(const k of keys){
+    const baseArr  = base[k]  || [];
+    const localArr = local[k] || [];
+    const sheetArr = sheet[k] || [];
+    const len = Math.max(localArr.length, sheetArr.length, baseArr.length);
+    let localDiff = false, sheetDiff = false;
+    for(let i = 0; i < len; i++){
+      if((localArr[i]||0) !== (baseArr[i]||0)) localDiff = true;
+      if((sheetArr[i]||0) !== (baseArr[i]||0)) sheetDiff = true;
+    }
+    if(localDiff && sheetDiff) conflicts.push(k);
+  }
+  return conflicts;
+}
+
+function _showConflictModal(months){
+  const el = document.getElementById('sync-conflict-months');
+  if(el) el.textContent = months.map(k => {
+    const [y, m] = k.split('-');
+    return (MONTHS_RU[parseInt(m)-1] || k) + ' ' + y;
+  }).join(', ');
+  openModal('modal-sync-conflict');
+}
+
+async function resolveConflict(choice){
+  closeModal('modal-sync-conflict');
+  const d = _pendingPullData;
+  _pendingPullData = null;
+  if(!d) return;
+  setSyncStatus('syncing');
+  try{
+    if(choice === 'sheet'){
+      DB.limits = JSON.parse(JSON.stringify(d.limits || {}));
+      mergePullData({...d, limits: undefined});
+    } else {
+      const p = await syncRequest('push', buildPayload());
+      if(p && !p.error){
+        DB.catRenames = [];
+        DB.bankRenames = [];
+        DB.bankDeletions = [];
+        DB.expenses = DB.expenses.filter(e => !e._deleted);
+      }
+      mergePullData({...d, limits: undefined});
+    }
+    DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits));
+    DB._dirty = false;
+    localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
+    renderBudget();
+    const ts = new Date().toISOString();
+    localStorage.setItem('lastSync', ts);
+    sessionStorage.setItem('lastSync', ts);
+    setSyncStatus('ok', ts);
+    toast(choice === 'sheet' ? '✓ Загружено из таблицы' : '✓ Ваши данные сохранены');
+  } catch(e){ setSyncStatus('error'); toast('Ошибка: ' + e.message); }
+}
 
 function startAutoSync(){
   if(!DB.syncUrl || _autoSyncTimer) return;
