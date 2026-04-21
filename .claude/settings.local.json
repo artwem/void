@@ -10,7 +10,9 @@
       "Bash(awk '{print $NF}')",
       "Bash(npx --version)",
       "Bash(awk *)",
-      "mcp__plugin_claude-mem_mcp-search__get_observations"
+      "mcp__plugin_claude-mem_mcp-search__get_observations",
+      "Bash(git commit *)",
+      "Bash(git add *)"
     ]
   }
 }
