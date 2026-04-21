@@ -1265,7 +1265,7 @@ function saveExpense(){
         if(comment !== undefined) existing.comment = comment;
       }
     } else {
-      DB.expenses.push({ id:'gs_'+cat+'_'+date.replace(/-/g,''), cat, amount:amt, date, comment });
+      DB.expenses.push({ id:uid(), cat, amount:amt, date, comment });
     }
   }
   saveDB();
@@ -1457,7 +1457,7 @@ function addFromTemplate(id){
     existing.amount = Math.round((existing.amount + t.amount)*100)/100;
     if(t.comment) existing.comment = (existing.comment?existing.comment+'; ':'')+t.comment;
   } else {
-    DB.expenses.push({id:'gs_'+t.cat+'_'+date.replace(/-/g,''), cat:t.cat, amount:t.amount, date, comment:t.comment||''});
+    DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:t.comment||''});
   }
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
@@ -3512,10 +3512,19 @@ async function autoSyncOnStart(){
   _syncInProgress = true;
   setSyncStatus('syncing');
   try{
+    // Push dirty local changes first — prevents pull from overwriting unsaved edits
+    if(DB._dirty){
+      const pr = await syncRequest('push', buildPayload());
+      if(pr && !pr.error){
+        DB._dirty = false;
+        DB.catRenames = []; DB.bankRenames = []; DB.bankDeletions = [];
+        DB.expenses = DB.expenses.filter(e => !e._deleted);
+        localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
+      }
+    }
     const d = await syncRequest('pull', null);
     if(d.error){ setSyncStatus('error'); _syncInProgress = false; return; }
     mergePullData(d);
-    // Save quietly — don't mark dirty (pull data shouldn't trigger push)
     DB._dirty = false;
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
     renderBudget();
