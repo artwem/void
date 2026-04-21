@@ -734,7 +734,7 @@ if ('serviceWorker' in navigator) {
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-about')">✕</button>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <svg width="44" height="44" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+      <svg width="44" height="44" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;cursor:pointer" onclick="_aboutIconTap()">
   <circle cx="100" cy="100" r="95" fill="#000000" stroke="white" stroke-width="10"/>
 </svg>
       <div>
@@ -770,6 +770,7 @@ if ('serviceWorker' in navigator) {
       <li>Все категории</li>
       <li>Все банки и счета</li>
       <li>Цвета категорий</li>
+      <li>URL синхронизации</li>
     </ul>
     <p style="font-size:12px;color:var(--red);margin-bottom:16px">⚠ Данные в Google Sheets не затрагиваются. Действие нельзя отменить.</p>
     <div class="btn-row">
@@ -2915,6 +2916,132 @@ function confirmClearData(){
   openModal('modal-confirm-clear');
 }
 
+let _aboutTapCount = 0, _aboutTapTimer = null;
+function _aboutIconTap(){
+  clearTimeout(_aboutTapTimer);
+  _aboutTapCount++;
+  if(_aboutTapCount >= 5){
+    _aboutTapCount = 0;
+    fillTestData();
+    return;
+  }
+  _aboutTapTimer = setTimeout(() => { _aboutTapCount = 0; }, 1500);
+}
+
+function fillTestData(){
+  const hasData = DB.expenses.length > 0 || DB.incomes.length > 0 || DB.assets.length > 0;
+  if(hasData){ toast('Сначала очистите данные'); return; }
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  function dAgo(n){ const d = new Date(now); d.setDate(d.getDate() - n); return d.toISOString().slice(0,10); }
+
+  DB.categories  = [...DEFAULT_CATS];
+  DB.catColors   = {...DEFAULT_COLORS};
+  DB.banks       = ['Сбербанк', 'Тинькофф'];
+  DB.creditBanks = ['Альфа кредит'];
+  DB.catRenames  = [];
+  DB.bankRenames = [];
+  DB.bankDeletions = [];
+  DB._lastSyncedLimits = {};
+
+  const prevM = m === 0 ? 11 : m - 1;
+  const prevY = m === 0 ? y - 1 : y;
+  DB.limits = {};
+  DB.limits[monthKey(y, m)]       = [...DEFAULT_LIMITS];
+  DB.limits[monthKey(prevY, prevM)] = [...DEFAULT_LIMITS];
+
+  DB.expenses = [
+    // ЖКУ + аренда (0)
+    {id:uid(), date:dAgo(28), cat:0, amount:35000, comment:'Аренда квартиры'},
+    {id:uid(), date:dAgo(14), cat:0, amount:4200,  comment:'ЖКУ'},
+    // Ремонт и быт (1)
+    {id:uid(), date:dAgo(25), cat:1, amount:2800, comment:'Моющие средства'},
+    {id:uid(), date:dAgo(10), cat:1, amount:1500, comment:'Лампочки'},
+    // Продукты (2)
+    {id:uid(), date:dAgo(29), cat:2, amount:3200, comment:'Пятёрочка'},
+    {id:uid(), date:dAgo(27), cat:2, amount:1800, comment:'Перекрёсток'},
+    {id:uid(), date:dAgo(25), cat:2, amount:2100, comment:'Пятёрочка'},
+    {id:uid(), date:dAgo(22), cat:2, amount:4500, comment:'Большая закупка'},
+    {id:uid(), date:dAgo(20), cat:2, amount:1200, comment:'ВкусВилл'},
+    {id:uid(), date:dAgo(18), cat:2, amount:2700, comment:'Пятёрочка'},
+    {id:uid(), date:dAgo(15), cat:2, amount:1900, comment:'Магнит'},
+    {id:uid(), date:dAgo(12), cat:2, amount:3100, comment:'Перекрёсток'},
+    {id:uid(), date:dAgo(8),  cat:2, amount:2400, comment:'ВкусВилл'},
+    {id:uid(), date:dAgo(5),  cat:2, amount:1600, comment:'Пятёрочка'},
+    {id:uid(), date:dAgo(2),  cat:2, amount:2200, comment:'Пятёрочка'},
+    // Кафе и доставка (3)
+    {id:uid(), date:dAgo(26), cat:3, amount:890,  comment:'Кофе с коллегами'},
+    {id:uid(), date:dAgo(23), cat:3, amount:1450, comment:'Яндекс Еда'},
+    {id:uid(), date:dAgo(19), cat:3, amount:2100, comment:'Ресторан'},
+    {id:uid(), date:dAgo(16), cat:3, amount:780,  comment:'Кофейня'},
+    {id:uid(), date:dAgo(11), cat:3, amount:1650, comment:'Яндекс Еда'},
+    {id:uid(), date:dAgo(7),  cat:3, amount:3200, comment:'Ужин с друзьями'},
+    {id:uid(), date:dAgo(3),  cat:3, amount:620,  comment:'Кофе'},
+    // Транспорт и такси (4)
+    {id:uid(), date:dAgo(28), cat:4, amount:450, comment:'Такси'},
+    {id:uid(), date:dAgo(21), cat:4, amount:320, comment:'Метро'},
+    {id:uid(), date:dAgo(14), cat:4, amount:680, comment:'Такси'},
+    {id:uid(), date:dAgo(6),  cat:4, amount:410, comment:'Такси'},
+    // Авто (5)
+    {id:uid(), date:dAgo(24), cat:5, amount:4800, comment:'Бензин'},
+    {id:uid(), date:dAgo(9),  cat:5, amount:4600, comment:'Бензин'},
+    // Аптека и врачи (6)
+    {id:uid(), date:dAgo(17), cat:6, amount:1200, comment:'Аптека'},
+    {id:uid(), date:dAgo(4),  cat:6, amount:3500, comment:'Приём врача'},
+    // Спорт (7)
+    {id:uid(), date:dAgo(28), cat:7, amount:2000, comment:'Абонемент в зал'},
+    {id:uid(), date:dAgo(13), cat:7, amount:800,  comment:'Плавание'},
+    // Одежда и уход (8)
+    {id:uid(), date:dAgo(22), cat:8, amount:3900, comment:'Кроссовки'},
+    {id:uid(), date:dAgo(8),  cat:8, amount:1200, comment:'Стрижка'},
+    // Подписки и связь (9)
+    {id:uid(), date:dAgo(30), cat:9, amount:399, comment:'Яндекс Плюс'},
+    {id:uid(), date:dAgo(29), cat:9, amount:550, comment:'Телефон'},
+    {id:uid(), date:dAgo(1),  cat:9, amount:299, comment:'Spotify'},
+    // Подарки (10)
+    {id:uid(), date:dAgo(12), cat:10, amount:3000, comment:'День рождения'},
+    // Непредвиденные (11)
+    {id:uid(), date:dAgo(20), cat:11, amount:5200, comment:'Ремонт телефона'},
+    {id:uid(), date:dAgo(3),  cat:11, amount:800,  comment:'Штраф'},
+  ];
+
+  DB.incomes = [
+    {id:uid(), date:dAgo(23), source:'Зарплата',  amount:85000, comment:''},
+    {id:uid(), date:dAgo(7),  source:'Аванс',     amount:30000, comment:''},
+    {id:uid(), date:dAgo(15), source:'Фриланс',   amount:15000, comment:''},
+  ];
+
+  // banks: ['Сбербанк'=0, 'Тинькофф'=1], creditBanks: ['Альфа кредит'=2]
+  DB.assets = [
+    {id:uid(), bank:0, bankName:'Сбербанк',    amount:142000, date:dAgo(30)},
+    {id:uid(), bank:0, bankName:'Сбербанк',    amount:128000, date:dAgo(15)},
+    {id:uid(), bank:0, bankName:'Сбербанк',    amount:115000, date:dAgo(0)},
+    {id:uid(), bank:1, bankName:'Тинькофф',    amount:34000,  date:dAgo(30)},
+    {id:uid(), bank:1, bankName:'Тинькофф',    amount:47000,  date:dAgo(15)},
+    {id:uid(), bank:1, bankName:'Тинькофф',    amount:52000,  date:dAgo(0)},
+    {id:uid(), bank:2, bankName:'Альфа кредит', amount:25000, date:dAgo(30)},
+    {id:uid(), bank:2, bankName:'Альфа кредит', amount:18000, date:dAgo(0)},
+  ];
+
+  DB.goals = [
+    {id:uid(), name:'Отпуск в Турции',       target:150000, saved:45000,  deadline:dAgo(-90),  color:'#185fa5'},
+    {id:uid(), name:'Новый MacBook',          target:200000, saved:82000,  deadline:dAgo(-180), color:'#1d9e75'},
+    {id:uid(), name:'Подушка безопасности',  target:500000, saved:165000, deadline:dAgo(-365), color:'#d85a30'},
+  ];
+
+  DB.templates = [
+    {id:uid(), name:'Продукты',  cat:2, amount:2000, comment:'Пятёрочка', color:'#1d9e75'},
+    {id:uid(), name:'Кофе',      cat:3, amount:350,  comment:'',          color:'#d85a30'},
+    {id:uid(), name:'Такси',     cat:4, amount:400,  comment:'',          color:'#ba7517'},
+    {id:uid(), name:'Бензин',    cat:5, amount:4800, comment:'АЗС',       color:'#639922'},
+  ];
+
+  saveDB();
+  closeModal('modal-about');
+  renderBudget();
+  toast('✓ Тестовые данные загружены');
+}
+
 function doClearData(){
   DB.expenses   = [];
   DB.assets     = [];
@@ -2922,13 +3049,18 @@ function doClearData(){
   DB.limits     = {};
   DB.catRenames = [];
   DB.bankRenames= [];
-  DB.categories  = [];
-  DB.catColors   = {};
+  DB.categories  = [...DEFAULT_CATS];
+  DB.catColors   = {...DEFAULT_COLORS};
   DB.banks       = [];
   DB.creditBanks = [];
+  DB.syncUrl     = '';
+  saveSyncUrlEverywhere('');
+  const _k = monthKey(new Date().getFullYear(), new Date().getMonth());
+  DB.limits[_k]  = [...DEFAULT_LIMITS];
   saveDB();
   closeModal('modal-confirm-clear');
   renderBudget();
+  renderSettings();
   toast('Все данные очищены');
 }
 
