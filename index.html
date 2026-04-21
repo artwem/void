@@ -94,7 +94,7 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
-  <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 0"></div>
+  <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
 </div>
@@ -991,7 +991,7 @@ function showPage(name,btn){
     // Pre-fill start amount with current total assets
     const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
     const byBank = {};
-    (DB.assets||[]).forEach(a => {
+    (DB.assets||[]).filter(a=>!a._deleted).forEach(a => {
       const bname = a.bankName || allBanks[a.bank] || '';
       if(!byBank[bname] || a.date > byBank[bname].date) byBank[bname] = a;
     });
@@ -1205,6 +1205,7 @@ function updateExpCatHint(){
 function openAddExpense(prefillCat){
   editingExpenseId = null;
   _addMode = true;
+  document.getElementById('exp-cat-hint').style.display='none';
   setAddModeVisual(true);
   document.getElementById('expense-modal-title').textContent='Добавить расход';
   document.getElementById('exp-delete-btn').style.display='none';
@@ -1229,9 +1230,8 @@ function editExpense(id, e){
   document.getElementById('exp-amount').value = exp.amount;
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
-  // При редактировании — по умолчанию перезаписываем, не добавляем
-  _addMode = false;
-  setAddModeVisual(false);
+  _addMode = true;
+  setAddModeVisual(true);
   openModal('modal-expense');
   setTimeout(updateExpCatHint, 50);
 }
@@ -1276,7 +1276,9 @@ function saveExpense(){
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
   else renderBudget();
-  toast(editingExpenseId?'Обновлено':'Сохранено');
+  const wasEditing = !!editingExpenseId;
+  editingExpenseId = null;
+  toast(wasEditing?'Обновлено':'Сохранено');
   checkBudgetNotifications();
 }
 
@@ -1451,9 +1453,9 @@ function renderTemplateChips(){
   wrap.style.display='flex';
   wrap.innerHTML = tmpls.map(t => {
     const color = t.color || getCatColor(t.cat);
-    return `<button onclick="addFromTemplate('${t.id}')" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit">
+    return `<button onclick="addFromTemplate('${t.id}')" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      ${esc(t.name)} <span style="color:var(--muted);font-size:11px">${fmt(t.amount)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmt(t.amount)}</span>
     </button>`;
   }).join('');
 }
@@ -1476,6 +1478,7 @@ function addFromTemplate(id){
 }
 
 function openTemplateModal(id){
+  closeModal('modal-templates');
   _editingTemplateId = id;
   populateCatSelect('tmpl-cat');
   if(id){
@@ -1518,6 +1521,7 @@ function saveTemplate(){
   closeModal('modal-template');
   renderTemplateSettings();
   renderSettings();
+  openModal('modal-templates');
   toast('Шаблон сохранён');
 }
 
@@ -1528,6 +1532,7 @@ function deleteTemplate(){
   closeModal('modal-template');
   renderTemplateSettings();
   renderSettings();
+  openModal('modal-templates');
   toast('Шаблон удалён');
 }
 
@@ -2013,18 +2018,16 @@ function collapseAssetsHistory(){
 function renderAssets(){
   const byBank={};
   const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
-  DB.assets.forEach(a=>{
+  DB.assets.filter(a=>!a._deleted).forEach(a=>{
     // Prefer bankName (string), fall back to index lookup
     const bname = a.bankName || allBanks[a.bank] || '?';
     if(!byBank[bname]) byBank[bname]={latest:0,date:''};
     if(!byBank[bname].date||a.date>=byBank[bname].date){byBank[bname].latest=a.amount;byBank[bname].date=a.date;}
   });
-  // Latest date across all banks — only show banks updated on this date
-  const latestDate = Object.values(byBank).reduce((max,d)=>d.date>max?d.date:max,'');
-  // Total = sum only banks on latest date (debit - credit)
+  // Total = sum each bank's most recent value (debit - credit)
   let total=0;
   Object.entries(byBank).forEach(([name,data])=>{
-    if(data.date === latestDate) total += isCredit(name) ? -data.latest : data.latest;
+    total += isCredit(name) ? -data.latest : data.latest;
   });
   document.getElementById('total-val').textContent=fmt(total);
   const list=document.getElementById('assets-list');
@@ -2064,7 +2067,7 @@ function renderAssets(){
     });
   }
   // Chart
-  const assetsSorted=[...DB.assets].sort((a,b)=>a.date.localeCompare(b.date));
+  const assetsSorted=[...DB.assets].filter(a=>!a._deleted).sort((a,b)=>a.date.localeCompare(b.date));
   const byDate={};
   assetsSorted.forEach(a=>{
     const key = a.bankName || allBanks[a.bank] || String(a.bank);
@@ -2150,7 +2153,7 @@ function renderGoals(){
 function _getCurrentAssetsTotal(){
   const allBanks = [...(DB.banks||[]), ...(DB.creditBanks||[])];
   const latest = {};
-  (DB.assets||[]).forEach(a => {
+  (DB.assets||[]).filter(a=>!a._deleted).forEach(a => {
     const name = a.bankName || allBanks[a.bank] || String(a.bank);
     if(!latest[name] || a.date > latest[name].date) latest[name] = a;
   });
