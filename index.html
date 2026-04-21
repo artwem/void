@@ -2040,8 +2040,6 @@ function renderAssets(){
     allBanksOrdered.forEach(name => {
       const credit = isCredit(name);
       const data = byBank[name] || {latest:0, date:''};
-      // Hide banks with stale data (has old entry but not updated on latest date)
-      if(data.date && latestDate && data.date !== latestDate) return;
       const hasData = !!data.date;
       const row = document.createElement('div');
       row.className = 'asset-row';
