@@ -95,6 +95,24 @@ if ('serviceWorker' in navigator) {
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
+  <div id="denom-widget" style="padding:0 16px 12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <select id="denom-cat" style="flex:1;padding:6px 8px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"></select>
+      <button onclick="denomClear()" class="btn small icon-btn" style="font-size:20px;color:var(--muted)">×</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="denomAdd(1000)" class="denom-btn">1000</button>
+      <button onclick="denomAdd(500)"  class="denom-btn">500</button>
+      <button onclick="denomAdd(100)"  class="denom-btn">100</button>
+      <button onclick="denomAdd(10)"   class="denom-btn">10</button>
+      <button onclick="denomAdd(1)"    class="denom-btn">1</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div id="denom-total" style="font-size:22px;font-weight:700;min-width:90px;letter-spacing:-0.5px">0 ₽</div>
+      <input id="denom-comment" type="text" placeholder="Комментарий" style="flex:1;padding:6px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:inherit"/>
+      <button onclick="denomSave()" class="btn primary small" style="flex:0;white-space:nowrap">Добавить</button>
+    </div>
+  </div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
 </div>
@@ -1188,12 +1206,16 @@ function updateExpCatHint(){
   if(existing && existing.amount > 0){
     hint.style.display = 'block';
     spentEl.textContent = fmt(existing.amount);
-    // When adding new: default to add mode
-    // When editing the same record: keep _addMode as-is (set by editExpense)
-    if(!editingExpenseId || existing.id !== editingExpenseId){
+    if(!editingExpenseId){
+      // Adding new: default to add mode
       _addMode = true;
       setAddModeVisual(true);
+    } else if(existing.id !== editingExpenseId){
+      // Editing but category/date changed to a different existing record: default to replace
+      _addMode = false;
+      setAddModeVisual(false);
     }
+    // else: editing the same record — keep _addMode as-is
   } else {
     hint.style.display = 'none';
   }
@@ -1399,6 +1421,7 @@ function renderDay(){
   document.getElementById('day-label').textContent =
     weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
   renderTemplateChips();
+  renderDenomWidget();
   const entries = getDayExpenses(currentDay);
   const total = entries.reduce((s,e)=>s+e.amount,0);
   document.getElementById('day-total').textContent = fmt(total);
@@ -1545,6 +1568,51 @@ function renderTemplateSettings(){
       <button class="btn small icon-btn" onclick="openTemplateModal('${t.id}')"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     </div>`;
   }).join('');
+}
+
+// ═══ denom.js ═══
+
+let _denomAmount = 0;
+
+function denomAdd(n){
+  _denomAmount = Math.round((_denomAmount + n) * 100) / 100;
+  document.getElementById('denom-total').textContent = fmt(_denomAmount);
+}
+
+function denomClear(){
+  _denomAmount = 0;
+  document.getElementById('denom-total').textContent = '0 ₽';
+  const ci = document.getElementById('denom-comment');
+  if(ci) ci.value = '';
+}
+
+function denomSave(){
+  if(_denomAmount <= 0) return;
+  const catEl = document.getElementById('denom-cat');
+  const cat = parseInt(catEl.value);
+  if(isNaN(cat)) return;
+  const comment = (document.getElementById('denom-comment').value || '').trim();
+  const date = currentDay;
+  const existing = DB.expenses.find(e => e.cat === cat && e.date === date && !e._deleted);
+  if(existing){
+    existing.amount = Math.round((existing.amount + _denomAmount) * 100) / 100;
+    if(comment) existing.comment = (existing.comment ? existing.comment + '; ' : '') + comment;
+  } else {
+    DB.expenses.push({id: uid(), cat, amount: _denomAmount, date, comment});
+  }
+  saveDB();
+  checkBudgetNotifications();
+  toast(fmt(_denomAmount) + ' добавлено');
+  denomClear();
+  renderDay();
+}
+
+function renderDenomWidget(){
+  const sel = document.getElementById('denom-cat');
+  if(!sel || !DB.categories.length) return;
+  const prev = sel.value;
+  sel.innerHTML = DB.categories.map((c,i) => `<option value="${i}">${c}</option>`).join('');
+  if(prev !== '' && !isNaN(parseInt(prev)) && parseInt(prev) < DB.categories.length) sel.value = prev;
 }
 
 // ═══ income.js ═══
@@ -3030,10 +3098,10 @@ function fillTestData(){
   ];
 
   DB.templates = [
-    {id:uid(), name:'Продукты',  cat:2, amount:2000, comment:'Пятёрочка', color:'#1d9e75'},
-    {id:uid(), name:'Кофе',      cat:3, amount:350,  comment:'',          color:'#d85a30'},
-    {id:uid(), name:'Такси',     cat:4, amount:400,  comment:'',          color:'#ba7517'},
-    {id:uid(), name:'Бензин',    cat:5, amount:4800, comment:'АЗС',       color:'#639922'},
+    {id:uid(), name:'🛒', cat:2, amount:2000, comment:'Пятёрочка', color:'#1d9e75'},
+    {id:uid(), name:'☕', cat:3, amount:350,  comment:'',          color:'#d85a30'},
+    {id:uid(), name:'🚕', cat:4, amount:400,  comment:'',          color:'#ba7517'},
+    {id:uid(), name:'⛽', cat:5, amount:4800, comment:'АЗС',       color:'#639922'},
   ];
 
   saveDB();

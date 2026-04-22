@@ -173,4 +173,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .cu-btn{padding:4px 9px;border-radius:20px;font-size:12px;font-weight:500;border:0.5px solid var(--border2);background:none;cursor:pointer;color:var(--muted);font-family:inherit;transition:all .15s;white-space:nowrap}
 .cu-btn.active{background:var(--accent);color:#fff;border-color:transparent}
 
+.denom-btn{flex:1;padding:10px 0;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .1s,color .1s,border-color .1s}
+.denom-btn:active{background:var(--accent);color:#fff;border-color:transparent}
+
 .page-end{height:max(80px,calc(64px + env(safe-area-inset-bottom)))}
