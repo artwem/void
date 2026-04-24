@@ -70,6 +70,7 @@ if ('serviceWorker' in navigator) {
     <div class="s-card"><div class="s-lbl">Лимит</div><div class="s-val" id="sum-limit">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
+  <div id="budget-days-row" style="display:none;padding:4px 16px 8px;font-size:12px;color:var(--muted);gap:12px;flex-wrap:wrap"></div>
   <div class="sec-hdr">
     <span class="sec-title">Категории</span>
     <span class="sec-action" onclick="openLimitEditor()">Лимиты ✎</span>
@@ -104,6 +105,7 @@ if ('serviceWorker' in navigator) {
       <button onclick="denomAdd(1000)" class="denom-btn">1000</button>
       <button onclick="denomAdd(500)"  class="denom-btn">500</button>
       <button onclick="denomAdd(100)"  class="denom-btn">100</button>
+      <button onclick="denomAdd(50)"   class="denom-btn">50</button>
       <button onclick="denomAdd(10)"   class="denom-btn">10</button>
       <button onclick="denomAdd(1)"    class="denom-btn">1</button>
     </div>
@@ -112,6 +114,11 @@ if ('serviceWorker' in navigator) {
       <input id="denom-comment" type="text" placeholder="Комментарий" style="flex:1;padding:6px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:inherit"/>
       <button onclick="denomSave()" class="btn primary small" style="flex:0;white-space:nowrap">Добавить</button>
     </div>
+  </div>
+  <div style="padding:0 16px 8px">
+    <input id="expense-search" type="search" placeholder="🔍 Поиск по расходам..." autocomplete="off"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
+      oninput="renderExpenseSearch(this.value)"/>
   </div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
@@ -212,22 +219,22 @@ if ('serviceWorker' in navigator) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="s-card" style="grid-column:1/-1">
         <div class="s-lbl">Стартовая сумма, ₽</div>
-        <input type="number" id="calc-start" value="100000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%" oninput="calcUpdate()"/>
+        <input type="text" id="calc-start" value="100 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
       <div class="s-card">
         <div class="s-lbl">Пополнение/мес, ₽</div>
-        <input type="number" id="calc-monthly" value="10000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%" oninput="calcUpdate()"/>
+        <input type="text" id="calc-monthly" value="10 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
       <div class="s-card">
         <div class="s-lbl">Ставка, % год</div>
-        <input type="number" id="calc-rate" value="12" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%" oninput="calcUpdate()"/>
+        <input type="number" id="calc-rate" value="12" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="s-card">
         <div class="s-lbl">Срок</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-          <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:20px;font-weight:700;background:transparent;width:52px;flex-shrink:0;letter-spacing:-0.5px" oninput="calcUpdate()"/>
+          <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:20px;font-weight:700;background:transparent;width:52px;flex-shrink:0;letter-spacing:-0.5px;color:var(--text)" oninput="calcUpdate()"/>
           <div style="display:flex;gap:4px" id="calc-unit-btns">
             <button class="cu-btn active" data-val="months" onclick="setCalcUnit('months',this)">мес</button>
             <button class="cu-btn" data-val="years" onclick="setCalcUnit('years',this)">год</button>
@@ -245,22 +252,22 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
     </div>
-    <div style="background:var(--accent);border-radius:var(--r);padding:16px;color:#fff;margin-top:2px">
-      <div style="font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:10px">Итого через <span id="calc-period-lbl">24 мес</span></div>
-      <div style="font-size:32px;font-weight:700;letter-spacing:-1px;margin-bottom:14px" id="calc-total">0 ₽</div>
+    <div class="chart-card" style="margin-top:2px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:10px">Итого через <span id="calc-period-lbl">24 мес</span></div>
+      <div style="font-size:32px;font-weight:700;letter-spacing:-1px;margin-bottom:14px;color:var(--text)" id="calc-total">0 ₽</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><div style="font-size:11px;opacity:.55;margin-bottom:3px">Вложено</div><div style="font-size:17px;font-weight:600" id="calc-invested">0 ₽</div></div>
-        <div><div style="font-size:11px;opacity:.55;margin-bottom:3px">Проценты</div><div style="font-size:17px;font-weight:600;color:#7fffc4" id="calc-profit">0 ₽</div></div>
-        <div><div style="font-size:11px;opacity:.55;margin-bottom:3px">Доход в год</div><div style="font-size:15px;font-weight:500" id="calc-yearly">0 ₽</div></div>
-        <div><div style="font-size:11px;opacity:.55;margin-bottom:3px">Эффект. ставка</div><div style="font-size:15px;font-weight:500" id="calc-eff-rate">0%</div></div>
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Вложено</div><div style="font-size:17px;font-weight:600;color:var(--text)" id="calc-invested">0 ₽</div></div>
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Проценты</div><div style="font-size:17px;font-weight:600;color:var(--green)" id="calc-profit">0 ₽</div></div>
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Доход в год</div><div style="font-size:15px;font-weight:500;color:var(--text)" id="calc-yearly">0 ₽</div></div>
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Эффект. ставка</div><div style="font-size:15px;font-weight:500;color:var(--text)" id="calc-eff-rate">0%</div></div>
       </div>
     </div>
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div class="chart-title" style="margin:0">Рост по месяцам</div>
         <div style="display:flex;gap:10px;font-size:11px">
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#1a1a18;border-radius:2px;display:inline-block"></span>Итого</span>
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#c8c7c0;border-radius:2px;display:inline-block"></span>Вложено</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#185fa5;border-radius:2px;display:inline-block"></span>Итого</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:rgba(128,128,128,.6);border-radius:2px;display:inline-block"></span>Вложено</span>
         </div>
       </div>
       <div style="position:relative;height:200px"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
@@ -448,7 +455,7 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-income')">✕</button>
     <h2 id="income-modal-title">Добавить доход</h2>
     <div class="fgrp"><label class="flbl">Источник</label><input type="text" id="inc-source" placeholder="Зарплата, Аванс, Кешбек…"/></div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="inc-amount" placeholder="0" inputmode="decimal"/></div>
+    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="inc-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Дата</label><input type="date" id="inc-date"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="inc-comment" placeholder="Необязательно"/></div>
     <div class="btn-row">
@@ -479,7 +486,7 @@ if ('serviceWorker' in navigator) {
         </label>
       </div>
     </div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="exp-amount" placeholder="0" inputmode="decimal"/></div>
+    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="exp-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Дата</label><input type="date" id="exp-date" onchange="updateExpCatHint()"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="exp-comment" placeholder="Необязательно"/></div>
     <div class="btn-row">
@@ -497,7 +504,7 @@ if ('serviceWorker' in navigator) {
     <h2 id="template-modal-title">Новый шаблон</h2>
     <div class="fgrp"><label class="flbl">Название</label><input type="text" id="tmpl-name" placeholder="Метро, Кофе…"/></div>
     <div class="fgrp"><label class="flbl">Категория</label><select id="tmpl-cat"></select></div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="tmpl-amount" placeholder="0" inputmode="decimal"/></div>
+    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="tmpl-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="tmpl-comment" placeholder="Необязательно"/></div>
     <div class="fgrp"><label class="flbl">Цвет</label><div id="tmpl-color-picker" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px"></div></div>
     <div class="btn-row">
@@ -546,11 +553,11 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="fgrp">
       <label class="flbl">Целевая сумма, ₽</label>
-      <input type="number" id="goal-target" class="finp" inputmode="decimal" placeholder="100 000">
+      <input type="text" id="goal-target" class="finp" inputmode="decimal" placeholder="100 000" oninput="formatMoneyInput(this)">
     </div>
     <div class="fgrp">
       <label class="flbl">Уже накоплено, ₽</label>
-      <input type="number" id="goal-saved" class="finp" inputmode="decimal" placeholder="0">
+      <input type="text" id="goal-saved" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this)">
     </div>
     <div class="fgrp">
       <label class="flbl">Срок (необязательно)</label>
@@ -572,7 +579,7 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-asset')">✕</button>
     <h2>Запись активов</h2>
     <div class="fgrp"><label class="flbl">Банк / счёт</label><select id="asset-bank"></select></div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="number" id="asset-amount" placeholder="0" inputmode="decimal"/></div>
+    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="asset-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Дата (рекомендуется 1 или 16)</label><input type="date" id="asset-date"/></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-asset')">Отмена</button>
@@ -758,19 +765,11 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.2.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.3.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
     <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с месячными лимитами, веди учёт активов и кредитов, рассчитывай рост накоплений. Все данные хранятся локально на устройстве и синхронизируются с Google Sheets по твоему желанию.</p>
-    <div style="margin-top:20px;padding-top:16px;border-top:0.5px solid var(--border)">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">V — Visual</span>
-        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">O — Overview</span>
-        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">I — of Income</span>
-        <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg2);color:var(--muted)">D — &amp; Debt</span>
-      </div>
-    </div>
     <div class="btn-row" style="margin-top:20px">
       <button class="btn primary" onclick="closeModal('modal-about')" style="width:100%">Закрыть</button>
     </div>
@@ -931,6 +930,55 @@ function readSyncUrlFromCookie(){
 // ─── HELPERS ────────────────────────────────────────────────────────
 function monthKey(y,m){return y+'-'+String(m+1).padStart(2,'0')}
 function fmt(n){return Math.round(n).toLocaleString('ru-RU')+'₽'}
+
+function parseMoney(str){
+  return parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
+}
+
+function formatMoneyInput(inp){
+  const raw = inp.value;
+  const cursorPos = inp.selectionStart;
+  const digitsBeforeCursor = (raw.slice(0, cursorPos).match(/\d/g)||[]).length;
+
+  // Normalize: strip everything except digits and one decimal separator
+  const normalized = raw.replace(/[^\d.,]/g,'');
+  const firstSep = normalized.search(/[.,]/);
+  let intStr, decStr;
+  if(firstSep === -1){
+    intStr = normalized; decStr = null;
+  } else {
+    intStr = normalized.slice(0, firstSep);
+    decStr = normalized.slice(firstSep + 1).replace(/[.,]/g,'');
+  }
+
+  // Format integer part with spaces
+  let fmtInt = '';
+  for(let i=0; i<intStr.length; i++){
+    if(i>0 && (intStr.length-i)%3===0) fmtInt += ' ';
+    fmtInt += intStr[i];
+  }
+  const formatted = decStr !== null ? fmtInt + ',' + decStr : fmtInt;
+
+  if(inp.value === formatted) return;
+  inp.value = formatted;
+
+  // Restore cursor by counting digits
+  let dc=0, newPos=formatted.length;
+  for(let i=0; i<formatted.length; i++){
+    if(/\d/.test(formatted[i])) dc++;
+    if(dc === digitsBeforeCursor){ newPos=i+1; break; }
+  }
+  try{ inp.setSelectionRange(newPos,newPos); }catch(_){}
+}
+
+function setMoneyInput(id, val){
+  const inp = document.getElementById(id);
+  if(!inp) return;
+  if(val==='' || val===null || val===undefined){ inp.value=''; return; }
+  inp.value = String(Math.round(val));
+  formatMoneyInput(inp);
+}
+
 function fmtShort(n){
   const a = Math.abs(n);
   if(a >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'М';
@@ -1014,7 +1062,7 @@ function showPage(name,btn){
   if(name==='assets') renderAssets();
   if(name==='calc'){
     const total = _getCurrentAssetsTotal();
-    if(total > 0) document.getElementById('calc-start').value = total;
+    if(total > 0) setMoneyInput('calc-start', total);
     setTimeout(calcUpdate, 50);
   }
   if(name==='income') renderIncome();
@@ -1139,6 +1187,33 @@ function renderBudget(){
   const leftEl = document.getElementById('sum-left');
   leftEl.textContent = fmt(Math.abs(left));
   leftEl.className = 's-val '+(left<0?'over':'ok');
+
+  // Days remaining row — current month only
+  const daysRow = document.getElementById('budget-days-row');
+  if(daysRow){
+    const now = new Date();
+    const isCurrentMonth = (y === now.getFullYear() && m === now.getMonth());
+    if(isCurrentMonth && totalLimit > 0){
+      const daysInMonth = new Date(y, m+1, 0).getDate();
+      const today = now.getDate();
+      const daysLeft = daysInMonth - today + 1; // include today
+      const daysGone = today - 1;
+      const dailyAllowance = daysLeft > 0 ? Math.round(left / daysLeft) : 0;
+      const dailySpent = daysGone > 0 ? Math.round(totalSpent / daysGone) : 0;
+      const ok = left >= 0 && dailyAllowance >= 0;
+      const parts = [
+        '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
+        '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' +
+          (ok ? '✓ ' : '⚠ ') + fmt(Math.abs(dailyAllowance)) + '/день' +
+        '</span>',
+      ];
+      if(daysGone > 0) parts.push('<span>факт ' + fmt(dailySpent) + '/день</span>');
+      daysRow.style.display = 'flex';
+      daysRow.innerHTML = parts.join('');
+    } else {
+      daysRow.style.display = 'none';
+    }
+  }
 }
 
 function makeCatRow(i, spent, lim, totalLimit, inGroup){
@@ -1230,7 +1305,7 @@ function openAddExpense(prefillCat){
   document.getElementById('exp-delete-btn').style.display='none';
   populateCatSelect('exp-cat');
   document.getElementById('exp-date').value = currentPage==='day' ? currentDay : today();
-  document.getElementById('exp-amount').value='';
+  setMoneyInput('exp-amount','');
   document.getElementById('exp-comment').value='';
   openModal('modal-expense');
   if(prefillCat !== undefined) setTimeout(()=>{ document.getElementById('exp-cat').value = prefillCat; updateExpCatHint(); }, 50);
@@ -1246,7 +1321,7 @@ function editExpense(id, e){
   document.getElementById('exp-delete-btn').style.display='block';
   populateCatSelect('exp-cat');
   document.getElementById('exp-cat').value = exp.cat;
-  document.getElementById('exp-amount').value = exp.amount;
+  setMoneyInput('exp-amount', exp.amount);
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
   _addMode = true;
@@ -1256,7 +1331,7 @@ function editExpense(id, e){
 }
 
 function saveExpense(){
-  const amt = parseFloat(document.getElementById('exp-amount').value);
+  const amt = parseMoney(document.getElementById('exp-amount').value);
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat  = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value;
@@ -1414,6 +1489,8 @@ function onDayCalChange(val){
 }
 
 function renderDay(){
+  const srch = document.getElementById('expense-search');
+  if(srch) srch.value = '';
   const d = new Date(currentDay+'T12:00:00');
   const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
   const calInp = document.getElementById('day-cal-input');
@@ -1437,6 +1514,56 @@ function renderDay(){
     const row=document.createElement('div');
     row.className='entry-row';
     row.innerHTML=`
+      <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
+      <div class="entry-info">
+        <div class="entry-cat">${catName}</div>
+        ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
+      </div>
+      <div class="entry-amount">${fmt(e.amount)}</div>
+      <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function renderExpenseSearch(query){
+  const list = document.getElementById('entry-list');
+  const q = query.trim().toLowerCase();
+  if(!q){
+    renderDay();
+    return;
+  }
+  const all = DB.expenses.filter(e => {
+    if(e._deleted) return false;
+    const cat = (DB.categories[e.cat]||'').toLowerCase();
+    const comment = (e.comment||'').toLowerCase();
+    const amount = String(e.amount);
+    return cat.includes(q) || comment.includes(q) || amount.includes(q);
+  });
+  all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+  list.innerHTML = '';
+  if(!all.length){
+    list.innerHTML = '<div class="empty-day"><p>Ничего не найдено</p></div>';
+    return;
+  }
+  // Group by date
+  let lastDate = null;
+  all.forEach(e => {
+    if(e.date !== lastDate){
+      lastDate = e.date;
+      const d = new Date(e.date+'T12:00:00');
+      const weekdays=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+      const sep = document.createElement('div');
+      sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600;cursor:pointer';
+      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+      sep.addEventListener('click', ()=>{ document.getElementById('expense-search').value=''; currentDay=e.date; renderDay(); });
+      list.appendChild(sep);
+    }
+    const catName = DB.categories[e.cat]||'Неизвестно';
+    const row = document.createElement('div');
+    row.className = 'entry-row';
+    row.style.cssText = 'cursor:pointer';
+    row.innerHTML = `
       <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
       <div class="entry-info">
         <div class="entry-cat">${catName}</div>
@@ -1476,12 +1603,13 @@ function addFromTemplate(id){
   const t = (DB.templates||[]).find(x=>x.id===id);
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
+  const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
   const existing = DB.expenses.find(e=>e.cat===t.cat&&e.date===date&&!e._deleted);
   if(existing){
     existing.amount = Math.round((existing.amount + t.amount)*100)/100;
-    if(t.comment) existing.comment = (existing.comment?existing.comment+'; ':'')+t.comment;
+    if(!existing.comment) existing.comment = tmplNote;
   } else {
-    DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:t.comment||''});
+    DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote});
   }
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
@@ -1499,14 +1627,14 @@ function openTemplateModal(id){
     document.getElementById('template-modal-title').textContent='Изменить шаблон';
     document.getElementById('tmpl-name').value = t.name;
     document.getElementById('tmpl-cat').value = t.cat;
-    document.getElementById('tmpl-amount').value = t.amount;
+    setMoneyInput('tmpl-amount', t.amount);
     document.getElementById('tmpl-comment').value = t.comment||'';
     document.getElementById('tmpl-delete-btn').style.display='block';
     _selectedTemplateColor = t.color || CAT_COLORS[0];
   } else {
     document.getElementById('template-modal-title').textContent='Новый шаблон';
     document.getElementById('tmpl-name').value='';
-    document.getElementById('tmpl-amount').value='';
+    setMoneyInput('tmpl-amount','');
     document.getElementById('tmpl-comment').value='';
     document.getElementById('tmpl-delete-btn').style.display='none';
     _selectedTemplateColor = CAT_COLORS[0];
@@ -1517,7 +1645,7 @@ function openTemplateModal(id){
 
 function saveTemplate(){
   const name = document.getElementById('tmpl-name').value.trim();
-  const amt = parseFloat(document.getElementById('tmpl-amount').value);
+  const amt = parseMoney(document.getElementById('tmpl-amount').value);
   if(!name){toast('Введите название');return;}
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat = parseInt(document.getElementById('tmpl-cat').value);
@@ -1694,7 +1822,7 @@ function openAddIncome(){
   document.getElementById('income-modal-title').textContent = 'Добавить доход';
   document.getElementById('inc-delete-btn').style.display = 'none';
   document.getElementById('inc-source').value = '';
-  document.getElementById('inc-amount').value = '';
+  setMoneyInput('inc-amount','');
   document.getElementById('inc-date').value = today();
   document.getElementById('inc-comment').value = '';
   openModal('modal-income');
@@ -1708,7 +1836,7 @@ function editIncome(id, e){
   document.getElementById('income-modal-title').textContent = 'Редактировать доход';
   document.getElementById('inc-delete-btn').style.display = 'block';
   document.getElementById('inc-source').value = inc.source;
-  document.getElementById('inc-amount').value = inc.amount;
+  setMoneyInput('inc-amount', inc.amount);
   document.getElementById('inc-date').value = inc.date;
   document.getElementById('inc-comment').value = inc.comment || '';
   openModal('modal-income');
@@ -1716,7 +1844,7 @@ function editIncome(id, e){
 
 function saveIncome(){
   const source = document.getElementById('inc-source').value.trim();
-  const amt = parseFloat(document.getElementById('inc-amount').value);
+  const amt = parseMoney(document.getElementById('inc-amount').value);
   if(!source){ toast('Укажите источник'); return; }
   if(!amt || amt <= 0){ toast('Введите сумму'); return; }
   const obj = { source, amount: amt, date: document.getElementById('inc-date').value, comment: document.getElementById('inc-comment').value };
@@ -1817,7 +1945,8 @@ function renderStats(){
       const barW = maxVal>0 ? (x.v/maxVal*100) : 0;
       const color = getCatColor(x.i);
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer';
+      row.addEventListener('click', ()=>openCatExpenses(x.i));
       const dot = document.createElement('div');
       dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0';
       const col = document.createElement('div');
@@ -2074,15 +2203,17 @@ function collapseAssetsHistory(){
 }
 
 function renderAssets(){
-  const byBank={};
   const allBanks = getAllBanks();
-  DB.assets.filter(a=>!a._deleted).forEach(a=>{
-    // Prefer bankName (string), fall back to index lookup
-    const bname = a.bankName || allBanks[a.bank] || '?';
-    if(!byBank[bname]) byBank[bname]={latest:0,date:''};
-    if(!byBank[bname].date||a.date>=byBank[bname].date){byBank[bname].latest=a.amount;byBank[bname].date=a.date;}
-  });
-  // Total = sum each bank's most recent value (debit - credit)
+  const allEntries = DB.assets.filter(a=>!a._deleted);
+  const latestDate = allEntries.reduce((m,a)=>a.date>m?a.date:m,'');
+  const byBank={};
+  if(latestDate){
+    allEntries.filter(a=>a.date===latestDate).forEach(a=>{
+      const bname = a.bankName || allBanks[a.bank] || '?';
+      byBank[bname]={latest:a.amount,date:latestDate};
+    });
+  }
+  // Total = sum of latest-date values only (debit - credit)
   let total=0;
   Object.entries(byBank).forEach(([name,data])=>{
     total += isCredit(name) ? -data.latest : data.latest;
@@ -2132,13 +2263,10 @@ function renderAssets(){
   });
   const allDates=Object.keys(byDate).sort();
   const labels=[],data=[];
-  const running={};
   allDates.forEach(date=>{
-    Object.assign(running,byDate[date]);
     labels.push(date.slice(5));
-    // Subtract credit banks from total
     let total = 0;
-    Object.entries(running).forEach(([bname,amt]) => {
+    Object.entries(byDate[date]).forEach(([bname,amt]) => {
       total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
     });
     data.push(Math.round(total));
@@ -2207,13 +2335,16 @@ function renderGoals(){
 
 function _getCurrentAssetsTotal(){
   const allBanks = getAllBanks();
-  const latest = {};
-  (DB.assets||[]).filter(a=>!a._deleted).forEach(a => {
+  const allEntries = (DB.assets||[]).filter(a=>!a._deleted);
+  const latestDate = allEntries.reduce((m,a)=>a.date>m?a.date:m,'');
+  if(!latestDate) return 0;
+  const byBank = {};
+  allEntries.filter(a=>a.date===latestDate).forEach(a => {
     const name = a.bankName || allBanks[a.bank] || String(a.bank);
-    if(!latest[name] || a.date > latest[name].date) latest[name] = a;
+    byBank[name] = a;
   });
   let total = 0;
-  Object.entries(latest).forEach(([name, a]) => {
+  Object.entries(byBank).forEach(([name, a]) => {
     total += (DB.creditBanks||[]).includes(name) ? -a.amount : a.amount;
   });
   return Math.max(0, Math.round(total));
@@ -2224,8 +2355,8 @@ function openGoalModal(id){
   const g = id ? (DB.goals||[]).find(x=>x.id===id) : null;
   document.getElementById('goal-modal-title').textContent = g ? 'Редактировать цель' : 'Новая цель';
   document.getElementById('goal-name').value = g ? g.name : '';
-  document.getElementById('goal-target').value = g ? g.target : '';
-  document.getElementById('goal-saved').value = g ? g.saved : _getCurrentAssetsTotal();
+  setMoneyInput('goal-target', g ? g.target : '');
+  setMoneyInput('goal-saved', g ? g.saved : _getCurrentAssetsTotal());
   document.getElementById('goal-deadline').value = g&&g.deadline ? g.deadline : '';
   document.getElementById('goal-delete-btn').style.display = g ? '' : 'none';
   _selectedGoalColor = g ? (g.color||GOAL_COLORS[0]) : GOAL_COLORS[0];
@@ -2238,8 +2369,8 @@ function selectGoalColor(c){ _selectedGoalColor=c; _renderGoalColorPicker(); }
 
 function saveGoal(){
   const name = document.getElementById('goal-name').value.trim();
-  const target = parseFloat(document.getElementById('goal-target').value)||0;
-  const saved = parseFloat(document.getElementById('goal-saved').value)||0;
+  const target = parseMoney(document.getElementById('goal-target').value);
+  const saved = parseMoney(document.getElementById('goal-saved').value);
   const deadline = document.getElementById('goal-deadline').value||'';
   if(!name){ toast('Введите название'); return; }
   if(target<=0){ toast('Введите целевую сумму'); return; }
@@ -2271,7 +2402,7 @@ function openAssetModal(prefillBankName){
     return `<option value="${i}">${b}${credit?' (кредит)':''}</option>`;
   }).join('');
   document.getElementById('asset-date').value = today();
-  document.getElementById('asset-amount').value='';
+  setMoneyInput('asset-amount','');
   if(prefillBankName !== undefined){
     const idx = allBanks.indexOf(prefillBankName);
     if(idx >= 0) document.getElementById('asset-bank').value = idx;
@@ -2280,8 +2411,8 @@ function openAssetModal(prefillBankName){
 }
 
 function saveAsset(){
-  const amt = parseFloat(document.getElementById('asset-amount').value);
-  if(isNaN(amt)||amt<0){toast('Введите сумму');return;}
+  const amt = parseMoney(document.getElementById('asset-amount').value);
+  if(!amt||amt<0){toast('Введите сумму');return;}
   const bankIdx = parseInt(document.getElementById('asset-bank').value);
   const allBanks = getAllBanks();
   const bankName = allBanks[bankIdx] || '';
@@ -2448,11 +2579,12 @@ function openEditAssetDate(date){
     lbl.textContent = bankName;
 
     const inp = document.createElement('input');
-    inp.type = 'number';
+    inp.type = 'text';
     inp.inputMode = 'decimal';
     inp.id = 'asset-edit-inp-'+idx;
     inp.placeholder = '0';
-    inp.value = existing !== undefined ? existing : '';
+    inp.addEventListener('input', ()=>formatMoneyInput(inp));
+    if(existing !== undefined){ inp.value = String(Math.round(existing)); formatMoneyInput(inp); }
     inp.style.cssText = 'width:120px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)';
 
     row.appendChild(lbl);
@@ -2479,7 +2611,7 @@ function saveAssetEdit(){
   allBanks.forEach((bankName, idx) => {
     const inp = document.getElementById('asset-edit-inp-'+idx);
     if(!inp) return;
-    const val = parseFloat(inp.value);
+    const val = parseMoney(inp.value);
     if(!val || val <= 0) return; // skip empty/zero
     DB.assets.push({
       id: uid(),
@@ -3472,8 +3604,8 @@ function setCalcUnit(val, btn){
 }
 
 function calcUpdate(){
-  const start    = parseFloat(document.getElementById('calc-start').value)    || 0;
-  const monthly  = parseFloat(document.getElementById('calc-monthly').value)  || 0;
+  const start    = parseMoney(document.getElementById('calc-start').value);
+  const monthly  = parseMoney(document.getElementById('calc-monthly').value);
   const rate     = parseFloat(document.getElementById('calc-rate').value)     || 0;
   const duration = parseFloat(document.getElementById('calc-duration').value) || 1;
   const unit     = document.getElementById('calc-unit').value;
@@ -3564,8 +3696,8 @@ function calcUpdate(){
     data:{
       labels,
       datasets:[
-        {label:'Итого',data:dataTotal,borderColor:'#1a1a18',backgroundColor:'rgba(26,26,24,.07)',fill:true,tension:0.3,pointRadius:0,borderWidth:2},
-        {label:'Вложено',data:dataInvested,borderColor:'#c8c7c0',backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]}
+        {label:'Итого',data:dataTotal,borderColor:'#185fa5',backgroundColor:'rgba(24,95,165,.08)',fill:true,tension:0.3,pointRadius:0,borderWidth:2},
+        {label:'Вложено',data:dataInvested,borderColor:'rgba(128,128,128,.6)',backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]}
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888',maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:'rgba(128,128,128,.08)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888',maxTicksLimit:6}}}}
