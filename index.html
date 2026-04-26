@@ -711,7 +711,7 @@ if ('serviceWorker' in navigator) {
 <div class="overlay" id="modal-sync">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-sync')">✕</button>
-    <h2>Google Sheets</h2>
+    <h2>Google Drive</h2>
     <div class="fgrp">
       <label class="flbl">URL веб-приложения Apps Script</label>
       <div style="display:flex;gap:8px;align-items:center">
@@ -743,7 +743,7 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
-    <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с месячными лимитами, веди учёт активов и кредитов, рассчитывай рост накоплений. Все данные хранятся локально на устройстве и синхронизируются с Google Sheets по твоему желанию.</p>
+    <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с месячными лимитами, веди учёт активов и кредитов, рассчитывай рост накоплений. Все данные хранятся локально на устройстве и синхронизируются с Google Drive по твоему желанию.</p>
     <div class="btn-row" style="margin-top:20px">
       <button class="btn primary" onclick="closeModal('modal-about')" style="width:100%">Закрыть</button>
     </div>
@@ -763,7 +763,7 @@ if ('serviceWorker' in navigator) {
       <li>Цвета категорий</li>
       <li>URL синхронизации</li>
     </ul>
-    <p style="font-size:12px;color:var(--red);margin-bottom:16px">⚠ Данные в Google Sheets не затрагиваются. Действие нельзя отменить.</p>
+    <p style="font-size:12px;color:var(--red);margin-bottom:16px">⚠ Данные на Google Drive не затрагиваются. Действие нельзя отменить.</p>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-confirm-clear')">Отмена</button>
       <button class="btn danger" onclick="doClearData()">Очистить всё</button>
@@ -1198,9 +1198,9 @@ function renderBudget(){
 }
 
 function makeCatRow(i, spent, lim, totalLimit, inGroup){
-  const pct = lim>0 ? (spent/lim)*100 : 0;
+  const pct = lim>0 ? (spent/lim)*100 : (spent>0 ? 100 : 0);
   const pctOfBudget = totalLimit>0 ? ((lim/totalLimit)*100) : 0;
-  const isOver = spent>lim && lim>0;
+  const isOver = spent>lim;
   const bar = Math.min(pct,100);
   const barClass = pct<70?'pf-ok':pct<100?'pf-warn':'pf-over';
   const badgeClass = isOver?'badge-over':pct>=70?'badge-warn':'badge-ok';
