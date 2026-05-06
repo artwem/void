@@ -752,7 +752,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.5.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.6.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1926,26 +1926,29 @@ function renderStats(){
     const diff = curTotal - prevTotal;
     const diffPct = prevTotal > 0 ? Math.round(diff / prevTotal * 100) : null;
 
-    // Historical avg (last 6 prev months) up to same day
-    const histTotals = [];
+    // Historical: per-day cumulative avg across last 6 months
+    const histCumByDay = Array.from({length: cD}, () => []);
     for(let i = 1; i <= 6; i++){
       let hm = cM - i, hy = cY;
       if(hm < 0){ hm += 12; hy--; }
       const daysInHm = new Date(hy, hm+1, 0).getDate();
-      if(cD <= daysInHm){
-        const hExps = getMonthExpenses(hy, hm);
-        const mk3 = monthKey(hy, hm);
-        let hcum = 0;
-        for(let d = 1; d <= cD; d++){
-          const ds = mk3 + '-' + String(d).padStart(2,'0');
-          hcum += hExps.filter(e => e.date === ds).reduce((s,e) => s+e.amount, 0);
-        }
-        if(hcum > 0) histTotals.push(Math.round(hcum));
+      if(cD > daysInHm) continue;
+      const hExps = getMonthExpenses(hy, hm);
+      const mk3 = monthKey(hy, hm);
+      let hcum = 0;
+      for(let d = 1; d <= cD; d++){
+        const ds = mk3 + '-' + String(d).padStart(2,'0');
+        hcum += hExps.filter(e => e.date === ds).reduce((s,e) => s+e.amount, 0);
+        histCumByDay[d-1].push(Math.round(hcum));
       }
     }
-    const avgHist = histTotals.length ? Math.round(histTotals.reduce((s,v) => s+v, 0) / histTotals.length) : null;
-    const vsAvgDiff = avgHist ? curTotal - avgHist : null;
-    const vsAvgPct  = avgHist && avgHist > 0 ? Math.round(vsAvgDiff / avgHist * 100) : null;
+    const avgCumLine = histCumByDay.map(vals =>
+      vals.length ? Math.round(vals.reduce((s,v) => s+v, 0) / vals.length) : null
+    );
+    const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
+    const avgHist = avgCumLine[cD-1];
+    const vsAvgDiff = avgHist != null ? curTotal - avgHist : null;
+    const vsAvgPct  = avgHist > 0 ? Math.round(vsAvgDiff / avgHist * 100) : null;
 
     // Title
     document.getElementById('day-compare-title').textContent =
@@ -1954,6 +1957,17 @@ function renderStats(){
     // Chart
     const dayLabels = Array.from({length: cD}, (_, i) => i+1 === cD ? String(i+1)+'✦' : String(i+1));
     if(charts.dayCompare) charts.dayCompare.destroy();
+    const avgDataset = histMonthCount > 0 ? [{
+      label: 'Среднее',
+      data: avgCumLine,
+      borderColor: 'rgba(200,140,50,0.7)',
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderDash: [4, 3],
+      pointRadius: 0,
+      tension: 0.3,
+      fill: false
+    }] : [];
     charts.dayCompare = new Chart(document.getElementById('chartDayCompare'), {
       type: 'line',
       data: {
@@ -1969,6 +1983,7 @@ function renderStats(){
             tension: 0.3,
             fill: false
           },
+          ...avgDataset,
           {
             label: SHORT_MONTHS[cM],
             data: curCum,
@@ -2012,7 +2027,7 @@ function renderStats(){
       const vsPctStr = vsAvgPct !== null ? ' (' + vsSign + vsAvgPct + '%)' : '';
       const vsLabel = vsAvgDiff <= 0 ? 'Экономнее обычного' : 'Больше обычного';
       html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">`;
-      html += `Среднее за ${histTotals.length} мес. к этому дню: <b style="color:var(--text)">${fmt(avgHist)}</b> — `;
+      html += `Среднее за ${histMonthCount} мес. к этому дню: <b style="color:var(--text)">${fmt(avgHist)}</b> — `;
       html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmt(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
       html += `</div>`;
     }
