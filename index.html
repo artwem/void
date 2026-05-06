@@ -1934,6 +1934,7 @@ function renderStats(){
       const daysInHm = new Date(hy, hm+1, 0).getDate();
       if(cD > daysInHm) continue;
       const hExps = getMonthExpenses(hy, hm);
+      if(hExps.length === 0) continue;
       const mk3 = monthKey(hy, hm);
       let hcum = 0;
       for(let d = 1; d <= cD; d++){
@@ -1965,7 +1966,7 @@ function renderStats(){
       borderWidth: 1.5,
       borderDash: [4, 3],
       pointRadius: 0,
-      tension: 0.3,
+      cubicInterpolationMode: 'monotone',
       fill: false
     }] : [];
     charts.dayCompare = new Chart(document.getElementById('chartDayCompare'), {
@@ -1980,7 +1981,7 @@ function renderStats(){
             backgroundColor: 'rgba(128,128,128,0.04)',
             borderWidth: 1.5,
             pointRadius: 0,
-            tension: 0.3,
+            cubicInterpolationMode: 'monotone',
             fill: false
           },
           ...avgDataset,
@@ -1991,7 +1992,7 @@ function renderStats(){
             backgroundColor: 'rgba(24,95,165,0.07)',
             borderWidth: 2.5,
             pointRadius: 0,
-            tension: 0.3,
+            cubicInterpolationMode: 'monotone',
             fill: true
           }
         ]
