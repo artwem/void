@@ -163,7 +163,14 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">День за днём — <span id="day-compare-title"></span></div>
+      <div class="chart-title">День за днём</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px">
+        <div id="day-compare-mode" data-mode="full" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+          <span id="dcm-full" onclick="document.getElementById('day-compare-mode').dataset.mode='full';renderStats()" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px" title="Весь месяц">▦</span>
+          <span id="dcm-today" onclick="document.getElementById('day-compare-mode').dataset.mode='today';renderStats()" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0" title="До сегодня">◧</span>
+        </div>
+        <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
+      </div>
       <div style="position:relative;height:190px"><canvas id="chartDayCompare"></canvas></div>
       <div id="day-compare-summary" style="margin-top:10px"></div>
     </div>
@@ -752,7 +759,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.6.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.7.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1903,61 +1910,93 @@ function renderStats(){
   {
     const dn = new Date();
     const cY = dn.getFullYear(), cM = dn.getMonth(), cD = dn.getDate();
-    let pM = cM - 1, pY = cY;
-    if(pM < 0){ pM = 11; pY--; }
 
-    const curExpsAll = getMonthExpenses(cY, cM);
-    const prevExpsAll = getMonthExpenses(pY, pM);
+    // Populate month selector once
+    const monthSel = document.getElementById('day-compare-month-sel');
+    if (!monthSel.options.length) {
+      for (let i = 0; i < 7; i++) {
+        let m = cM - i, y = cY;
+        if (m < 0) { m += 12; y--; }
+        const opt = document.createElement('option');
+        opt.value = y + '-' + m;
+        opt.textContent = SHORT_MONTHS[m] + (y !== cY ? ' ' + y : '');
+        opt.selected = (i === 0); // default: current month
+        monthSel.appendChild(opt);
+      }
+      monthSel.addEventListener('change', renderStats);
+    }
 
-    function cumByDay(exps, y2, m2, maxDay){
+    const [selY, selM] = monthSel.value.split('-').map(Number);
+    const isCurrentMonth = (selY === cY && selM === cM);
+    const daysInSel = new Date(selY, selM + 1, 0).getDate();
+    const maxDaySel = isCurrentMonth ? cD : daysInSel;
+
+    const modeEl = document.getElementById('day-compare-mode');
+    const showFull = modeEl.dataset.mode !== 'today';
+    const displayDays = showFull ? daysInSel : Math.min(daysInSel, cD);
+
+    let pM = selM - 1, pY = selY;
+    if (pM < 0) { pM = 11; pY--; }
+    const daysInPrev = new Date(pY, pM + 1, 0).getDate();
+
+    const selExps  = getMonthExpenses(selY, selM);
+    const prevExps = getMonthExpenses(pY, pM);
+
+    function cumByDay(exps, y2, m2, maxDay, totalDays) {
       const mk2 = monthKey(y2, m2);
       let acc = 0;
-      return Array.from({length: maxDay}, (_, i) => {
-        const ds = mk2 + '-' + String(i+1).padStart(2,'0');
-        acc += exps.filter(e => e.date === ds).reduce((s,e) => s+e.amount, 0);
+      return Array.from({length: totalDays}, (_, i) => {
+        if (i >= maxDay) return null;
+        const ds = mk2 + '-' + String(i + 1).padStart(2, '0');
+        acc += exps.filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0);
         return Math.round(acc);
       });
     }
 
-    const curCum = cumByDay(curExpsAll, cY, cM, cD);
-    const prevCum = cumByDay(prevExpsAll, pY, pM, cD);
-    const curTotal = curCum[cD-1] || 0;
-    const prevTotal = prevCum[cD-1] || 0;
-    const diff = curTotal - prevTotal;
-    const diffPct = prevTotal > 0 ? Math.round(diff / prevTotal * 100) : null;
+    const selCum  = cumByDay(selExps,  selY, selM, Math.min(maxDaySel, displayDays),  displayDays);
+    const prevCum = cumByDay(prevExps, pY,   pM,   Math.min(daysInPrev, displayDays), displayDays);
 
-    // Historical: per-day cumulative avg across last 6 months
-    const histCumByDay = Array.from({length: cD}, () => []);
-    for(let i = 1; i <= 6; i++){
-      let hm = cM - i, hy = cY;
-      if(hm < 0){ hm += 12; hy--; }
-      const daysInHm = new Date(hy, hm+1, 0).getDate();
-      if(cD > daysInHm) continue;
+    // Historical avg: 6 months before selected, displayDays length
+    const histCumByDay = Array.from({length: displayDays}, () => []);
+    for (let i = 1; i <= 6; i++) {
+      let hm = selM - i, hy = selY;
+      if (hm < 0) { hm += 12; hy--; }
+      const daysInHm = new Date(hy, hm + 1, 0).getDate();
       const hExps = getMonthExpenses(hy, hm);
-      if(hExps.length === 0) continue;
+      if (hExps.length === 0) continue;
       const mk3 = monthKey(hy, hm);
       let hcum = 0;
-      for(let d = 1; d <= cD; d++){
-        const ds = mk3 + '-' + String(d).padStart(2,'0');
-        hcum += hExps.filter(e => e.date === ds).reduce((s,e) => s+e.amount, 0);
-        histCumByDay[d-1].push(Math.round(hcum));
+      const loopDays = Math.min(displayDays, daysInHm);
+      for (let d = 1; d <= loopDays; d++) {
+        const ds = mk3 + '-' + String(d).padStart(2, '0');
+        hcum += hExps.filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0);
+        histCumByDay[d - 1].push(Math.round(hcum));
       }
     }
     const avgCumLine = histCumByDay.map(vals =>
-      vals.length ? Math.round(vals.reduce((s,v) => s+v, 0) / vals.length) : null
+      vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null
     );
     const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
-    const avgHist = avgCumLine[cD-1];
-    const vsAvgDiff = avgHist != null ? curTotal - avgHist : null;
+
+    const avgIdx = Math.min(maxDaySel, displayDays) - 1;
+    const selTotal = selCum[avgIdx] || 0;
+    const prevTotal = prevCum[Math.min(avgIdx, daysInPrev - 1)] || 0;
+    const diff = selTotal - prevTotal;
+    const diffPct = prevTotal > 0 ? Math.round(diff / prevTotal * 100) : null;
+    const avgHist = avgCumLine[avgIdx];
+    const vsAvgDiff = avgHist != null ? selTotal - avgHist : null;
     const vsAvgPct  = avgHist > 0 ? Math.round(vsAvgDiff / avgHist * 100) : null;
 
-    // Title
-    document.getElementById('day-compare-title').textContent =
-      SHORT_MONTHS[pM] + ' vs ' + SHORT_MONTHS[cM];
+    const dayLabels = Array.from({length: displayDays}, (_, i) =>
+      isCurrentMonth && i === cD - 1 ? String(i + 1) + '✦' : String(i + 1)
+    );
 
-    // Chart
-    const dayLabels = Array.from({length: cD}, (_, i) => i+1 === cD ? String(i+1)+'✦' : String(i+1));
-    if(charts.dayCompare) charts.dayCompare.destroy();
+    document.getElementById('dcm-full').style.background  = showFull  ? 'rgba(128,128,128,0.18)' : '';
+    document.getElementById('dcm-full').style.color       = showFull  ? 'var(--text)' : '#888';
+    document.getElementById('dcm-today').style.background = !showFull ? 'rgba(128,128,128,0.18)' : '';
+    document.getElementById('dcm-today').style.color      = !showFull ? 'var(--text)' : '#888';
+
+    if (charts.dayCompare) charts.dayCompare.destroy();
     const avgDataset = histMonthCount > 0 ? [{
       label: 'Среднее',
       data: avgCumLine,
@@ -1967,6 +2006,7 @@ function renderStats(){
       borderDash: [4, 3],
       pointRadius: 0,
       cubicInterpolationMode: 'monotone',
+      spanGaps: false,
       fill: false
     }] : [];
     charts.dayCompare = new Chart(document.getElementById('chartDayCompare'), {
@@ -1982,17 +2022,19 @@ function renderStats(){
             borderWidth: 1.5,
             pointRadius: 0,
             cubicInterpolationMode: 'monotone',
+            spanGaps: false,
             fill: false
           },
           ...avgDataset,
           {
-            label: SHORT_MONTHS[cM],
-            data: curCum,
+            label: SHORT_MONTHS[selM],
+            data: selCum,
             borderColor: '#185fa5',
             backgroundColor: 'rgba(24,95,165,0.07)',
             borderWidth: 2.5,
             pointRadius: 0,
             cubicInterpolationMode: 'monotone',
+            spanGaps: false,
             fill: true
           }
         ]
@@ -2005,7 +2047,7 @@ function renderStats(){
         },
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888', maxTicksLimit: 10 } },
-          y: { grid: { color: 'rgba(128,128,128,.1)' }, ticks: { callback: v => fmtShort(v)+'₽', font: { size: 9 }, color: '#888' } }
+          y: { grid: { color: 'rgba(128,128,128,.1)' }, ticks: { callback: v => fmtShort(v) + '₽', font: { size: 9 }, color: '#888' } }
         }
       }
     });
@@ -2017,18 +2059,18 @@ function renderStats(){
     const diffPctStr = diffPct !== null ? ' (' + diffSign + diffPct + '%)' : '';
     let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#888;padding:2px 0 6px">`;
     html += `<span>${SHORT_MONTHS[pM]}: <b style="color:var(--text)">${fmt(prevTotal)}</b></span>`;
-    html += `<span>${SHORT_MONTHS[cM]}: <b style="color:var(--text)">${fmt(curTotal)}</b></span>`;
-    if(prevTotal > 0){
+    html += `<span>${SHORT_MONTHS[selM]}: <b style="color:var(--text)">${fmt(selTotal)}</b></span>`;
+    if (prevTotal > 0) {
       html += `<span style="color:${diffColor};font-weight:600">${diffSign}${fmt(diff)}${diffPctStr}</span>`;
     }
     html += `</div>`;
-    if(avgHist && vsAvgDiff !== null){
+    if (avgHist && vsAvgDiff !== null) {
       const vsColor = vsAvgDiff <= 0 ? '#1d9e75' : '#d85a30';
       const vsSign  = vsAvgDiff >= 0 ? '+' : '';
       const vsPctStr = vsAvgPct !== null ? ' (' + vsSign + vsAvgPct + '%)' : '';
       const vsLabel = vsAvgDiff <= 0 ? 'Экономнее обычного' : 'Больше обычного';
       html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">`;
-      html += `Среднее за ${histMonthCount} мес. к этому дню: <b style="color:var(--text)">${fmt(avgHist)}</b> — `;
+      html += `Среднее за ${histMonthCount} мес.: <b style="color:var(--text)">${fmt(avgHist)}</b> — `;
       html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmt(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
       html += `</div>`;
     }
