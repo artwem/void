@@ -1,6 +1,7 @@
 // ─── DATA ───────────────────────────────────────────────────────────
 
 const CAT_COLORS = ['#378add','#1d9e75','#d85a30','#ba7517','#d4537e','#639922','#534ab7','#e67e22','#185fa5','#993556','#3b6d11','#a32d2d','#0f6e56','#8e44ad','#993c1d','#7f8c8d'];
+const INCOME_TAG_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#378add','#639922'];
 
 // ─── DEFAULTS (first run only) ───────────────────────────────────────
 const DEFAULT_CATS = [
@@ -34,6 +35,8 @@ let DB = {
   limits: {},  // key: "YYYY-MM", value: array of limits per category
   syncUrl: '',
   goals: [],
+  incomeTags: [],
+  incomeTagColors: {},
   _lastSyncedLimits: {}
 };
 
@@ -80,6 +83,8 @@ function loadDB(){
   if(!DB.bankDeletions) DB.bankDeletions = [];
   if(!DB.categories) DB.categories = [];
   if(!DB.limits) DB.limits = {};
+  if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
+  if(!DB.incomeTagColors) DB.incomeTagColors = {};
   // First run — no data at all: populate with defaults so app isn't empty
   if(!saved && !DB.categories.length){
     DB.categories = [...DEFAULT_CATS];

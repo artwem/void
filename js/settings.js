@@ -355,6 +355,99 @@ function removeCategory(i){
   toast('Удалено: ' + name);
 }
 
+// ─── INCOME TAGS MANAGER ────────────────────────────────────────────
+function openIncomeTagsManager(){
+  renderIncomeTagsList();
+  openModal('modal-income-tags');
+}
+
+function renderIncomeTagsList(){
+  const tags = DB.incomeTags || [];
+  const list = document.getElementById('income-tags-list');
+  if(!list) return;
+  list.innerHTML = tags.map((tag, i) => {
+    const color = getIncomeTagColor(tag);
+    return '<div class="setting-row" style="cursor:default;gap:6px" id="inc-tag-row-'+i+'">'
+      + '<input type="color" value="'+color+'"'
+      + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
+      + ' onchange="setIncomeTagColor('+i+',this.value)" title="Цвет тега"/>'
+      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</span>'
+      + '<button class="btn small icon-btn" onclick="startEditIncomeTag('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      + '<button class="btn danger small" onclick="deleteIncomeTag('+i+')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function setIncomeTagColor(i, color){
+  if(!DB.incomeTagColors) DB.incomeTagColors = {};
+  DB.incomeTagColors[i] = color;
+  saveDB();
+  renderIncomeTagsList();
+}
+
+function startEditIncomeTag(i){
+  const row = document.getElementById('inc-tag-row-'+i);
+  if(!row) return;
+  const tag = DB.incomeTags[i];
+  row.innerHTML = '';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = tag;
+  inp.style.cssText = 'flex:1;font-size:14px;padding:4px 8px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--bg);color:var(--text)';
+  const btnSave = document.createElement('button');
+  btnSave.className = 'btn primary small';
+  btnSave.textContent = 'OK';
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'btn small';
+  btnCancel.textContent = 'Отмена';
+  const save = () => {
+    const newName = inp.value.trim();
+    if(!newName){ toast('Введите название'); return; }
+    if(newName !== tag && DB.incomeTags.includes(newName)){ toast('Уже существует'); return; }
+    (DB.incomes||[]).forEach(inc => { if(inc.tag === tag) inc.tag = newName; });
+    DB.incomeTags[i] = newName;
+    saveDB();
+    renderIncomeTagsList();
+  };
+  btnSave.onclick = save;
+  inp.onkeydown = e => { if(e.key==='Enter') save(); if(e.key==='Escape') renderIncomeTagsList(); };
+  btnCancel.onclick = renderIncomeTagsList;
+  row.appendChild(inp); row.appendChild(btnSave); row.appendChild(btnCancel);
+  inp.focus(); inp.select();
+}
+
+function addIncomeTag(){
+  const inp = document.getElementById('new-income-tag-input');
+  const name = inp.value.trim();
+  if(!name){ toast('Введите название'); return; }
+  if(!DB.incomeTags) DB.incomeTags = [];
+  if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
+  DB.incomeTags.push(name);
+  saveDB();
+  inp.value = '';
+  renderIncomeTagsList();
+  renderSettings();
+  toast('Тег добавлен: ' + name);
+}
+
+function deleteIncomeTag(i){
+  const tag = (DB.incomeTags||[])[i];
+  if(!tag) return;
+  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag) inc.tag = ''; });
+  DB.incomeTags.splice(i, 1);
+  const newColors = {};
+  Object.entries(DB.incomeTagColors||{}).forEach(([k,v]) => {
+    const ki = parseInt(k);
+    if(ki < i) newColors[ki] = v;
+    else if(ki > i) newColors[ki-1] = v;
+  });
+  DB.incomeTagColors = newColors;
+  saveDB();
+  renderIncomeTagsList();
+  renderSettings();
+  toast('Удалено: ' + tag);
+}
+
 // ─── EXPORT CSV ─────────────────────────────────────────────────────
 function exportCSV(){
   const rows = [['id','категория','сумма','дата','комментарий']];

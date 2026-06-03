@@ -29,6 +29,8 @@ python3 -m http.server 8080
 
 Each JS module is inlined in `index.html` with a section marker comment:
 ```
+// ═══ db.js ═══
+// ═══ nav.js ═══
 // ═══ budget.js ═══
 // ═══ day.js ═══
 // ═══ income.js ═══
@@ -50,21 +52,24 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 
 ```javascript
 {
-  categories:  ['ЖКУ + аренда', ...],    // ordered list
-  catColors:   {0: '#185fa5', ...},       // category index → hex color
-  expenses:    [{id, date, cat, amount, comment, _deleted?}, ...],
-  incomes:     [{date, source, amount}, ...],
-  assets:      [{date, bankName, amount, _deleted?}, ...],
-  banks:       ['Сбербанк', ...],         // debit bank names
-  creditBanks: [...],                     // credit bank names (subtracted from net worth)
-  limits:      {'2026-04': [15000, ...]}, // per-category monthly limits, keyed by monthKey()
-  syncUrl:     'https://script.google.com/...',
-  goals:       [{id, name, target, saved, deadline, color}, ...],
-  templates:   [{id, name, cat, amount, comment, color}, ...],  // cat = category index
+  categories:    ['ЖКУ + аренда', ...],    // ordered list
+  catColors:     {0: '#185fa5', ...},       // category index → hex color
+  expenses:      [{id, date, cat, amount, comment, _deleted?}, ...],
+  incomes:       [{id, date, source, amount}, ...],
+  assets:        [{id, date, bankName, bank, amount, _deleted?}, ...],
+  banks:         ['Сбербанк', ...],         // debit bank names
+  creditBanks:   [...],                     // credit bank names (subtracted from net worth)
+  limits:        {'2026-04': [15000, ...]}, // per-category monthly limits, keyed by monthKey()
+  syncUrl:       'https://script.google.com/...',
+  goals:         [{id, name, target, saved, deadline, color}, ...],
+  templates:     [{id, name, cat, amount, comment, color}, ...],  // cat = category index
   notifsEnabled: false,
-  notifThreshold: 90,                     // % of limit that triggers push notification
-  _lastSyncedLimits: {},                  // baseline for 3-way merge conflict detection
-  _dirty:      true/false
+  notifThreshold: 90,                       // % of limit that triggers push notification
+  catRenames:    [{from, to}, ...],          // queued for next push
+  bankRenames:   [{from, to}, ...],          // queued for next push
+  bankDeletions: ['BankName', ...],          // queued for next push
+  _lastSyncedLimits: {},                    // baseline for 3-way merge conflict detection
+  _dirty:        true/false
 }
 ```
 
@@ -76,6 +81,7 @@ Each tab has a `render*()` function called after any data change:
 
 | Tab | Section marker | Responsibility |
 |-----|----------------|----------------|
+| (nav) | `═══ nav.js ═══` | Tab switching, month/day navigation, sync widget header |
 | Budget | `═══ budget.js ═══` | Categories grouped by color, limits, progress bars |
 | Day | `═══ day.js ═══` | Daily expense list |
 | Income | `═══ income.js ═══` | Income sources, monthly balance |
@@ -86,33 +92,23 @@ Each tab has a `render*()` function called after any data change:
 
 ### Sync — `js/sync.js` + `apps-script/Code.gs`
 
-Optional 2-way sync with Google Sheets via a deployed Google Apps Script URL in `DB.syncUrl`. Auto-syncs every 15 seconds when `DB._dirty`. On startup: **push first if dirty, then pull** — critical to preserve local edits made while offline/hidden. Uses `DB._lastSyncedLimits` as a baseline for 3-way merge conflict detection on limits — if both local and sheet diverged from the baseline, a conflict modal is shown.
+Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets). Auto-syncs every 15 seconds when `DB._dirty`. On startup: **pull first** to detect conflicts, then push local dirty state if needed. Uses `DB._lastSyncedLimits` as a baseline for 3-way merge conflict detection on limits — if both local and Drive diverged from the baseline, a conflict modal is shown.
 
-**What syncs (both directions):** `expenses`, `assets`, `incomes`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `goals`, `templates`.
+**What syncs (both directions):** `expenses`, `assets`, `incomes`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`.
 
-**What does NOT sync:** `syncUrl`, `notifsEnabled`, `notifThreshold` (device-local settings).
+**What does NOT sync:** `syncUrl`, `notifsEnabled`, `notifThreshold`, `goals`, `templates` (device-local).
+
+**`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
 
 **Merge logic for expenses (`mergePullData`):**
-- Entries with `gs_` prefix IDs are replaced by the sheet version
-- New expenses created in the app use `uid()` IDs (not `gs_`) so they survive a pull before being pushed; they are replaced by the sheet's `gs_` version after the next push+pull cycle
-- App entries for the same `cat+date` as a sheet entry are dropped (sheet has the authoritative sum)
+- Entries with `gs_` prefix IDs are replaced by the Drive version
+- App entries (`uid()` IDs) that match a Drive `cat+date` are dropped (Drive has the summed total)
 - `_deleted` entries are cleaned up on merge
+- Comments from app entries are preserved if Drive has none
 
-**Merge logic for goals and templates:** sheet wins, full replace on pull.
+**Merge logic for banks:** additive — new banks from Drive appended to local, except banks in `DB.bankDeletions` queue (intentionally removed locally).
 
-**Google Sheets structure** created by `Code.gs`:
-
-| Sheet | Visibility | Contents |
-|-------|-----------|----------|
-| По дням YYYY | visible | rows=categories, cols=dates of year, daily expense amounts |
-| Шаблон | visible | categories + default limits |
-| Январь YYYY … | visible | per-month category limits |
-| Активы | visible | bank account balances by date |
-| Доходы | hidden | income records |
-| Комментарии | hidden | expense comments |
-| Настройки | hidden | category colors |
-| Цели | hidden | goals (id, name, target, saved, deadline, color) |
-| Шаблоны | hidden | expense templates (id, name, cat-name, amount, comment, color) |
+**Rename/delete tracking:** `DB.catRenames`, `DB.bankRenames`, `DB.bankDeletions` queue structural changes to push to Drive on next sync.
 
 **Updating Apps Script:** edit `apps-script/Code.gs` locally → copy contents into the Google Apps Script editor → deploy new version. `build.sh` automatically inlines Code.gs into `dist/index.html`; in dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs` directly.
 

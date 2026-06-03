@@ -180,6 +180,10 @@ function mergePullData(d){
     if(!DB.creditBanks) DB.creditBanks = [];
     d.creditBanks.forEach(b => { if(!DB.creditBanks.includes(b) && !pendingDeletes.has(b)) DB.creditBanks.push(b); });
   }
+  if((d.incomeTags||[]).length > (DB.incomeTags||[]).length){
+    DB.incomeTags = d.incomeTags;
+    if(d.incomeTagColors) DB.incomeTagColors = d.incomeTagColors;
+  }
 }
 
 loadAppsScriptCode().then(() => init());

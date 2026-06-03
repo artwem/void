@@ -157,6 +157,19 @@ if ('serviceWorker' in navigator) {
   <div class="spacer"></div>
   <div class="chart-wrap">
     <div class="chart-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-size:13px;font-weight:600">Период</span>
+        <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
+          <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
+          <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
+          <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
+        </div>
+      </div>
+      <div id="stats-summary"></div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-card">
       <div class="chart-title">Расходы по месяцам</div>
       <div style="position:relative;height:180px"><canvas id="chartMonthly" role="img" aria-label="Расходы по месяцам">Гистограмма расходов по месяцам</canvas></div>
     </div>
@@ -200,6 +213,13 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div class="chart-title">Расходы по группам</div>
       <div style="position:relative;height:200px"><canvas id="chartGrouped"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-wrap" id="income-tags-chart-wrap">
+    <div class="chart-card">
+      <div class="chart-title">Доходы по тегам</div>
+      <div id="income-tags-chart-empty" style="display:none;text-align:center;padding:24px 0;font-size:13px;color:var(--muted)">Нет данных с тегами</div>
+      <div style="position:relative;height:200px"><canvas id="chartIncomeTags"></canvas></div>
     </div>
   </div>
 
@@ -318,6 +338,11 @@ if ('serviceWorker' in navigator) {
     <div class="setting-row" onclick="openTemplatesManager()">
       <span class="setting-label" style="flex:1">Шаблоны трат</span>
       <span class="setting-value" id="tmpl-count-display"></span>
+      <span class="setting-chevron">›</span>
+    </div>
+    <div class="setting-row" onclick="openIncomeTagsManager()">
+      <span class="setting-label" style="flex:1">Теги доходов</span>
+      <span class="setting-value" id="income-tags-count-display"></span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -487,6 +512,7 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="inc-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Дата</label><input type="date" id="inc-date"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="inc-comment" placeholder="Необязательно"/></div>
+    <div class="fgrp"><label class="flbl">Тег</label><div id="inc-tag-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:2px 0"></div></div>
     <div class="btn-row">
       <button class="btn danger small" id="inc-delete-btn" onclick="deleteIncome()" style="display:none">Удалить</button>
       <button class="btn" onclick="closeModal('modal-income')">Отмена</button>
@@ -673,6 +699,23 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- MODAL: INCOME TAGS MANAGER -->
+<div class="overlay" id="modal-income-tags">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-income-tags')">✕</button>
+    <h2>Теги доходов</h2>
+    <div id="income-tags-list"></div>
+    <div class="fgrp" style="margin-top:12px">
+      <label class="flbl">Добавить тег</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="new-income-tag-input" placeholder="Название тега"/>
+        <button class="btn primary small" onclick="addIncomeTag()">Добавить</button>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn primary" onclick="closeModal('modal-income-tags')">Готово</button></div>
+  </div>
+</div>
+
 <!-- MODAL: SCRIPT VIEWER -->
 <div class="overlay" id="modal-script">
   <div class="sheet" style="position:relative">
@@ -800,6 +843,7 @@ if ('serviceWorker' in navigator) {
 // ─── DATA ───────────────────────────────────────────────────────────
 
 const CAT_COLORS  = ['#378add','#1d9e75','#d85a30','#ba7517','#d4537e','#639922','#534ab7','#e67e22','#185fa5','#993556','#3b6d11','#a32d2d','#0f6e56','#8e44ad','#993c1d','#7f8c8d'];
+const INCOME_TAG_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#378add','#639922'];
 const GOAL_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#7f8c8d'];
 const TEMPLATE_COLORS = [
   '#185fa5','#378add','#5dade2','#2e86ab',
@@ -842,6 +886,8 @@ let DB = {
   creditBanks: [],
   limits: {},  // key: "YYYY-MM", value: array of limits per category
   syncUrl: '',
+  incomeTags: [],
+  incomeTagColors: {},
   _lastSyncedLimits: {}
 };
 
@@ -888,6 +934,8 @@ function loadDB(){
   if(!DB.goals) DB.goals = [];
   if(!DB.assets) DB.assets = [];
   if(!DB.templates) DB.templates = [];
+  if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
+  if(!DB.incomeTagColors) DB.incomeTagColors = {};
   // First run — no data at all: populate with defaults so app isn't empty
   if(!saved && !DB.categories.length){
     DB.categories = [...DEFAULT_CATS];
@@ -1724,6 +1772,35 @@ function renderDenomWidget(){
 // ─── INCOME ─────────────────────────────────────────────────────────
 let currentIncomeMonth = null;
 let editingIncomeId = null;
+let _selectedIncomeTag = null;
+
+function getIncomeTagColor(tagName){
+  const idx = (DB.incomeTags||[]).indexOf(tagName);
+  if(idx < 0) return '#7f8c8d';
+  return (DB.incomeTagColors && DB.incomeTagColors[idx]) || INCOME_TAG_COLORS[idx % INCOME_TAG_COLORS.length];
+}
+
+function renderIncomeTagsInModal(){
+  const wrap = document.getElementById('inc-tag-chips');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  const tags = DB.incomeTags || [];
+  const noTag = document.createElement('span');
+  noTag.textContent = 'Без тега';
+  const noSel = !_selectedIncomeTag;
+  noTag.style.cssText = 'display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:13px;cursor:pointer;user-select:none;border:1.5px solid '+(noSel?'var(--accent)':'var(--border2)')+';color:'+(noSel?'var(--accent)':'var(--muted)');
+  noTag.onclick = () => { _selectedIncomeTag = null; renderIncomeTagsInModal(); };
+  wrap.appendChild(noTag);
+  tags.forEach(tag => {
+    const active = _selectedIncomeTag === tag;
+    const color = getIncomeTagColor(tag);
+    const chip = document.createElement('span');
+    chip.textContent = tag;
+    chip.style.cssText = 'display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:13px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
+    chip.onclick = () => { _selectedIncomeTag = tag; renderIncomeTagsInModal(); };
+    wrap.appendChild(chip);
+  });
+}
 
 
 
@@ -1760,10 +1837,13 @@ function renderIncome(){
     const row = document.createElement('div');
     row.className = 'setting-row';
     row.style.cursor = 'pointer';
+    const tagColor = inc.tag ? getIncomeTagColor(inc.tag) : '';
+    const tagBadge = inc.tag ? `<span style="display:inline-block;font-size:10px;padding:1px 8px;border-radius:10px;background:${tagColor}18;color:${tagColor};border:1px solid ${tagColor}44;margin-top:3px">${esc(inc.tag)}</span>` : '';
     row.innerHTML = `
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:500">${esc(inc.source)}</div>
         <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
+        ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmt(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
@@ -1795,12 +1875,14 @@ function changeIncomeMonth(d){
 
 function openAddIncome(){
   editingIncomeId = null;
+  _selectedIncomeTag = null;
   document.getElementById('income-modal-title').textContent = 'Добавить доход';
   document.getElementById('inc-delete-btn').style.display = 'none';
   document.getElementById('inc-source').value = '';
   setMoneyInput('inc-amount','');
   document.getElementById('inc-date').value = today();
   document.getElementById('inc-comment').value = '';
+  renderIncomeTagsInModal();
   openModal('modal-income');
 }
 
@@ -1809,12 +1891,14 @@ function editIncome(id, e){
   const inc = (DB.incomes||[]).find(i => i.id === id);
   if(!inc) return;
   editingIncomeId = id;
+  _selectedIncomeTag = inc.tag || null;
   document.getElementById('income-modal-title').textContent = 'Редактировать доход';
   document.getElementById('inc-delete-btn').style.display = 'block';
   document.getElementById('inc-source').value = inc.source;
   setMoneyInput('inc-amount', inc.amount);
   document.getElementById('inc-date').value = inc.date;
   document.getElementById('inc-comment').value = inc.comment || '';
+  renderIncomeTagsInModal();
   openModal('modal-income');
 }
 
@@ -1823,7 +1907,7 @@ function saveIncome(){
   const amt = parseMoney(document.getElementById('inc-amount').value);
   if(!source){ toast('Укажите источник'); return; }
   if(!amt || amt <= 0){ toast('Введите сумму'); return; }
-  const obj = { source, amount: amt, date: document.getElementById('inc-date').value, comment: document.getElementById('inc-comment').value };
+  const obj = { source, amount: amt, date: document.getElementById('inc-date').value, comment: document.getElementById('inc-comment').value, tag: _selectedIncomeTag || '' };
   if(!DB.incomes) DB.incomes = [];
   if(editingIncomeId){
     const idx = DB.incomes.findIndex(i => i.id === editingIncomeId);
@@ -1865,13 +1949,77 @@ function setTheme(val){
   renderSettings();
 }
 
+// ─── STATS SUMMARY ──────────────────────────────────────────────────
+function _renderStatsSummary(lastN){
+  const totalExp = lastN.reduce((s,x)=>s+x.totalExp,0);
+  const totalInc = lastN.reduce((s,x)=>s+x.totalInc,0);
+  const balance  = totalInc - totalExp;
+
+  const catTotals = DB.categories.map((name,i)=>({
+    name, color: getCatColor(i),
+    total: lastN.reduce((s,x)=>s+x.exps.filter(e=>e.cat===i).reduce((ss,e)=>ss+e.amount,0),0)
+  })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+
+  const tagTotals = (DB.incomeTags||[]).map((tag,ti)=>({
+    tag, color: getIncomeTagColor(tag),
+    total: lastN.reduce((s,x)=>s+(DB.incomes||[])
+      .filter(inc=>inc.date&&inc.date.startsWith(monthKey(x.y,x.m))&&inc.tag===tag)
+      .reduce((ss,inc)=>ss+inc.amount,0),0)
+  })).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
+
+  const maxCat = catTotals[0]?.total || 1;
+  const maxTag = tagTotals[0]?.total || 1;
+
+  const barRow = (color,name,total,max) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
+    +`<div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>`
+    +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>`
+    +`<div style="width:70px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
+    +  `<div style="width:${Math.round(total/max*100)}%;height:100%;background:${color};border-radius:3px"></div>`
+    +`</div>`
+    +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:62px;text-align:right">${fmt(total)}</div>`
+    +`</div>`;
+
+  const el = document.getElementById('stats-summary');
+  if(!el) return;
+  el.innerHTML =
+    `<div style="display:flex;gap:0;margin-bottom:16px;border:0.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden">`
+    +[
+      {label:'Расходы', val:totalExp, color:'var(--red,#d85a30)'},
+      {label:'Доходы',  val:totalInc, color:'var(--green,#1d9e75)'},
+      {label:'Баланс',  val:balance,  color:balance>=0?'var(--green,#1d9e75)':'var(--red,#d85a30)', abs:true}
+    ].map((s,si)=>
+      `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
+      +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
+      +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmt(s.abs?Math.abs(s.val):s.val)}</div>`
+      +`</div>`
+    ).join('')
+    +`</div>`
+    +(catTotals.length?
+      `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Расходы по категориям</div>`
+      +catTotals.slice(0,7).map(c=>barRow(c.color,c.name,c.total,maxCat)).join('')
+    :'')
+    +(tagTotals.length?
+      `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 8px">Доходы по тегам</div>`
+      +tagTotals.map(t=>barRow(t.color,t.tag,t.total,maxTag)).join('')
+    :'');
+}
+
 // ─── RENDER: STATS ──────────────────────────────────────────────────
+let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
+
+function setStatsPeriod(n){
+  statsPeriod = n;
+  sessionStorage.setItem('statsPeriod', n);
+  renderStats();
+}
+
 function renderStats(){
   const now = new Date();
 
-  // Build last 6 months data
-  const last6 = [];
-  for(let i=5;i>=0;i--){
+  // Build lastN months data
+  const lastN = [];
+  for(let i=statsPeriod-1;i>=0;i--){
     let m=now.getMonth()-i, y=now.getFullYear();
     if(m<0){m+=12;y--;}
     const exps = getMonthExpenses(y,m);
@@ -1879,8 +2027,21 @@ function renderStats(){
     const totalInc = (DB.incomes||[])
       .filter(inc=>inc.date && inc.date.startsWith(monthKey(y,m)))
       .reduce((s,inc)=>s+inc.amount,0);
-    last6.push({label:SHORT_MONTHS[m]+"'"+String(y).slice(2), totalExp, totalInc, y, m, exps});
+    lastN.push({label:SHORT_MONTHS[m]+(statsPeriod>6?"'"+String(y).slice(2):''), totalExp, totalInc, y, m, exps});
   }
+
+  // Update period selector active state
+  [6,12,24].forEach(n => {
+    const el = document.getElementById('sp-'+n);
+    if(!el) return;
+    const active = n === statsPeriod;
+    el.style.background = active ? 'rgba(128,128,128,0.18)' : '';
+    el.style.color = active ? 'var(--text)' : '#888';
+    el.style.fontWeight = active ? '600' : '';
+  });
+
+  // ── Сводка за период ──────────────────────────────────────────────
+  _renderStatsSummary(lastN);
 
   document.getElementById('pie-month-label').textContent = MONTHS_RU[currentMonth.m]+' '+currentMonth.y;
 
@@ -1889,10 +2050,10 @@ function renderStats(){
   charts.monthly = new Chart(document.getElementById('chartMonthly'),{
     type:'bar',
     data:{
-      labels: last6.map(x=>x.label),
+      labels: lastN.map(x=>x.label),
       datasets:[{
-        data: last6.map(x=>Math.round(x.totalExp)),
-        backgroundColor: last6.map((_,i)=>i===5?'#185fa5':'rgba(128,128,128,0.35)'),
+        data: lastN.map(x=>Math.round(x.totalExp)),
+        backgroundColor: lastN.map((_,i)=>i===lastN.length-1?'#185fa5':'rgba(128,128,128,0.35)'),
         borderRadius:5, borderSkipped:false
       }]
     },
@@ -2128,17 +2289,17 @@ function renderStats(){
   charts.incVsExp = new Chart(document.getElementById('chartIncomeVsExp'),{
     type:'bar',
     data:{
-      labels: last6.map(x=>x.label),
+      labels: lastN.map(x=>x.label),
       datasets:[
         {
           label:'Доходы',
-          data: last6.map(x=>Math.round(x.totalInc)),
+          data: lastN.map(x=>Math.round(x.totalInc)),
           backgroundColor:'rgba(29,158,117,0.7)',
           borderRadius:4, borderSkipped:false, order:2
         },
         {
           label:'Расходы',
-          data: last6.map(x=>Math.round(x.totalExp)),
+          data: lastN.map(x=>Math.round(x.totalExp)),
           backgroundColor:'rgba(216,90,48,0.7)',
           borderRadius:4, borderSkipped:false, order:1
         }
@@ -2172,7 +2333,7 @@ function renderStats(){
 
   // Dataset per group — stacked bars
   const groupDatasets = groups.map(g=>{
-    const data = last6.map(month=>{
+    const data = lastN.map(month=>{
       return Math.round(
         g.indices.reduce((s,ci)=>{
           return s + month.exps.filter(e=>e.cat===ci).reduce((ss,e)=>ss+e.amount,0);
@@ -2195,7 +2356,7 @@ function renderStats(){
   }).filter(ds=>ds.data.some(v=>v>0)); // skip empty groups
 
   // ── 6. Норма накопления ────────────────────────────────────────────
-  const savingsRates = last6.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
+  const savingsRates = lastN.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
   const validRates = savingsRates.filter(v=>v!==null);
   const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
   const avgEl = document.getElementById('savings-rate-avg');
@@ -2209,7 +2370,7 @@ function renderStats(){
   charts.savingsRate = new Chart(document.getElementById('chartSavingsRate'),{
     type:'bar',
     data:{
-      labels: last6.map(x=>x.label),
+      labels: lastN.map(x=>x.label),
       datasets:[{
         data: savingsRates.map(v=>v===null?0:v),
         backgroundColor: savingsRates.map(v=>v===null?'rgba(128,128,128,0.2)':v>=0?'rgba(29,158,117,0.7)':'rgba(216,90,48,0.7)'),
@@ -2233,7 +2394,7 @@ function renderStats(){
   if(groupDatasets.length){
     charts.grouped = new Chart(document.getElementById('chartGrouped'),{
       type:'bar',
-      data:{labels:last6.map(x=>x.label), datasets:groupDatasets},
+      data:{labels:lastN.map(x=>x.label), datasets:groupDatasets},
       options:{
         responsive:true, maintainAspectRatio:false,
         plugins:{
@@ -2253,6 +2414,53 @@ function renderStats(){
         }
       }
     });
+  }
+
+  // ── 7. Доходы по тегам ────────────────────────────────────────────
+  if(charts.incomeTags) charts.incomeTags.destroy();
+  {
+    const tags = DB.incomeTags || [];
+    const tagDatasets = tags.map((tag, ti) => {
+      const color = getIncomeTagColor(tag);
+      const data = lastN.map(x => Math.round(
+        (DB.incomes||[]).filter(inc => inc.date && inc.date.startsWith(monthKey(x.y,x.m)) && inc.tag === tag)
+          .reduce((s,inc) => s+inc.amount, 0)
+      ));
+      return {label:tag, data, backgroundColor:color, stack:'income', borderRadius:0, borderSkipped:false};
+    });
+    // "Без тега" bucket
+    const noTagData = lastN.map(x => Math.round(
+      (DB.incomes||[]).filter(inc => inc.date && inc.date.startsWith(monthKey(x.y,x.m)) && !inc.tag)
+        .reduce((s,inc) => s+inc.amount, 0)
+    ));
+    if(noTagData.some(v=>v>0)){
+      tagDatasets.push({label:'Без тега', data:noTagData, backgroundColor:'rgba(128,128,128,0.35)', stack:'income', borderRadius:0, borderSkipped:false});
+    }
+    const active = tagDatasets.filter(ds => ds.data.some(v=>v>0));
+    const emptyEl = document.getElementById('income-tags-chart-empty');
+    const canvasEl = document.getElementById('chartIncomeTags');
+    if(active.length){
+      if(emptyEl) emptyEl.style.display = 'none';
+      if(canvasEl) canvasEl.style.display = 'block';
+      charts.incomeTags = new Chart(canvasEl, {
+        type:'bar',
+        data:{labels:lastN.map(x=>x.label), datasets:active},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{display:true, labels:{color:'#888', font:{size:9}, boxWidth:8, padding:6}},
+            tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmt(v.raw)}}
+          },
+          scales:{
+            x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
+            y:{stacked:true, grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+          }
+        }
+      });
+    } else {
+      if(emptyEl) emptyEl.style.display = 'block';
+      if(canvasEl) canvasEl.style.display = 'none';
+    }
   }
 }
 
@@ -2814,6 +3022,8 @@ function renderSettings(){
   if(catCount) catCount.textContent = DB.categories.length + ' шт.';
   const tmplCount = document.getElementById('tmpl-count-display');
   if(tmplCount) tmplCount.textContent = (DB.templates||[]).length + ' шт.';
+  const incTagsCount = document.getElementById('income-tags-count-display');
+  if(incTagsCount) incTagsCount.textContent = (DB.incomeTags||[]).length + ' шт.';
   ['drive-save-row','drive-restore-row'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = hasSyncUrl ? 'flex' : 'none';
@@ -3116,6 +3326,101 @@ function removeCategory(i){
   saveDB();
   renderCatManager();
   toast('Удалено: ' + name);
+}
+
+// ─── INCOME TAGS MANAGER ────────────────────────────────────────────
+function openIncomeTagsManager(){
+  renderIncomeTagsList();
+  openModal('modal-income-tags');
+}
+
+function renderIncomeTagsList(){
+  const tags = DB.incomeTags || [];
+  const list = document.getElementById('income-tags-list');
+  if(!list) return;
+  list.innerHTML = tags.map((tag, i) => {
+    const color = getIncomeTagColor(tag);
+    return '<div class="setting-row" style="cursor:default;gap:6px" id="inc-tag-row-'+i+'">'
+      + '<input type="color" value="'+color+'"'
+      + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
+      + ' onchange="setIncomeTagColor('+i+',this.value)" title="Цвет тега"/>'
+      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</span>'
+      + '<button class="btn small icon-btn" onclick="startEditIncomeTag('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      + '<button class="btn danger small" onclick="deleteIncomeTag('+i+')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function setIncomeTagColor(i, color){
+  if(!DB.incomeTagColors) DB.incomeTagColors = {};
+  DB.incomeTagColors[i] = color;
+  saveDB();
+  renderIncomeTagsList();
+}
+
+function startEditIncomeTag(i){
+  const row = document.getElementById('inc-tag-row-'+i);
+  if(!row) return;
+  const tag = DB.incomeTags[i];
+  row.innerHTML = '';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = tag;
+  inp.style.cssText = 'flex:1;font-size:14px;padding:4px 8px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--bg);color:var(--text)';
+  const btnSave = document.createElement('button');
+  btnSave.className = 'btn primary small';
+  btnSave.textContent = 'OK';
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'btn small';
+  btnCancel.textContent = 'Отмена';
+  const save = () => {
+    const newName = inp.value.trim();
+    if(!newName){ toast('Введите название'); return; }
+    if(newName !== tag && DB.incomeTags.includes(newName)){ toast('Уже существует'); return; }
+    // Update tag on all income entries
+    (DB.incomes||[]).forEach(inc => { if(inc.tag === tag) inc.tag = newName; });
+    DB.incomeTags[i] = newName;
+    saveDB();
+    renderIncomeTagsList();
+  };
+  btnSave.onclick = save;
+  inp.onkeydown = e => { if(e.key==='Enter') save(); if(e.key==='Escape') renderIncomeTagsList(); };
+  btnCancel.onclick = renderIncomeTagsList;
+  row.appendChild(inp); row.appendChild(btnSave); row.appendChild(btnCancel);
+  inp.focus(); inp.select();
+}
+
+function addIncomeTag(){
+  const inp = document.getElementById('new-income-tag-input');
+  const name = inp.value.trim();
+  if(!name){ toast('Введите название'); return; }
+  if(!DB.incomeTags) DB.incomeTags = [];
+  if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
+  DB.incomeTags.push(name);
+  saveDB();
+  inp.value = '';
+  renderIncomeTagsList();
+  renderSettings();
+  toast('Тег добавлен: ' + name);
+}
+
+function deleteIncomeTag(i){
+  const tag = (DB.incomeTags||[])[i];
+  if(!tag) return;
+  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag) inc.tag = ''; });
+  DB.incomeTags.splice(i, 1);
+  // Remap color indices: shift keys above i down by 1
+  const newColors = {};
+  Object.entries(DB.incomeTagColors||{}).forEach(([k,v]) => {
+    const ki = parseInt(k);
+    if(ki < i) newColors[ki] = v;
+    else if(ki > i) newColors[ki-1] = v;
+  });
+  DB.incomeTagColors = newColors;
+  saveDB();
+  renderIncomeTagsList();
+  renderSettings();
+  toast('Удалено: ' + tag);
 }
 
 // ─── EXPORT CSV ─────────────────────────────────────────────────────
@@ -4143,6 +4448,10 @@ function mergePullData(d){
   }
   if((d.banks||[]).length > (DB.banks||[]).length) DB.banks = d.banks;
   if((d.creditBanks||[]).length > (DB.creditBanks||[]).length) DB.creditBanks = d.creditBanks;
+  if((d.incomeTags||[]).length > (DB.incomeTags||[]).length){
+    DB.incomeTags = d.incomeTags;
+    if(d.incomeTagColors) DB.incomeTagColors = d.incomeTagColors;
+  }
 
   // Limits: remote wins per month — safe because push always runs before pull
   if(d.limits){
