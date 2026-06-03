@@ -99,8 +99,10 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
 
+**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates` stamps `updatedAt: Date.now()`. Deletes are **soft** — set `_deleted: true` (amount zeroed) instead of removing, so the deletion propagates on sync. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are **no longer stripped before push** — they must reach Drive for other devices to learn of the delete.
+
 **Merge logic (`mergePullData`):**
-- `expenses`, `incomes`, `assets`, `goals`, `templates`: union by `id` — remote items whose `id` isn't already local are appended
+- `expenses`, `incomes`, `assets`, `goals`, `templates`: **last-write-wins by `id`** — for each id keep the record with the greater `updatedAt`; ties go to remote (safe because push precedes pull on startup). This propagates edits and deletes, not just inserts.
 - `categories`/`catColors`, `banks`, `creditBanks`, `incomeTags`/`incomeTagColors`: remote wins if it has more entries (additive — another device added items)
 - `limits`: remote wins per month-key (safe because push always precedes pull on startup)
 
@@ -127,7 +129,8 @@ Cache-first for assets, network-first for HTML. The `V` timestamp at the top of 
 - `monthKey(y, m)` — `YYYY-MM` key used in `limits`
 - `getCatColor(idx)` — hex color for category (from `DB.catColors` or `CAT_COLORS` palette)
 - `getCatSpent(idx, y, m)` — sum of non-deleted expenses for category in month
-- `_getCurrentAssetsTotal()` — sum of each bank's most recent non-deleted value (debit − credit)
+- `_getCurrentAssetsTotal()` / `renderAssets()` total — sum of every bank's value **on the single most-recent snapshot date** (debit − credit). To keep this correct, asset entry uses a per-date snapshot (`openAssetSnapshot` → `openEditAssetDate(date, carryForward=true)`) that pre-fills all banks by **carrying forward** each bank's last known value (`_lastKnownAmount`), flagged "перенесено — проверьте". Editing a historical date from the history table passes `carryForward=false` (only that date's actual records).
+- `_makeSwipeable(row, onDelete)` — swipe-left-to-delete on day expense rows; `deleteExpenseById(id)` soft-deletes
 - `openModal(id)` / `closeModal(id)` — show/hide `.overlay` modals
 - `toast(msg)` — 2.2s bottom toast
 - `uid()` — generates short alphanumeric ID; use for all new entity IDs

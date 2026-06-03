@@ -240,7 +240,7 @@ if ('serviceWorker' in navigator) {
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 0 6px">История</div>
     <table id="assets-history-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
   </div>
-  <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span class="sec-action" onclick="openBankManager()">Управлять</span></div>
+  <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
   <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
   <div id="goals-list" style="padding:0 16px 8px"></div>
@@ -637,6 +637,7 @@ if ('serviceWorker' in navigator) {
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-asset-edit')">✕</button>
     <h2 id="asset-edit-title">Редактировать</h2>
+    <div id="asset-edit-note" style="display:none;font-size:12px;color:var(--muted);background:var(--hint-bg,rgba(128,128,128,.1));padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px">↻ Значения перенесены с прошлой даты — проверьте и поправьте, где изменилось.</div>
     <div id="asset-edit-rows" style="margin-bottom:8px"></div>
     <div class="btn-row">
       <button class="btn danger small" id="asset-edit-delete-btn" onclick="deleteAssetDateConfirm()">Удалить дату</button>
@@ -802,7 +803,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.7.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.8.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -943,6 +944,11 @@ function loadDB(){
     const k = monthKey(new Date().getFullYear(), new Date().getMonth());
     DB.limits[k]  = [...DEFAULT_LIMITS];
   }
+  // Purge tombstones older than 90 days — even slow devices have synced by then
+  const _cut = Date.now() - 90*24*3600*1000;
+  ['expenses','incomes','assets','goals','templates'].forEach(k => {
+    if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && (it.updatedAt||0) < _cut));
+  });
 }
 
 function saveDB(){
@@ -1161,8 +1167,9 @@ function renderBudget(){
   list.innerHTML = '';
   let totalSpent=0, totalLimit=0;
 
-  // Pre-calculate spent per category
-  const spentArr = DB.categories.map((_,i) => getCatSpent(i,y,m));
+  // Pre-calculate spent per category — single pass over month's expenses
+  const spentArr = DB.categories.map(()=>0);
+  getMonthExpenses(y,m).forEach(e => { if(e.cat>=0 && e.cat<spentArr.length) spentArr[e.cat]+=e.amount; });
   DB.categories.forEach((_,i) => { totalSpent += spentArr[i]; totalLimit += limits[i]||0; });
 
   // Group by color — same color = same group
@@ -1341,14 +1348,10 @@ function saveExpense(){
   if(editingExpenseId){
     const idx = DB.expenses.findIndex(e=>e.id===editingExpenseId);
     if(idx>=0){
-      const cur = DB.expenses[idx];
-      if(cur.cat !== cat || cur.date !== date){
-        DB.expenses.push({...cur, amount:0, _deleted:true, id:'gs_'+cur.cat+'_'+cur.date.replace(/-/g,'')});
-      }
-      DB.expenses[idx] = {...cur, cat, amount: amt, date, comment};
+      DB.expenses[idx] = {...DB.expenses[idx], cat, amount: amt, date, comment, _deleted:false, updatedAt:Date.now()};
     }
   } else {
-    DB.expenses.push({ id:uid(), cat, amount:amt, date, comment });
+    DB.expenses.push({ id:uid(), cat, amount:amt, date, comment, updatedAt:Date.now() });
   }
   saveDB();
   closeModal('modal-expense');
@@ -1367,6 +1370,7 @@ function deleteExpense(){
     exp.amount = 0;
     exp.comment = '';
     exp._deleted = true;
+    exp.updatedAt = Date.now();
     saveDB();
   }
   closeModal('modal-expense');
@@ -1530,6 +1534,7 @@ function renderDay(){
           <div class="entry-amount">${fmt(e.amount)}</div>
           <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
         `;
+        _makeSwipeable(row, ()=>deleteExpenseById(e.id));
         list.appendChild(row);
       });
     } else {
@@ -1546,6 +1551,7 @@ function renderDay(){
         <div class="entry-amount">${fmt(e.amount)}</div>
         <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
       `;
+      _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
     }
   });
@@ -1591,12 +1597,13 @@ function renderExpenseSearch(query){
     row.innerHTML = `
       <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
       <div class="entry-info">
-        <div class="entry-cat">${catName}</div>
+        <div class="entry-cat">${esc(catName)}</div>
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmt(e.amount)}</div>
       <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
     `;
+    _makeSwipeable(row, ()=>deleteExpenseById(e.id));
     list.appendChild(row);
   });
 }
@@ -1612,7 +1619,7 @@ function selectTemplateColor(c){ _selectedTemplateColor=c; _renderTemplateColorP
 function renderTemplateChips(){
   const wrap = document.getElementById('template-chips');
   if(!wrap) return;
-  const tmpls = DB.templates||[];
+  const tmpls = (DB.templates||[]).filter(t=>!t._deleted);
   if(!tmpls.length){ wrap.style.display='none'; return; }
   wrap.style.display='flex';
   wrap.innerHTML = tmpls.map(t => {
@@ -1631,7 +1638,7 @@ function addFromTemplate(id,btn){
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
   const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
-  DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote});
+  DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote, updatedAt:Date.now()});
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
   toast(esc(t.name)+' добавлено');
@@ -1674,9 +1681,9 @@ function saveTemplate(){
   if(!DB.templates) DB.templates=[];
   if(_editingTemplateId){
     const t = DB.templates.find(x=>x.id===_editingTemplateId);
-    if(t){ t.name=name; t.cat=cat; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; }
+    if(t){ t.name=name; t.cat=cat; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; t._deleted=false; t.updatedAt=Date.now(); }
   } else {
-    DB.templates.push({id:uid(),name,cat,amount:amt,comment,color:_selectedTemplateColor});
+    DB.templates.push({id:uid(),name,cat,amount:amt,comment,color:_selectedTemplateColor,updatedAt:Date.now()});
   }
   saveDB();
   closeModal('modal-template');
@@ -1688,7 +1695,8 @@ function saveTemplate(){
 
 function deleteTemplate(){
   if(!_editingTemplateId) return;
-  DB.templates = (DB.templates||[]).filter(x=>x.id!==_editingTemplateId);
+  const t = (DB.templates||[]).find(x=>x.id===_editingTemplateId);
+  if(t){ t._deleted=true; t.updatedAt=Date.now(); }
   saveDB();
   closeModal('modal-template');
   renderTemplateSettings();
@@ -1700,7 +1708,7 @@ function deleteTemplate(){
 function renderTemplateSettings(){
   const list = document.getElementById('templates-settings-list');
   if(!list) return;
-  const tmpls = DB.templates||[];
+  const tmpls = (DB.templates||[]).filter(t=>!t._deleted);
   if(!tmpls.length){
     list.innerHTML='<div style="padding:10px 16px;font-size:13px;color:var(--muted)">Нет шаблонов</div>';
     return;
@@ -1725,6 +1733,27 @@ let _denomAmount = 0;
 
 function vibe(ms){ if(navigator.vibrate) navigator.vibrate(ms||25); }
 function flash(el){ if(!el) return; el.classList.remove('tap-flash'); void el.offsetWidth; el.classList.add('tap-flash'); el.addEventListener('animationend',()=>el.classList.remove('tap-flash'),{once:true}); }
+
+// Свайп влево по строке → удалить. Вертикальный скролл не блокируется.
+function _makeSwipeable(row, onDelete){
+  let x0=0,y0=0,dx=0,dragging=false,decided=false,horiz=false;
+  row.addEventListener('touchstart',e=>{ if(e.touches.length!==1)return; const t=e.touches[0]; x0=t.clientX;y0=t.clientY;dx=0;dragging=true;decided=false;horiz=false;row.style.transition='none'; },{passive:true});
+  row.addEventListener('touchmove',e=>{ if(!dragging)return; const t=e.touches[0],ddx=t.clientX-x0,ddy=t.clientY-y0;
+    if(!decided){ if(Math.abs(ddx)<6&&Math.abs(ddy)<6)return; decided=true; horiz=Math.abs(ddx)>Math.abs(ddy); if(!horiz){dragging=false;return;} }
+    dx=ddx; if(dx>0)dx=0; if(dx<-140)dx=-140; row.style.transform='translateX('+dx+'px)'; row.style.background = dx<-60?'var(--red-bg)':''; },{passive:true});
+  row.addEventListener('touchend',()=>{ if(!dragging)return; dragging=false; row.style.transition='transform .2s ease';
+    if(dx<-80){ vibe(40); row.style.transform='translateX(-110%)'; setTimeout(onDelete,160); }
+    else { row.style.transform='translateX(0)'; row.style.background=''; } });
+}
+
+function deleteExpenseById(id){
+  const e = DB.expenses.find(x=>x.id===id);
+  if(!e) return;
+  e.amount=0; e.comment=''; e._deleted=true; e.updatedAt=Date.now();
+  saveDB();
+  if(currentPage==='day') renderDay(); else renderBudget();
+  toast('Удалено');
+}
 
 function denomAdd(n,btn){
   vibe();
@@ -1751,7 +1780,7 @@ function denomSave(){
   if(isNaN(cat)) return;
   const comment = (document.getElementById('denom-comment').value || '').trim();
   const date = currentDay;
-  DB.expenses.push({id: uid(), cat, amount: _denomAmount, date, comment});
+  DB.expenses.push({id: uid(), cat, amount: _denomAmount, date, comment, updatedAt:Date.now()});
   saveDB();
   checkBudgetNotifications();
   toast(fmt(_denomAmount) + ' добавлено');
@@ -1814,7 +1843,7 @@ function renderIncome(){
   syncIncomeMonthInput();
 
   const k = monthKey(y, m);
-  const incomes = (DB.incomes||[]).filter(i => i.date.startsWith(k));
+  const incomes = (DB.incomes||[]).filter(i => i.date.startsWith(k) && !i._deleted);
   const totalIncome = incomes.reduce((s,i) => s+i.amount, 0);
   const totalExpenses = getMonthExpenses(y, m).reduce((s,e) => s+e.amount, 0);
   const balance = totalIncome - totalExpenses;
@@ -1907,7 +1936,7 @@ function saveIncome(){
   const amt = parseMoney(document.getElementById('inc-amount').value);
   if(!source){ toast('Укажите источник'); return; }
   if(!amt || amt <= 0){ toast('Введите сумму'); return; }
-  const obj = { source, amount: amt, date: document.getElementById('inc-date').value, comment: document.getElementById('inc-comment').value, tag: _selectedIncomeTag || '' };
+  const obj = { source, amount: amt, date: document.getElementById('inc-date').value, comment: document.getElementById('inc-comment').value, tag: _selectedIncomeTag || '', _deleted:false, updatedAt:Date.now() };
   if(!DB.incomes) DB.incomes = [];
   if(editingIncomeId){
     const idx = DB.incomes.findIndex(i => i.id === editingIncomeId);
@@ -1924,7 +1953,8 @@ function saveIncome(){
 
 function deleteIncome(){
   if(!editingIncomeId) return;
-  DB.incomes = (DB.incomes||[]).filter(i => i.id !== editingIncomeId);
+  const inc = (DB.incomes||[]).find(i => i.id === editingIncomeId);
+  if(inc){ inc._deleted=true; inc.amount=0; inc.updatedAt=Date.now(); }
   saveDB();
   closeModal('modal-income');
   renderIncome();
@@ -1940,6 +1970,15 @@ function applyTheme(){
   const theme = DB.theme || 'auto';
   document.documentElement.classList.remove(...THEMES);
   if(theme !== 'auto') document.documentElement.classList.add(theme);
+  // Sync iOS status-bar / browser chrome to the actual background colour
+  requestAnimationFrame(()=>{
+    try{
+      const bg = getComputedStyle(document.body).backgroundColor;
+      let m = document.querySelector('meta[name="theme-color"]');
+      if(!m){ m=document.createElement('meta'); m.name='theme-color'; document.head.appendChild(m); }
+      if(bg) m.content = bg;
+    }catch(_){}
+  });
 }
 
 function setTheme(val){
@@ -2686,7 +2725,7 @@ function renderAssets(){
       const editBtn = document.createElement('button');
       editBtn.className = 'btn small icon-btn';
       editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-      editBtn.addEventListener('click', () => openAssetModal(name));
+      editBtn.addEventListener('click', () => openAssetSnapshot());
       row.appendChild(namePart);
       row.appendChild(amtSpan);
       row.appendChild(editBtn);
@@ -2744,7 +2783,7 @@ let _selectedGoalColor = GOAL_COLORS[0];
 function renderGoals(){
   const list = document.getElementById('goals-list');
   if(!list) return;
-  const goals = DB.goals || [];
+  const goals = (DB.goals || []).filter(g=>!g._deleted);
   if(!goals.length){
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет целей — нажмите + чтобы добавить</p>';
     return;
@@ -2817,9 +2856,9 @@ function saveGoal(){
   if(!DB.goals) DB.goals=[];
   if(_editingGoalId){
     const idx=DB.goals.findIndex(g=>g.id===_editingGoalId);
-    if(idx>=0) DB.goals[idx]={...DB.goals[idx],name,target,saved,deadline,color:_selectedGoalColor};
+    if(idx>=0) DB.goals[idx]={...DB.goals[idx],name,target,saved,deadline,color:_selectedGoalColor,_deleted:false,updatedAt:Date.now()};
   } else {
-    DB.goals.push({id:uid(),name,target,saved,deadline,color:_selectedGoalColor});
+    DB.goals.push({id:uid(),name,target,saved,deadline,color:_selectedGoalColor,updatedAt:Date.now()});
   }
   saveDB(); closeModal('modal-goal');
   renderGoals();
@@ -2828,7 +2867,8 @@ function saveGoal(){
 
 function deleteGoal(){
   if(!_editingGoalId) return;
-  DB.goals=(DB.goals||[]).filter(g=>g.id!==_editingGoalId);
+  const g=(DB.goals||[]).find(x=>x.id===_editingGoalId);
+  if(g){ g._deleted=true; g.updatedAt=Date.now(); }
   saveDB(); closeModal('modal-goal');
   renderGoals();
   toast('Цель удалена');
@@ -2858,7 +2898,7 @@ function saveAsset(){
   const bankName = allBanks[bankIdx] || '';
   if(!bankName){toast('Банк не найден'); return;}
   // Store bankName as primary key — bank index can drift after sync
-  DB.assets.push({id:uid(), bank:bankIdx, bankName, amount:amt, date:document.getElementById('asset-date').value});
+  DB.assets.push({id:uid(), bank:bankIdx, bankName, amount:amt, date:document.getElementById('asset-date').value, updatedAt:Date.now()});
   saveDB();
   closeModal('modal-asset');
   renderAssets();
@@ -2989,7 +3029,24 @@ function removeBank(type, i){
 // ─── ASSET RECORD EDIT / DELETE ─────────────────────────────────────
 let _editingAssetDate = null;
 
-function openEditAssetDate(date){
+// Последнее известное значение банка на дату <= beforeDate
+function _lastKnownAmount(bankName, beforeDate){
+  const allBanks = getAllBanks();
+  let best = null;
+  (DB.assets||[]).forEach(a => {
+    if(a._deleted) return;
+    const name = a.bankName || allBanks[a.bank];
+    if(name !== bankName) return;
+    if(beforeDate && a.date > beforeDate) return;
+    if(!best || a.date > best.date) best = a;
+  });
+  return best ? best.amount : undefined;
+}
+
+// Внести снимок активов за сегодня — все банки, перенос прошлых значений
+function openAssetSnapshot(){ openEditAssetDate(today(), true); }
+
+function openEditAssetDate(date, carryForward){
   _editingAssetDate = date;
   const allBanks = getAllBanks();
 
@@ -2997,30 +3054,45 @@ function openEditAssetDate(date){
 
   const container = document.getElementById('asset-edit-rows');
   container.innerHTML = '';
+  const note = document.getElementById('asset-edit-note');
 
-  // Show a row for every known bank — pre-fill from existing records
+  // Существующие записи за эту дату
   const byBank = {};
-  DB.assets.filter(a => a.date === date).forEach(a => { byBank[a.bankName] = a.amount; });
+  DB.assets.filter(a => a.date === date && !a._deleted).forEach(a => { byBank[a.bankName] = a.amount; });
+  let carriedAny = false;
 
   allBanks.forEach((bankName, idx) => {
     const credit = isCredit(bankName);
-    const existing = byBank[bankName];
+    let existing = byBank[bankName];
+    let carried = false;
+    if(existing === undefined && carryForward){
+      const prev = _lastKnownAmount(bankName, date);
+      if(prev !== undefined){ existing = prev; carried = true; carriedAny = true; }
+    }
 
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)';
 
-    const lbl = document.createElement('span');
-    lbl.style.cssText = 'flex:1;font-size:13px;color:'+(credit?'var(--red)':'var(--text)');
-    lbl.textContent = bankName;
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'flex:1;min-width:0';
+    lbl.innerHTML = '<div style="font-size:13px;color:'+(credit?'var(--red)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+bankName+'</div>'
+      + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">↻ перенесено — проверьте</div>' : '');
 
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.inputMode = 'decimal';
     inp.id = 'asset-edit-inp-'+idx;
     inp.placeholder = '0';
-    inp.addEventListener('input', ()=>formatMoneyInput(inp));
     if(existing !== undefined){ inp.value = String(Math.round(existing)); formatMoneyInput(inp); }
-    inp.style.cssText = 'width:120px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)';
+    inp.style.cssText = 'width:120px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid '+(carried?'var(--hint)':'var(--border2)')+';border-radius:var(--r-sm);background:var(--card);color:'+(carried?'var(--muted)':'var(--text)');
+    inp.addEventListener('input', ()=>{
+      formatMoneyInput(inp);
+      if(carried){ // пользователь тронул перенесённое — снимаем пометку
+        carried = false;
+        inp.style.color = 'var(--text)'; inp.style.borderColor = 'var(--border2)';
+        const t = lbl.querySelector('.carried-tag'); if(t) t.remove();
+      }
+    });
 
     row.appendChild(lbl);
     row.appendChild(inp);
@@ -3030,6 +3102,7 @@ function openEditAssetDate(date){
   if(!allBanks.length){
     container.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--muted);font-size:13px">Нет счетов. Добавьте банки в разделе «Управлять».</div>';
   }
+  if(note) note.style.display = carriedAny ? 'block' : 'none';
 
   openModal('modal-asset-edit');
 }
@@ -3038,23 +3111,18 @@ function saveAssetEdit(){
   if(!_editingAssetDate) return;
   const allBanks = getAllBanks();
   const date = _editingAssetDate;
+  const now = Date.now();
 
-  // Remove existing records for this date
-  DB.assets = DB.assets.filter(a => a.date !== date);
+  // Старые записи за эту дату → tombstone (чтобы удаление доходило при синхр)
+  DB.assets.forEach(a => { if(a.date === date && !a._deleted){ a._deleted = true; a.amount = 0; a.updatedAt = now; } });
 
-  // Save new values for each bank that has a value
+  // Новое значение для каждого банка с введённой суммой
   allBanks.forEach((bankName, idx) => {
     const inp = document.getElementById('asset-edit-inp-'+idx);
     if(!inp) return;
     const val = parseMoney(inp.value);
-    if(!val || val <= 0) return; // skip empty/zero
-    DB.assets.push({
-      id: uid(),
-      bank: idx,
-      bankName,
-      amount: val,
-      date
-    });
+    if(!val || val <= 0) return; // пропускаем пустые/нулевые
+    DB.assets.push({ id: uid(), bank: idx, bankName, amount: val, date, updatedAt: now });
   });
 
   saveDB();
@@ -3065,7 +3133,8 @@ function saveAssetEdit(){
 
 function deleteAssetDateConfirm(){
   if(!_editingAssetDate) return;
-  DB.assets = DB.assets.filter(a => a.date !== _editingAssetDate);
+  const now = Date.now();
+  DB.assets.forEach(a => { if(a.date === _editingAssetDate && !a._deleted){ a._deleted = true; a.amount = 0; a.updatedAt = now; } });
   saveDB();
   closeModal('modal-asset-edit');
   renderAssets();
@@ -3114,7 +3183,7 @@ function renderSettings(){
   const catCount = document.getElementById('cat-count-display');
   if(catCount) catCount.textContent = DB.categories.length + ' шт.';
   const tmplCount = document.getElementById('tmpl-count-display');
-  if(tmplCount) tmplCount.textContent = (DB.templates||[]).length + ' шт.';
+  if(tmplCount) tmplCount.textContent = (DB.templates||[]).filter(t=>!t._deleted).length + ' шт.';
   const incTagsCount = document.getElementById('income-tags-count-display');
   if(incTagsCount) incTagsCount.textContent = (DB.incomeTags||[]).length + ' шт.';
   ['drive-save-row','drive-restore-row'].forEach(id=>{
@@ -4053,7 +4122,6 @@ async function pushToSheets(){
     const d = await syncRequest('push', buildPayload());
     if(d.error){ setSyncStatus('error'); toast('Ошибка: '+d.error); return; }
     DB._dirty = false;
-    DB.expenses = DB.expenses.filter(e => !e._deleted);
     const ts = new Date().toISOString();
     localStorage.setItem('lastSync', ts);
     sessionStorage.setItem('lastSync', ts);
@@ -4149,7 +4217,6 @@ function startAutoSync(){
       const d = await syncRequest('push', data);
       if(d && !d.error){
         DB._dirty = false;
-        DB.expenses = DB.expenses.filter(e => !e._deleted);
         const ts = new Date().toISOString();
         localStorage.setItem('lastSync', ts);
         sessionStorage.setItem('lastSync', ts);
@@ -4354,109 +4421,56 @@ function calcUpdate(){
   renderCalcTable();
 }
 
-function renderCalcTable(){
+function _buildCalcTable(byMonth){
   const d = window._calcData;
-  if(!d) return;
+  if(!d) return '';
   const {balances, invested, months} = d;
-  const btn = document.getElementById('calc-table-month-btn');
-  const byMonth = !btn || btn.classList.contains('active');
-
-  const table = document.getElementById('calc-table');
+  const pad = byMonth ? '6px 10px' : '8px 10px';
   let html = '<div style="display:flex;gap:6px;padding:0 14px 10px">'
     + '<button class="cu-btn'+(byMonth?' active':'')+'" id="calc-table-month-btn" onclick="setCalcTableView(true)">По месяцам</button>'
     + '<button class="cu-btn'+(byMonth?'':' active')+'" id="calc-table-year-btn" onclick="setCalcTableView(false)">По годам</button>'
-    + '</div>';
-
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-  const colLabel = byMonth ? 'Месяц' : 'Год';
-  html += '<tr style="background:var(--bg)">'
-    + '<th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:500">'+colLabel+'</th>'
-    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Вложено</th>'
-    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Проценты</th>'
-    + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Итого</th>'
-    + '</tr>';
-
-  if(byMonth){
-    for(let mo=1; mo<=months; mo++){
-      const tot = balances[mo-1]||0;
-      const inv = invested[mo-1]||0;
-      const prc = tot - inv;
-      const isLast = mo===months;
-      const label = mo < 12 ? mo+' мес'
-        : (mo%12===0 ? mo/12+' лет' : Math.floor(mo/12)+'г '+mo%12+'м');
-      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
-        + '<td style="padding:6px 10px">'+label+'</td>'
-        + '<td style="padding:6px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
-        + '<td style="padding:6px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
-        + '<td style="padding:6px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
-        + '</tr>';
-    }
-  } else {
-    for(let yr=1; yr<=Math.ceil(months/12); yr++){
-      const mo = Math.min(yr*12, months) - 1;
-      const tot = balances[mo]||0;
-      const inv = invested[mo]||0;
-      const prc = tot - inv;
-      const isLast = yr===Math.ceil(months/12);
-      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
-        + '<td style="padding:8px 10px">'+yr+' год</td>'
-        + '<td style="padding:8px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
-        + '<td style="padding:8px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
-        + '<td style="padding:8px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
-        + '</tr>';
-    }
-  }
-  html += '</table>';
-  table.innerHTML = html;
-}
-
-function setCalcTableView(byMonth){
-  // Re-render table with new view
-  const d = window._calcData;
-  if(!d) return;
-  const {balances, invested, months} = d;
-  const table = document.getElementById('calc-table');
-
-  let html = '<div style="display:flex;gap:6px;padding:0 14px 10px">'
-    + '<button class="cu-btn'+(byMonth?' active':'')+'" id="calc-table-month-btn" onclick="setCalcTableView(true)">По месяцам</button>'
-    + '<button class="cu-btn'+(byMonth?'':' active')+'" id="calc-table-year-btn" onclick="setCalcTableView(false)">По годам</button>'
-    + '</div>';
-
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-  html += '<tr style="background:var(--bg)">'
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<tr style="background:var(--bg)">'
     + '<th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:500">'+(byMonth?'Месяц':'Год')+'</th>'
     + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Вложено</th>'
     + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Проценты</th>'
     + '<th style="padding:7px 10px;text-align:right;color:var(--muted);font-weight:500">Итого</th>'
     + '</tr>';
 
+  const row = (label, tot, inv, isLast) => {
+    const prc = tot - inv;
+    return '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
+      + '<td style="padding:'+pad+'">'+label+'</td>'
+      + '<td style="padding:'+pad+';text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
+      + '<td style="padding:'+pad+';text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
+      + '<td style="padding:'+pad+';text-align:right">'+fmtCalc(tot)+'</td>'
+      + '</tr>';
+  };
+
   if(byMonth){
     for(let mo=1; mo<=months; mo++){
-      const tot = balances[mo-1]||0, inv = invested[mo-1]||0, prc = tot-inv;
-      const isLast = mo===months;
       const label = mo<12 ? mo+' мес' : (mo%12===0 ? mo/12+' лет' : Math.floor(mo/12)+'г '+mo%12+'м');
-      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
-        + '<td style="padding:6px 10px">'+label+'</td>'
-        + '<td style="padding:6px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
-        + '<td style="padding:6px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
-        + '<td style="padding:6px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
-        + '</tr>';
+      html += row(label, balances[mo-1]||0, invested[mo-1]||0, mo===months);
     }
   } else {
-    for(let yr=1; yr<=Math.ceil(months/12); yr++){
-      const mo = Math.min(yr*12,months)-1;
-      const tot = balances[mo]||0, inv = invested[mo]||0, prc = tot-inv;
-      const isLast = yr===Math.ceil(months/12);
-      html += '<tr style="'+(isLast?'font-weight:600;background:var(--bg);':'')+'border-top:0.5px solid var(--border)">'
-        + '<td style="padding:8px 10px">'+yr+' год</td>'
-        + '<td style="padding:8px 10px;text-align:right;color:var(--muted)">'+fmtCalc(inv)+'</td>'
-        + '<td style="padding:8px 10px;text-align:right;color:var(--green)">'+fmtCalc(prc)+'</td>'
-        + '<td style="padding:8px 10px;text-align:right">'+fmtCalc(tot)+'</td>'
-        + '</tr>';
+    const years = Math.ceil(months/12);
+    for(let yr=1; yr<=years; yr++){
+      const mo = Math.min(yr*12, months) - 1;
+      html += row(yr+' год', balances[mo]||0, invested[mo]||0, yr===years);
     }
   }
-  html += '</table>';
-  table.innerHTML = html;
+  return html + '</table>';
+}
+
+function renderCalcTable(){
+  const btn = document.getElementById('calc-table-month-btn');
+  const byMonth = !btn || btn.classList.contains('active');
+  document.getElementById('calc-table').innerHTML = _buildCalcTable(byMonth);
+}
+
+function setCalcTableView(byMonth){
+  document.getElementById('calc-table').innerHTML = _buildCalcTable(byMonth);
 }
 
 function fmtCalc(n){
@@ -4495,7 +4509,6 @@ async function autoSyncOnStart(){
       const pr = await syncRequest('push', buildPayload());
       if(pr && !pr.error){
         DB._dirty = false;
-        DB.expenses = DB.expenses.filter(e => !e._deleted);
         localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
       }
     }
@@ -4526,12 +4539,19 @@ function buildPayload(){
 function mergePullData(d){
   if(!d || d.empty) return;
 
-  // ID-based arrays: union — add remote items not present locally
+  // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
+  // На старте push идёт перед pull, поэтому при равенстве удалённое не теряет локальное.
   ['expenses','incomes','assets','goals','templates'].forEach(key => {
     if(!d[key]) return;
-    const localIds = new Set((DB[key]||[]).map(e => e.id));
-    const incoming = (d[key]||[]).filter(e => e.id && !localIds.has(e.id));
-    DB[key] = [...(DB[key]||[]), ...incoming];
+    const map = new Map();
+    (DB[key]||[]).forEach(it => { if(it && it.id != null) map.set(it.id, it); });
+    (d[key]||[]).forEach(it => {
+      if(!it || it.id == null) return;
+      const cur = map.get(it.id);
+      if(!cur){ map.set(it.id, it); return; }
+      if((it.updatedAt||0) >= (cur.updatedAt||0)) map.set(it.id, it); // свежее (или равное) удалённое выигрывает
+    });
+    DB[key] = [...map.values()];
   });
 
   // Structural: remote wins if it has more entries (another device added cats/banks)
