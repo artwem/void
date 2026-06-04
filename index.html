@@ -196,21 +196,6 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">Доходы vs Расходы</div>
-      <div style="position:relative;height:180px"><canvas id="chartIncomeVsExp"></canvas></div>
-    </div>
-  </div>
-  <div class="chart-wrap">
-    <div class="chart-card">
-      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:baseline">
-        <span>Норма накопления</span>
-        <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
-      </div>
-      <div style="position:relative;height:160px"><canvas id="chartSavingsRate"></canvas></div>
-    </div>
-  </div>
-  <div class="chart-wrap">
-    <div class="chart-card">
       <div class="chart-title">Расходы по группам</div>
       <div style="position:relative;height:200px"><canvas id="chartGrouped"></canvas></div>
     </div>
@@ -234,6 +219,21 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div class="chart-title">Рост накоплений</div>
       <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-card">
+      <div class="chart-title">Доходы vs Расходы</div>
+      <div style="position:relative;height:180px"><canvas id="chartIncomeVsExp"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-card">
+      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:baseline">
+        <span>Норма накопления</span>
+        <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
+      </div>
+      <div style="position:relative;height:160px"><canvas id="chartSavingsRate"></canvas></div>
     </div>
   </div>
   <div id="assets-history-wrap" style="display:none;padding:0 16px 8px">
@@ -803,7 +803,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.8.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.9.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2048,7 +2048,7 @@ function _renderStatsSummary(lastN){
     +[
       {label:'Расходы',   val:totalExp, color:'var(--red,#d85a30)',                                         pct:expPct},
       {label:'Доходы',    val:totalInc, color:'var(--green,#1d9e75)',                                        pct:null},
-      {label:'Накоплено', val:balance,  color:balance>=0?'var(--green,#1d9e75)':'var(--red,#d85a30)', abs:true, pct:savePct}
+      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue,#185fa5)':'var(--red,#d85a30)', abs:true, pct:savePct}
     ].map((s,si)=>
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
@@ -2058,13 +2058,13 @@ function _renderStatsSummary(lastN){
     ).join('')
     +`</div>`;
 
-  // Savings split bar — expenses (red) | накоплено (green)
+  // Savings split bar — expenses (red) | накоплено (blue)
   if(totalInc > 0){
     const eW = Math.min(100, Math.max(0, expPct));
     const sW = Math.max(0, 100 - eW);
     html += `<div style="margin-bottom:${balance>0?'12px':'16px'};border-radius:4px;overflow:hidden;height:6px;display:flex;background:rgba(128,128,128,.12)">`
       +(eW > 0 ? `<div style="width:${eW}%;background:var(--red,#d85a30)"></div>` : '')
-      +(sW > 0 ? `<div style="width:${sW}%;background:${balance>=0?'var(--green,#1d9e75)':'rgba(128,128,128,0.3)'}"></div>` : '')
+      +(sW > 0 ? `<div style="width:${sW}%;background:${balance>=0?'var(--blue,#185fa5)':'rgba(128,128,128,0.3)'}"></div>` : '')
       +`</div>`;
   }
 
@@ -2144,6 +2144,101 @@ function setStatsPeriod(n){
   statsPeriod = n;
   sessionStorage.setItem('statsPeriod', n);
   renderStats();
+}
+
+// Savings analytics — lives on Накопления (Активы) page. Built from income/expense
+// history, so it recomputes its own lastN window (statsPeriod) independently of renderStats.
+function renderSavingsCharts(){
+  const incEl = document.getElementById('chartIncomeVsExp');
+  const rateEl = document.getElementById('chartSavingsRate');
+  if(!incEl && !rateEl) return;
+  const now = new Date();
+  const lastN = [];
+  for(let i=statsPeriod-1;i>=0;i--){
+    let m=now.getMonth()-i, y=now.getFullYear();
+    if(m<0){m+=12;y--;}
+    const exps = getMonthExpenses(y,m);
+    const totalExp = exps.reduce((s,e)=>s+e.amount,0);
+    const totalInc = (DB.incomes||[])
+      .filter(inc=>inc.date && inc.date.startsWith(monthKey(y,m)))
+      .reduce((s,inc)=>s+inc.amount,0);
+    lastN.push({label:SHORT_MONTHS[m]+(statsPeriod>6?"'"+String(y).slice(2):''), totalExp, totalInc});
+  }
+
+  // ── Доходы vs Расходы ──────────────────────────────────────────────
+  if(incEl){
+    if(charts.incVsExp) charts.incVsExp.destroy();
+    charts.incVsExp = new Chart(incEl,{
+      type:'bar',
+      data:{
+        labels: lastN.map(x=>x.label),
+        datasets:[
+          {
+            label:'Доходы',
+            data: lastN.map(x=>Math.round(x.totalInc)),
+            backgroundColor:'rgba(29,158,117,0.7)',
+            borderRadius:4, borderSkipped:false, order:2
+          },
+          {
+            label:'Расходы',
+            data: lastN.map(x=>Math.round(x.totalExp)),
+            backgroundColor:'rgba(216,90,48,0.7)',
+            borderRadius:4, borderSkipped:false, order:1
+          }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:true, labels:{color:'#888', font:{size:10}, boxWidth:10, padding:8}},
+          tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmt(v.raw)}}
+        },
+        scales:{
+          x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
+          y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+        }
+      }
+    });
+  }
+
+  // ── Норма накопления ───────────────────────────────────────────────
+  if(rateEl){
+    const savingsRates = lastN.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
+    const validRates = savingsRates.filter(v=>v!==null);
+    const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
+    const avgEl = document.getElementById('savings-rate-avg');
+    if(avgEl){
+      if(avgRate!==null){
+        avgEl.textContent = 'Норма сб. '+avgRate+'%';
+        avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
+      } else {
+        avgEl.textContent = '';
+      }
+    }
+    if(charts.savingsRate) charts.savingsRate.destroy();
+    charts.savingsRate = new Chart(rateEl,{
+      type:'bar',
+      data:{
+        labels: lastN.map(x=>x.label),
+        datasets:[{
+          data: savingsRates.map(v=>v===null?0:v),
+          backgroundColor: savingsRates.map(v=>v===null?'rgba(128,128,128,0.2)':v>=0?'rgba(29,158,117,0.7)':'rgba(216,90,48,0.7)'),
+          borderRadius:4, borderSkipped:false
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:v=>savingsRates[v.dataIndex]===null?'Нет данных':v.raw+'%'}}
+        },
+        scales:{
+          x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
+          y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>v+'%',font:{size:9},color:'#888'}}
+        }
+      }
+    });
+  }
 }
 
 function renderStats(){
@@ -2416,43 +2511,6 @@ function renderStats(){
     });
   }
 
-  // ── 4. Доходы vs Расходы ───────────────────────────────────────────
-  if(charts.incVsExp) charts.incVsExp.destroy();
-  charts.incVsExp = new Chart(document.getElementById('chartIncomeVsExp'),{
-    type:'bar',
-    data:{
-      labels: lastN.map(x=>x.label),
-      datasets:[
-        {
-          label:'Доходы',
-          data: lastN.map(x=>Math.round(x.totalInc)),
-          backgroundColor:'rgba(29,158,117,0.7)',
-          borderRadius:4, borderSkipped:false, order:2
-        },
-        {
-          label:'Расходы',
-          data: lastN.map(x=>Math.round(x.totalExp)),
-          backgroundColor:'rgba(216,90,48,0.7)',
-          borderRadius:4, borderSkipped:false, order:1
-        }
-      ]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{
-          display:true,
-          labels:{color:'#888', font:{size:10}, boxWidth:10, padding:8}
-        },
-        tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmt(v.raw)}}
-      },
-      scales:{
-        x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
-      }
-    }
-  });
-
   // ── 5. Расходы по группам (stacked) ───────────────────────────────
   // Build color groups — same color = same group
   const colorGroups = {};
@@ -2486,41 +2544,6 @@ function renderStats(){
       borderSkipped:false
     };
   }).filter(ds=>ds.data.some(v=>v>0)); // skip empty groups
-
-  // ── 6. Норма накопления ────────────────────────────────────────────
-  const savingsRates = lastN.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
-  const validRates = savingsRates.filter(v=>v!==null);
-  const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
-  const avgEl = document.getElementById('savings-rate-avg');
-  if(avgRate!==null){
-    avgEl.textContent = 'Норма сб. '+avgRate+'%';
-    avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
-  } else {
-    avgEl.textContent = '';
-  }
-  if(charts.savingsRate) charts.savingsRate.destroy();
-  charts.savingsRate = new Chart(document.getElementById('chartSavingsRate'),{
-    type:'bar',
-    data:{
-      labels: lastN.map(x=>x.label),
-      datasets:[{
-        data: savingsRates.map(v=>v===null?0:v),
-        backgroundColor: savingsRates.map(v=>v===null?'rgba(128,128,128,0.2)':v>=0?'rgba(29,158,117,0.7)':'rgba(216,90,48,0.7)'),
-        borderRadius:4, borderSkipped:false
-      }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:v=>savingsRates[v.dataIndex]===null?'Нет данных':v.raw+'%'}}
-      },
-      scales:{
-        x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>v+'%',font:{size:9},color:'#888'}}
-      }
-    }
-  });
 
   if(charts.grouped) charts.grouped.destroy();
   if(groupDatasets.length){
@@ -2773,6 +2796,7 @@ function renderAssets(){
   } else if(wrap){
     wrap.style.display = 'none';
   }
+  renderSavingsCharts();
   renderGoals();
 }
 
