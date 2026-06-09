@@ -146,6 +146,11 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
   <div class="sec-hdr"><span class="sec-title">Источники дохода</span></div>
+  <div style="padding:0 16px 8px">
+    <input id="income-search" type="search" placeholder="🔍 Поиск по доходам..." autocomplete="off"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
+      oninput="renderIncomeSearch(this.value)"/>
+  </div>
   <div class="settings-list" id="income-list" style="padding:0 16px;gap:5px;display:flex;flex-direction:column"></div>
   <div style="padding:8px 16px"><button class="btn" style="width:100%" onclick="openAddIncome()">+ Добавить доход</button></div>
   <div class="page-end"></div>
@@ -618,6 +623,19 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<div class="overlay" id="modal-goal-topup">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-goal-topup')">✕</button>
+    <h2 style="margin-bottom:4px">Пополнить цель</h2>
+    <div id="goal-topup-name" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+    <div class="fgrp">
+      <label class="flbl">Сумма пополнения, ₽</label>
+      <input type="text" id="goal-topup-amount" class="finp" inputmode="decimal" placeholder="10 000" oninput="formatMoneyInput(this)">
+    </div>
+    <button class="btn primary" onclick="saveGoalTopup()" style="width:100%;margin-top:8px">Добавить</button>
+  </div>
+</div>
+
 <div class="overlay" id="modal-asset">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-asset')">✕</button>
@@ -803,7 +821,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.9.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.10.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1058,7 +1076,7 @@ function getLimits(y,m){
   // fallback: look for most recent prior limits
   const keys = Object.keys(DB.limits).sort();
   const prior = keys.filter(k2=>k2<=k).pop();
-  if(prior) return DB.limits[prior];
+  if(prior) return [...DB.limits[prior]];   // copy — avoid aliasing prior month's array
   return DB.categories.map((_,i) => DEFAULT_LIMITS[i] || 3000);
 }
 
@@ -1082,10 +1100,33 @@ function getCatSpent(catIdx,y,m){
 }
 
 // ─── TOAST ──────────────────────────────────────────────────────────
+let _toastTimer = null;
 function toast(msg){
   const el=document.getElementById('toast');
+  if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
+  el.classList.remove('action');
   el.textContent=msg;el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),2200);
+  _toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+}
+// Toast with an "Отменить" action button. onUndo fires if tapped within `ms`.
+function toastUndo(msg, onUndo, ms=5000){
+  const el=document.getElementById('toast');
+  if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
+  el.innerHTML='';
+  const span=document.createElement('span');
+  span.textContent=msg;
+  const btn=document.createElement('button');
+  btn.className='toast-undo';
+  btn.textContent='Отменить';
+  el.appendChild(span); el.appendChild(btn);
+  el.classList.add('show','action');
+  const hide=()=>{ el.classList.remove('show','action'); };
+  _toastTimer=setTimeout(hide, ms);
+  btn.addEventListener('click', ()=>{
+    if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
+    hide();
+    try{ onUndo(); }catch(_){}
+  });
 }
 
 // ─── MODAL HELPERS ──────────────────────────────────────────────────
@@ -1749,10 +1790,16 @@ function _makeSwipeable(row, onDelete){
 function deleteExpenseById(id){
   const e = DB.expenses.find(x=>x.id===id);
   if(!e) return;
+  const snap = {amount:e.amount, comment:e.comment, _deleted:e._deleted};
   e.amount=0; e.comment=''; e._deleted=true; e.updatedAt=Date.now();
   saveDB();
-  if(currentPage==='day') renderDay(); else renderBudget();
-  toast('Удалено');
+  const rerender=()=>{ if(currentPage==='day') renderDay(); else renderBudget(); };
+  rerender();
+  toastUndo('Удалено', ()=>{
+    e.amount=snap.amount; e.comment=snap.comment; e._deleted=snap._deleted; e.updatedAt=Date.now();
+    saveDB();
+    rerender();
+  });
 }
 
 function denomAdd(n,btn){
@@ -1881,10 +1928,62 @@ function renderIncome(){
   });
 }
 
+function renderIncomeSearch(query){
+  const list = document.getElementById('income-list');
+  const q = query.trim().toLowerCase();
+  if(!q){
+    renderIncome();
+    return;
+  }
+  const all = (DB.incomes||[]).filter(inc => {
+    if(inc._deleted) return false;
+    const source = (inc.source||'').toLowerCase();
+    const comment = (inc.comment||'').toLowerCase();
+    const tag = (inc.tag||'').toLowerCase();
+    const amount = String(inc.amount);
+    return source.includes(q) || comment.includes(q) || tag.includes(q) || amount.includes(q);
+  });
+  all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+  list.innerHTML = '';
+  if(!all.length){
+    list.innerHTML = '<div class="empty-day"><p>Ничего не найдено</p></div>';
+    return;
+  }
+  const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  let lastDate = null;
+  all.forEach(inc => {
+    if(inc.date !== lastDate){
+      lastDate = inc.date;
+      const d = new Date(inc.date+'T12:00:00');
+      const sep = document.createElement('div');
+      sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600';
+      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+      list.appendChild(sep);
+    }
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    row.style.cursor = 'pointer';
+    const tagColor = inc.tag ? getIncomeTagColor(inc.tag) : '';
+    const tagBadge = inc.tag ? `<span style="display:inline-block;font-size:10px;padding:1px 8px;border-radius:10px;background:${tagColor}18;color:${tagColor};border:1px solid ${tagColor}44;margin-top:3px">${esc(inc.tag)}</span>` : '';
+    row.innerHTML = `
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:500">${esc(inc.source)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
+        ${tagBadge}
+      </div>
+      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmt(inc.amount)}</span>
+      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
 function onIncomeMonthChange(val){
   if(!val) return;
   const [y,m] = val.split('-').map(Number);
   currentIncomeMonth = {y, m:m-1};
+  const srch = document.getElementById('income-search');
+  if(srch) srch.value = '';
   renderIncome();
 }
 
@@ -1898,6 +1997,8 @@ function changeIncomeMonth(d){
   currentIncomeMonth.m += d;
   if(currentIncomeMonth.m > 11){currentIncomeMonth.m = 0; currentIncomeMonth.y++;}
   if(currentIncomeMonth.m < 0){currentIncomeMonth.m = 11; currentIncomeMonth.y--;}
+  const srch = document.getElementById('income-search');
+  if(srch) srch.value = '';
   renderIncome();
   syncIncomeMonthInput();
 }
@@ -1965,10 +2066,13 @@ function deleteIncome(){
 // ═══ stats.js ═══
 
 // ─── THEME ──────────────────────────────────────────────────────────
-const THEMES = ['light','dark','gruvbox','sakura','hellokitty','nord','dracula','solarized'];
+const THEMES = ['light','dark','sepia','sakura','ocean','forest','gruvbox','dracula','solarized','neon'];
+const _THEME_MIGRATE = {hellokitty:'sakura', nord:'dracula'};
 function applyTheme(){
+  // Migrate retired themes to their nearest surviving equivalent
+  if(DB.theme && _THEME_MIGRATE[DB.theme]){ DB.theme = _THEME_MIGRATE[DB.theme]; saveDB(); }
   const theme = DB.theme || 'auto';
-  document.documentElement.classList.remove(...THEMES);
+  document.documentElement.classList.remove(...THEMES, 'hellokitty', 'nord');
   if(theme !== 'auto') document.documentElement.classList.add(theme);
   // Sync iOS status-bar / browser chrome to the actual background colour
   requestAnimationFrame(()=>{
@@ -2819,21 +2923,69 @@ function renderGoals(){
     let deadlineStr = '';
     if(g.deadline){ const [y,m]=g.deadline.split('-'); deadlineStr=(MONTHS_RU[parseInt(m)-1]||'')+' '+y; }
     const done = g.saved >= g.target;
-    return `<div style="${idx>0?'border-top:1px solid var(--border);':''}padding:12px 0;cursor:pointer" onclick="openGoalModal('${esc(g.id)}')">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:14px;font-weight:600">${esc(g.name)}</span>
-        ${deadlineStr?`<span style="font-size:11px;color:var(--muted)">${esc(deadlineStr)}</span>`:''}
+
+    // ── Темп: сколько откладывать в месяц, чтобы успеть к сроку ──
+    let paceLine = '';
+    if(!done){
+      if(g.deadline){
+        const [dy,dm] = g.deadline.split('-').map(Number);
+        const now = new Date();
+        const monthsLeft = (dy - now.getFullYear())*12 + ((dm-1) - now.getMonth());
+        if(monthsLeft < 0){
+          paceLine = `<span style="color:var(--red);font-weight:600">🔴 Срок прошёл · осталось ${fmt(remaining)}</span>`;
+        } else {
+          const perMonth = Math.ceil(remaining / Math.max(1, monthsLeft));
+          const whenStr = monthsLeft === 0 ? 'в этом месяце' : monthsLeft+' мес';
+          paceLine = `Осталось ${fmt(remaining)} · ${whenStr} · <span style="color:${color};font-weight:600">${fmt(perMonth)}/мес</span>`;
+        }
+      } else {
+        paceLine = `Осталось ${fmt(remaining)}`;
+      }
+    }
+
+    return `<div style="${idx>0?'border-top:1px solid var(--border);':''}padding:12px 0">
+      <div onclick="openGoalModal('${esc(g.id)}')" style="cursor:pointer">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:14px;font-weight:600">${esc(g.name)}</span>
+          ${deadlineStr?`<span style="font-size:11px;color:var(--muted)">${esc(deadlineStr)}</span>`:''}
+        </div>
+        <div style="background:var(--border2);border-radius:4px;height:6px;overflow:hidden;margin-bottom:6px">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:600;color:${color}">${fmt(g.saved)}</span>
+          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">✓ Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmt(g.target)} · ${pct}%</span>`}
+        </div>
+        ${paceLine?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${paceLine}</div>`:''}
       </div>
-      <div style="background:var(--border2);border-radius:4px;height:6px;overflow:hidden;margin-bottom:6px">
-        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;font-weight:600;color:${color}">${fmt(g.saved)}</span>
-        ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">✓ Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmt(g.target)} · ${pct}%</span>`}
-      </div>
-      ${!done?`<div style="font-size:11px;color:var(--muted);margin-top:2px">Осталось: ${fmt(remaining)}</div>`:''}
+      ${done?'':`<button class="btn small" style="margin-top:8px" onclick="openGoalTopup('${esc(g.id)}',event)">+ Пополнить</button>`}
     </div>`;
   }).join('');
+}
+
+let _topupGoalId = null;
+function openGoalTopup(id, ev){
+  if(ev) ev.stopPropagation();
+  const g = (DB.goals||[]).find(x=>x.id===id);
+  if(!g) return;
+  _topupGoalId = id;
+  document.getElementById('goal-topup-name').textContent = g.name + ' · накоплено ' + fmt(g.saved) + ' из ' + fmt(g.target);
+  document.getElementById('goal-topup-amount').value = '';
+  openModal('modal-goal-topup');
+  setTimeout(()=>{ const i=document.getElementById('goal-topup-amount'); if(i) i.focus(); }, 50);
+}
+
+function saveGoalTopup(){
+  const g = (DB.goals||[]).find(x=>x.id===_topupGoalId);
+  if(!g){ closeModal('modal-goal-topup'); return; }
+  const amt = parseMoney(document.getElementById('goal-topup-amount').value);
+  if(!amt || amt<=0){ toast('Введите сумму'); return; }
+  g.saved = Math.round((g.saved||0) + amt);
+  g.updatedAt = Date.now();
+  saveDB();
+  closeModal('modal-goal-topup');
+  renderGoals();
+  toast('+'+fmt(amt));
 }
 
 function _getCurrentAssetsTotal(){
@@ -3191,15 +3343,17 @@ function renderSettings(){
   if(themeEl){
     const cur = DB.theme || 'auto';
     themeEl.innerHTML = [
-      {v:'light',      l:'Светлая'},
-      {v:'auto',       l:'Авто'},
-      {v:'dark',       l:'Тёмная'},
-      {v:'gruvbox',    l:'Gruvbox'},
-      {v:'sakura',     l:'🌸 Sakura'},
-      {v:'hellokitty', l:'🎀 Hello Kitty'},
-      {v:'nord',       l:'Nord'},
+      {v:'auto',       l:'🔄 Авто'},
+      {v:'light',      l:'☀️ Светлая'},
+      {v:'dark',       l:'🌙 Тёмная'},
+      {v:'sepia',      l:'📜 Сепия'},
+      {v:'sakura',     l:'🌸 Сакура'},
+      {v:'ocean',      l:'🌊 Океан'},
+      {v:'forest',     l:'🌲 Лес'},
+      {v:'gruvbox',    l:'🪵 Gruvbox'},
       {v:'dracula',    l:'🧛 Dracula'},
-      {v:'solarized',  l:'Solarized'},
+      {v:'solarized',  l:'🌅 Solarized'},
+      {v:'neon',       l:'🌃 Неон'},
     ].map(t=>`<option value="${t.v}">${t.l}</option>`).join('');
     themeEl.value = cur;
   }
