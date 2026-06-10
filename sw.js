@@ -2,7 +2,7 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-06-10 v1.10.0';
+const V = '2026-06-10 v1.11.0';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
@@ -45,8 +45,10 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(e.request)
         .then(r => {
-          const clone = r.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          if (r.ok) { // не кешируем ошибки (404/500), иначе залипнут
+            const clone = r.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
           return r;
         })
         .catch(() => caches.match(e.request))
@@ -55,7 +57,7 @@ self.addEventListener('fetch', e => {
     // Остальные ресурсы — кеш, если нет — сеть
     e.respondWith(
       caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-        caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       }))
     );

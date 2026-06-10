@@ -801,6 +801,10 @@ if ('serviceWorker' in navigator) {
         <button class="btn danger small" onclick="clearSyncUrl()" title="Очистить URL" style="flex-shrink:0;white-space:nowrap">Очистить</button>
       </div>
     </div>
+    <div class="fgrp">
+      <label class="flbl">Секрет (опционально — должен совпадать с SECRET в Code.gs)</label>
+      <input type="text" id="sync-token-input" placeholder="пусто = без проверки" autocomplete="off"/>
+    </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-sync')">Отмена</button>
       <button class="btn primary" onclick="saveSyncUrl()">Сохранить</button>
@@ -821,7 +825,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.10.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.11.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -944,6 +948,15 @@ function loadDB(){
   if (DB.syncUrl && !localStorage.getItem('syncUrl')) {
     localStorage.setItem('syncUrl', DB.syncUrl);
   }
+  DB.syncToken = (
+    localStorage.getItem('syncToken') ||
+    sessionStorage.getItem('syncToken') ||
+    readSyncTokenFromCookie() ||
+    ''
+  );
+  if (DB.syncToken && !localStorage.getItem('syncToken')) {
+    localStorage.setItem('syncToken', DB.syncToken);
+  }
   if(!DB.banks) DB.banks = [];
   if(!DB.creditBanks) DB.creditBanks = [];
   if(!DB.catColors) DB.catColors = {};
@@ -991,6 +1004,23 @@ function writeSyncUrlToCookie(url){
     const cookiePath = location.pathname.split('/').slice(0, 2).join('/') || '/';
     document.cookie = 'syncUrl=' + encodeURIComponent(url) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax';
   } catch(_){}
+}
+
+function saveSyncTokenEverywhere(token){
+  try { localStorage.setItem('syncToken', token); } catch(_){}
+  try { sessionStorage.setItem('syncToken', token); } catch(_){}
+  try {
+    const exp = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
+    const cookiePath = location.pathname.split('/').slice(0, 2).join('/') || '/';
+    document.cookie = 'syncToken=' + encodeURIComponent(token) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax';
+  } catch(_){}
+}
+
+function readSyncTokenFromCookie(){
+  try {
+    const match = document.cookie.match(/(?:^|; )syncToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  } catch(_){ return ''; }
 }
 
 function readSyncUrlFromCookie(){
@@ -1335,7 +1365,7 @@ function makeCatRow(i, spent, lim, totalLimit, inGroup){
   }
   row.innerHTML = `
     <div class="cat-top">
-      <span class="cat-name">${DB.categories[i]}</span>
+      <span class="cat-name">${esc(DB.categories[i])}</span>
       <div class="cat-badges">
         <span class="badge ${badgeClass}">${badgeText}</span>
       </div>
@@ -1421,7 +1451,7 @@ function deleteExpense(){
 }
 
 function populateCatSelect(id){
-  document.getElementById(id).innerHTML = DB.categories.map((c,i)=>`<option value="${i}">${c}</option>`).join('');
+  document.getElementById(id).innerHTML = DB.categories.map((c,i)=>`<option value="${i}">${esc(c)}</option>`).join('');
 }
 
 // ─── CATEGORY EXPENSES LIST ─────────────────────────────────────────
@@ -1489,7 +1519,7 @@ function loadLimitEditor(){
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
-      <span class="limit-edit-name">${c}</span>
+      <span class="limit-edit-name">${esc(c)}</span>
       <input class="limit-edit-input" type="number" id="lim_${i}" value="${limits[i]||0}" inputmode="decimal"/>
     </div>
   `).join('');
@@ -1682,7 +1712,7 @@ function addFromTemplate(id,btn){
   DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote, updatedAt:Date.now()});
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
-  toast(esc(t.name)+' добавлено');
+  toast(t.name+' добавлено');
   checkBudgetNotifications();
 }
 
@@ -1839,7 +1869,7 @@ function renderDenomWidget(){
   const sel = document.getElementById('denom-cat');
   if(!sel || !DB.categories.length) return;
   const prev = sel.value;
-  sel.innerHTML = DB.categories.map((c,i) => `<option value="${i}">${c}</option>`).join('');
+  sel.innerHTML = DB.categories.map((c,i) => `<option value="${i}">${esc(c)}</option>`).join('');
   if(prev !== '' && !isNaN(parseInt(prev)) && parseInt(prev) < DB.categories.length) sel.value = prev;
 }
 
@@ -2842,7 +2872,7 @@ function renderAssets(){
       const namePart = document.createElement('div');
       namePart.style.cssText = 'flex:1;min-width:0';
       const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
-      namePart.innerHTML = `<div class="asset-name">${name}${creditBadge}</div>`
+      namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>`
         + (hasData ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`
                    : `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`);
       const amtSpan = document.createElement('span');
@@ -3055,7 +3085,7 @@ function openAssetModal(prefillBankName){
   const allBanks = getAllBanks();
   document.getElementById('asset-bank').innerHTML = allBanks.map((b,i)=>{
     const credit = i >= (DB.banks||[]).length;
-    return `<option value="${i}">${b}${credit?' (кредит)':''}</option>`;
+    return `<option value="${i}">${esc(b)}${credit?' (кредит)':''}</option>`;
   }).join('');
   document.getElementById('asset-date').value = today();
   setMoneyInput('asset-amount','');
@@ -3094,7 +3124,7 @@ function renderBankManager(){
       ? '<span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:6px">кредит</span>'
       : '';
     return '<div class="setting-row" style="cursor:default;gap:6px" id="bank-row-'+type+'-'+i+'">'
-      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditBank(&quot;'+type+'&quot;,'+i+')">'+b+badge+'</span>'
+      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditBank(&quot;'+type+'&quot;,'+i+')">'+esc(b)+badge+'</span>'
       + '<button class="btn small icon-btn" onclick="startEditBank(&quot;'+type+'&quot;,'+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
       + '<button class="btn danger small icon-btn" onclick="removeBank(&quot;'+type+'&quot;,'+i+')"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>'
       + '</div>';
@@ -3402,7 +3432,7 @@ function renderCatManager(){
       + '<input type="color" value="'+color+'"'
       + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
       + ' onchange="setCatColor('+i+',this.value)" title="Цвет. Одинаковый цвет = одна группа"/>'
-      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditCat('+i+')">'+c+groupDot+'</span>'
+      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditCat('+i+')">'+esc(c)+groupDot+'</span>'
       + '<button class="btn small icon-btn" onclick="startEditCat('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
       + delBtn
       + '</div>';
@@ -4132,6 +4162,8 @@ function doClearData(){
   DB.creditBanks = [];
   DB.syncUrl     = '';
   saveSyncUrlEverywhere('');
+  DB.syncToken   = '';
+  saveSyncTokenEverywhere('');
   const _k = monthKey(new Date().getFullYear(), new Date().getMonth());
   DB.limits[_k]  = [...DEFAULT_LIMITS];
   saveDB();
@@ -4215,6 +4247,7 @@ function copyScriptFromModal(){
 // ── URL настройки ─────────────────────────────────────────────────────
 function openSyncSettings(){
   document.getElementById('sync-url-input').value = DB.syncUrl || '';
+  document.getElementById('sync-token-input').value = DB.syncToken || '';
   openModal('modal-sync');
 }
 
@@ -4227,6 +4260,9 @@ function saveSyncUrl(){
   const url = document.getElementById('sync-url-input').value.trim();
   DB.syncUrl = url;
   saveSyncUrlEverywhere(url);
+  const token = document.getElementById('sync-token-input').value.trim();
+  DB.syncToken = token;
+  saveSyncTokenEverywhere(token);
   saveDB();
   closeModal('modal-sync');
   renderSettings();
@@ -4237,7 +4273,7 @@ function saveSyncUrl(){
 // POST с Content-Type: text/plain — единственный надёжный способ.
 // text/plain не вызывает preflight OPTIONS, CORS не блокирует.
 async function syncRequest(action, data) {
-  const body = JSON.stringify({ action, data: data || null });
+  const body = JSON.stringify({ action, data: data || null, token: DB.syncToken || undefined });
   const r = await fetch(DB.syncUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -4265,6 +4301,16 @@ async function testSync(){
   }
 }
 
+// ── Перерисовать активную вкладку (после merge данных с другого устройства) ──
+function renderCurrentPage(){
+  if(currentPage==='budget') renderBudget();
+  else if(currentPage==='day') renderDay();
+  else if(currentPage==='stats') renderStats();
+  else if(currentPage==='assets') renderAssets();
+  else if(currentPage==='income') renderIncome();
+  else renderBudget();
+}
+
 // ── Pull — загрузить из Drive ───────────────────────────────────────
 async function pullFromSheets(){
   if(!DB.syncUrl){ toast('URL не задан'); return; }
@@ -4275,12 +4321,7 @@ async function pullFromSheets(){
     mergePullData(d);
     DB._dirty = false;
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
-    if(currentPage==='budget') renderBudget();
-    else if(currentPage==='day') renderDay();
-    else if(currentPage==='stats') renderStats();
-    else if(currentPage==='assets') renderAssets();
-    else if(currentPage==='income') renderIncome();
-    else renderBudget();
+    renderCurrentPage();
     const ts = new Date().toISOString();
     localStorage.setItem('lastSync', ts);
     sessionStorage.setItem('lastSync', ts);
@@ -4391,8 +4432,18 @@ function startAutoSync(){
     if(_syncInFlight) return; // previous push still running — skip
     _syncInFlight = true;
     try {
-      const data = buildPayload();
-      const d = await syncRequest('push', data);
+      // Pull+merge перед push — иначе полный payload затрёт на Drive
+      // свежие правки другого устройства, которые мы ещё не видели
+      let merged = false;
+      try {
+        const remote = await syncRequest('pull', null);
+        if(remote && !remote.error && !remote.empty){
+          const before = JSON.stringify(buildPayload());
+          mergePullData(remote);
+          merged = JSON.stringify(buildPayload()) !== before;
+        }
+      } catch(_) {} // pull не удался (офлайн и т.п.) — пушим как есть
+      const d = await syncRequest('push', buildPayload());
       if(d && !d.error){
         DB._dirty = false;
         const ts = new Date().toISOString();
@@ -4400,11 +4451,21 @@ function startAutoSync(){
         sessionStorage.setItem('lastSync', ts);
         localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
         setSyncStatus('ok', ts);
+        if(merged) renderCurrentPage();
       }
     } catch(e) {}
     _syncInFlight = false;
   }, ms);
 }
+
+// ── Pull при возврате в приложение — подтянуть правки с других устройств ──
+let _lastVisSync = 0;
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden || !DB.syncUrl) return;
+  if(Date.now() - _lastVisSync < 60000) return; // не чаще раза в минуту
+  _lastVisSync = Date.now();
+  autoSyncOnStart(); // push если dirty, затем pull+merge
+});
 
 // ── Loader кода Apps Script ───────────────────────────────────────────
 async function loadAppsScriptCode() {
@@ -4695,7 +4756,7 @@ async function autoSyncOnStart(){
     mergePullData(d);
     DB._dirty = false;
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
-    renderBudget();
+    renderCurrentPage();
     const ts = new Date().toISOString();
     localStorage.setItem('lastSync', ts);
     sessionStorage.setItem('lastSync', ts);
@@ -4708,8 +4769,10 @@ function buildPayload(){
   // Send full DB to Drive — exclude device-local fields
   const payload = {...DB};
   delete payload.syncUrl;
+  delete payload.syncToken;
   delete payload.notifsEnabled;
   delete payload.notifThreshold;
+  delete payload.theme;   // тема — настройка устройства, как и уведомления
   delete payload._dirty;
   return payload;
 }

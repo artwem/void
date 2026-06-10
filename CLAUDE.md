@@ -91,11 +91,13 @@ Each tab has a `render*()` function called after any data change:
 
 ### Sync — `js/sync.js` + `apps-script/Code.gs`
 
-Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets). Auto-syncs every 15 seconds when `DB._dirty`. On startup: **push first if dirty** (prevents pull from overwriting unsaved offline edits), then pull.
+Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets). Auto-syncs every 15 seconds when `DB._dirty` — the interval handler **pulls+merges before pushing** (so a full-payload push can't clobber another device's recent edits on Drive). On startup: **push first if dirty** (prevents pull from overwriting unsaved offline edits), then pull. A `visibilitychange` listener also runs the startup sync (throttled to once per minute) when the app returns to foreground, so edits from other devices arrive without a relaunch.
+
+**Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth, backward compatible). If set, the same string must be entered in the app's sync modal; it's stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
 **What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`.
 
-**What does NOT sync:** `syncUrl`, `notifsEnabled`, `notifThreshold` (device-local). `buildPayload()` strips exactly these four fields plus `_dirty` before pushing.
+**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme` (device-local). `buildPayload()` strips exactly these five fields plus `_dirty` before pushing.
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
 
@@ -108,13 +110,17 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Updating Apps Script:** edit `apps-script/Code.gs` locally → copy contents into the Google Apps Script editor → deploy new version. `build.sh` automatically inlines Code.gs into `dist/index.html`; in dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs` directly.
 
+**Code.gs v10.2:** writes are serialized with `LockService` (concurrent pushes from two devices queue instead of racing). The data file is located by ID stored in `ScriptProperties` (`dataFileId`), falling back to name lookup — `getFilesByName` alone could pick an arbitrary duplicate.
+
 ### Excel Export
 
 Settings → "Экспорт Excel" calls `exportExcel()` (in `═══ settings.js ═══`). Uses **SheetJS 0.18.5** loaded from CDN (`xlsx.full.min.js`). Produces a `.xlsx` file with the same visible sheet structure as Google Sheets: По дням YYYY, Шаблон, month sheets, Активы. Hidden sheets (Доходы, Комментарии, etc.) are excluded. For a full data backup use "Резервная копия" (JSON dump of entire `DB`).
 
 ### PWA Caching — `sw.js`
 
-Cache-first for assets, network-first for HTML. The `V` timestamp at the top of `sw.js` controls cache invalidation — **bump `V` on every deploy** to force iOS PWA cache refresh.
+Cache-first for assets, network-first for HTML. The `V` timestamp at the top of `sw.js` controls cache invalidation — **bump `V` on every deploy** to force iOS PWA cache refresh. Error responses (non-`ok`) are never cached.
+
+**`css/app.css` is loaded directly** via `<link rel="stylesheet" href="css/app.css?v=X.Y.Z">` (~line 25 of `index.html`) — CSS edits go to `css/app.css` even in dev mode (unlike `js/*.js`). Because iOS caches it separately and sw activation lags, **every `css/app.css` change must bump the `?v=` query string on that link**, otherwise iOS PWAs keep serving the stale CSS.
 
 ### Key Globals
 
@@ -129,7 +135,7 @@ Cache-first for assets, network-first for HTML. The `V` timestamp at the top of 
 - `monthKey(y, m)` — `YYYY-MM` key used in `limits`
 - `getCatColor(idx)` — hex color for category (from `DB.catColors` or `CAT_COLORS` palette)
 - `getCatSpent(idx, y, m)` — sum of non-deleted expenses for category in month
-- `_getCurrentAssetsTotal()` / `renderAssets()` total — sum of every bank's value **on the single most-recent snapshot date** (debit − credit). To keep this correct, asset entry uses a per-date snapshot (`openAssetSnapshot` → `openEditAssetDate(date, carryForward=true)`) that pre-fills all banks by **carrying forward** each bank's last known value (`_lastKnownAmount`), flagged "перенесено — проверьте". Editing a historical date from the history table passes `carryForward=false` (only that date's actual records).
+- `_getCurrentAssetsTotal()` / `renderAssets()` total — sum of **each bank's most recent non-deleted entry, regardless of date** (debit − credit; see "Assets Total" section below). To keep this fresh, asset entry uses a per-date snapshot (`openAssetSnapshot` → `openEditAssetDate(date, carryForward=true)`) that pre-fills all banks by **carrying forward** each bank's last known value (`_lastKnownAmount`), flagged "перенесено — проверьте". Editing a historical date from the history table passes `carryForward=false` (only that date's actual records).
 - `_makeSwipeable(row, onDelete)` — swipe-left-to-delete on day expense rows; `deleteExpenseById(id)` soft-deletes
 - `openModal(id)` / `closeModal(id)` — show/hide `.overlay` modals
 - `toast(msg)` — 2.2s bottom toast
