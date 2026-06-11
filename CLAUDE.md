@@ -63,6 +63,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   syncUrl:         'https://script.google.com/...',
   goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
+  deposits:        [{id, name, amount, rate, openDate, endDate, capitalization, _deleted?}, ...],  // вклады; capitalization: 'monthly'|'end'
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
   notifsEnabled:   false,
@@ -85,8 +86,10 @@ Each tab has a `render*()` function called after any data change:
 | Day | `═══ day.js ═══` | Daily expense list |
 | Income | `═══ income.js ═══` | Income sources, monthly balance |
 | Stats | `═══ stats.js ═══` | Chart.js graphs (6-month trends, category breakdown) |
-| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, goals |
+| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, goals, deposits (вклады) |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
+
+Forecast (`page-calc`) and Deposits (`page-deposits`) have no navbar tab — both open via buttons on the Assets page (`showPage('calc')` / `showPage('deposits')`) and highlight the Assets nav button. Deposits code (renderDeposits, depositValueAt, avgMonthlySavings — average of last 6 *closed* months, current month excluded) lives in the `═══ assets.js ═══` section.
 | Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore (JSON + Excel), notifications |
 
 ### Sync — `js/sync.js` + `apps-script/Code.gs`
@@ -95,16 +98,16 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth, backward compatible). If set, the same string must be entered in the app's sync modal; it's stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`.
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`.
 
 **What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme` (device-local). `buildPayload()` strips exactly these five fields plus `_dirty` before pushing.
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
 
-**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates` stamps `updatedAt: Date.now()`. Deletes are **soft** — set `_deleted: true` (amount zeroed) instead of removing, so the deletion propagates on sync. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are **no longer stripped before push** — they must reach Drive for other devices to learn of the delete.
+**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — set `_deleted: true` (amount zeroed) instead of removing, so the deletion propagates on sync. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are **no longer stripped before push** — they must reach Drive for other devices to learn of the delete.
 
 **Merge logic (`mergePullData`):**
-- `expenses`, `incomes`, `assets`, `goals`, `templates`: **last-write-wins by `id`** — for each id keep the record with the greater `updatedAt`; ties go to remote (safe because push precedes pull on startup). This propagates edits and deletes, not just inserts.
+- `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`: **last-write-wins by `id`** — for each id keep the record with the greater `updatedAt`; ties go to remote (safe because push precedes pull on startup). This propagates edits and deletes, not just inserts.
 - `categories`/`catColors`, `banks`, `creditBanks`, `incomeTags`/`incomeTagColors`: remote wins if it has more entries (additive — another device added items)
 - `limits`: remote wins per month-key (safe because push always precedes pull on startup)
 

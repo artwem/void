@@ -85,7 +85,11 @@
   <div class="spacer"></div>
   <div class="sec-hdr"><span class="sec-title">Банки</span><span class="sec-action" onclick="openBankManager()">Управлять</span></div>
   <div class="settings-list" id="banks-display"></div>
-  <div style="padding:4px 16px 0">
+  <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
+    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('deposits')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
+    </button>
     <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('calc')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
       Прогноз накоплений
@@ -266,3 +270,29 @@
 </div>
 
 <!-- NAV -->
+
+<!-- PAGE: DEPOSITS -->
+<div id="page-deposits" class="page">
+  <div class="hdr" style="display:flex;align-items:center;gap:10px">
+    <button onclick="showPage('assets',document.getElementById('nav-assets'))" aria-label="Назад к активам" style="background:none;border:none;color:var(--text);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px 4px 0;font-family:inherit">‹</button>
+    <div><h1>Вклады</h1><div class="hdr-sub">Проценты и прогноз</div></div>
+  </div>
+  <div class="total-bar"><span class="total-lbl">На вкладах сейчас</span><span class="total-val" id="deposits-total-now">0 ₽</span></div>
+  <div class="sec-hdr"><span class="sec-title">Открытые вклады</span><span class="sec-action" onclick="openDepositModal()">+ Добавить</span></div>
+  <div id="deposits-list" style="padding:0 16px 8px"></div>
+  <div class="chart-wrap" id="deposits-forecast-wrap" style="display:none">
+    <div class="chart-card">
+      <div class="chart-title">Сколько будет к дате</div>
+      <div class="fgrp" style="margin-bottom:10px">
+        <label class="flbl">Дата прогноза</label>
+        <input type="date" id="dep-forecast-date" class="finp" onchange="renderDepositForecast()"/>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="dep-forecast-norm" onchange="renderDepositForecast()" style="width:16px;height:16px;accent-color:var(--green)"/>
+        <span id="dep-forecast-norm-lbl">+ накопления по моей норме</span>
+      </label>
+      <div id="dep-forecast-result"></div>
+    </div>
+  </div>
+  <div class="page-end"></div>
+</div>
