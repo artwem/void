@@ -359,7 +359,7 @@ if ('serviceWorker' in navigator) {
         <input type="date" id="dep-forecast-date" class="finp" onchange="renderDepositForecast()"/>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;user-select:none">
-        <input type="checkbox" id="dep-forecast-norm" onchange="renderDepositForecast()" style="width:16px;height:16px;accent-color:var(--green)"/>
+        <input type="checkbox" id="dep-forecast-norm" onchange="renderDepositForecast()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto"/>
         <span id="dep-forecast-norm-lbl">+ накопления по моей норме</span>
       </label>
       <div id="dep-forecast-result"></div>
@@ -903,7 +903,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3178,13 +3178,18 @@ function deleteGoal(){
 // ─── DEPOSITS (вклады под процент) ──────────────────────────────────
 let _editingDepositId = null;
 
-// Стоимость вклада на дату: после endDate проценты не начисляются
+// Стоимость вклада на дату. После endDate проценты не начисляются.
+// «% в конце»: досрочно закрыть нельзя, выплата только при закрытии —
+// до endDate считаем одно тело. Ежемесячная капитализация: начисленное
+// уже лежит на счету, учитываем по мере набегания.
 function depositValueAt(d, dateStr){
   const stop = dateStr < d.endDate ? dateStr : d.endDate;
   const days = Math.max(0, Math.round((new Date(stop) - new Date(d.openDate))/86400000));
   const r = (d.rate||0)/100;
-  if(d.capitalization === 'end') return Math.round(d.amount * (1 + r*days/365));
-  return Math.round(d.amount * Math.pow(1 + r/12, days/30.4375)); // ежемесячная капитализация
+  if(d.capitalization === 'end'){
+    return dateStr >= d.endDate ? Math.round(d.amount * (1 + r*days/365)) : d.amount;
+  }
+  return Math.round(d.amount * Math.pow(1 + r/12, days/30.4375));
 }
 
 function _fmtDateRu(ds){
@@ -3227,10 +3232,12 @@ function renderDeposits(){
     const profit = atEnd - d.amount;
     const daysLeft = Math.ceil((new Date(d.endDate) - new Date(td))/86400000);
     const closed = daysLeft <= 0;
+    // эффективная годовая при ежемесячной капитализации: (1+r/12)^12 − 1
+    const eff = d.capitalization!=='end' ? Math.round((Math.pow(1+(d.rate||0)/100/12,12)-1)*1000)/10 : null;
     return `<div onclick="openDepositModal('${esc(d.id)}')" style="${idx>0?'border-top:1px solid var(--border);':''}padding:12px 0;cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <span style="font-size:14px;font-weight:600">${esc(d.name)}</span>
-        <span style="font-size:12px;color:var(--muted)">${d.rate}% год.</span>
+        <span style="font-size:12px;color:var(--muted)">${d.rate}%${eff!==null?' · эфф. '+eff+'%':' год.'}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:13px;font-weight:600">${fmt(d.amount)} → ${fmt(atEnd)}</span>
@@ -3274,7 +3281,9 @@ function renderDepositForecast(){
       <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Тело вкладов</span><span>${fmt(principal)}</span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Проценты</span><span style="color:var(--green);font-weight:600">+${fmt(interest)}</span></div>
       ${extra>0?`<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Накопления (${months} мес × ${fmt(norm)})</span><span style="color:var(--green);font-weight:600">+${fmt(extra)}</span></div>`:''}
-    </div>`;
+    </div>
+    ${(()=>{const n=deps.filter(d=>d.capitalization==='end'&&d.endDate>dateStr).length;
+      return n?`<div style="font-size:11px;color:var(--muted);margin-top:8px">${n} вкл. с выплатой % в конце ещё не закроются к этой дате — учтено только тело</div>`:'';})()}`;
 }
 
 function openDepositModal(id){
