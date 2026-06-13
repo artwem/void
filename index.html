@@ -189,7 +189,10 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">Структура — <span id="pie-month-label"></span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="chart-title" style="margin:0">Структура</div>
+        <select id="pie-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;text-align:right" onchange="renderStats()"></select>
+      </div>
       <div id="chartPie" style="padding:4px 0"></div>
     </div>
   </div>
@@ -903,7 +906,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2369,6 +2372,9 @@ let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 function setStatsPeriod(n){
   statsPeriod = n;
   sessionStorage.setItem('statsPeriod', n);
+  // Сбрасываем селект Структуры — он перестроится под новый период
+  const ps = document.getElementById('pie-month-sel');
+  if(ps) ps.innerHTML = '';
   renderStats();
 }
 
@@ -2495,8 +2501,6 @@ function renderStats(){
 
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
-
-  document.getElementById('pie-month-label').textContent = MONTHS_RU[currentMonth.m]+' '+currentMonth.y;
 
   // ── 1. Расходы по месяцам ──────────────────────────────────────────
   if(charts.monthly) charts.monthly.destroy();
@@ -2691,9 +2695,23 @@ function renderStats(){
     sumEl.innerHTML = html;
   }
 
-  // ── 3. Структура текущего месяца ───────────────────────────────────
-  const {y,m} = currentMonth;
-  const curExp = getMonthExpenses(y,m);
+  // ── 3. Структура — месяц выбирается отдельным селектом ────────────
+  {
+  const pieSel = document.getElementById('pie-month-sel');
+  if(!pieSel.options.length){
+    const dn2 = new Date();
+    for(let i=0;i<statsPeriod;i++){
+      let mm=dn2.getMonth()-i, yy=dn2.getFullYear();
+      if(mm<0){mm+=12;yy--;}
+      const opt=document.createElement('option');
+      opt.value=yy+'-'+mm;
+      opt.textContent=SHORT_MONTHS[mm]+' '+(yy!==dn2.getFullYear()?yy:yy);
+      opt.selected=(i===0);
+      pieSel.appendChild(opt);
+    }
+  }
+  const [pieY,pieM]=pieSel.value.split('-').map(Number);
+  const curExp = getMonthExpenses(pieY,pieM);
   const catTotals = DB.categories.map((_,i)=>curExp.filter(e=>e.cat===i).reduce((s,e)=>s+e.amount,0));
   const nonZero = catTotals.map((v,i)=>({v:Math.round(v),i})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
   const pieEl = document.getElementById('chartPie');
@@ -2736,6 +2754,7 @@ function renderStats(){
       pieEl.appendChild(row);
     });
   }
+  }  // end pie block
 
   // ── 5. Расходы по группам (stacked) ───────────────────────────────
   // Build color groups — same color = same group
@@ -2785,7 +2804,12 @@ function renderStats(){
           },
           tooltip:{
             callbacks:{
-              label:v=>v.dataset.label+': '+fmt(v.raw)
+              label:v=>{
+                const idx=v.dataIndex;
+                const total=groupDatasets.reduce((s,ds)=>s+(ds.data[idx]||0),0);
+                const pct=total>0?Math.round(v.raw/total*100):0;
+                return v.dataset.label+': '+fmt(v.raw)+(pct?' ('+pct+'%)':'');
+              }
             }
           }
         },
