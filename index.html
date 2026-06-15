@@ -22,7 +22,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.14.0">
+<link rel="stylesheet" href="css/app.css?v=1.14.1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -2342,7 +2342,7 @@ function _renderStatsSummary(lastN){
       // Stacked proportional bar
       const stackedBar = activeSav.map(s=>{
         const w = Math.round(s.saved/balance*100);
-        return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}: ${fmtH(s.saved)}"></div>`;
+        return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}${DB.privacyMode?'':': '+fmt(s.saved)}"></div>`;
       }).join('');
 
       html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
