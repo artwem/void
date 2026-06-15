@@ -910,7 +910,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.4</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.5</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2681,7 +2681,7 @@ function renderStats(){
         },
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888', maxTicksLimit: 10 } },
-          y: { grid: { color: 'rgba(128,128,128,.1)' }, ticks: { callback: v => fmtShort(v) + '₽', font: { size: 9 }, color: '#888' } }
+          y: { grid: { color: 'rgba(128,128,128,.1)' }, ticks: { callback: v => (DB.privacyMode?'':fmtShort(v) + '₽'), font: { size: 9 }, color: '#888' } }
         }
       }
     });
