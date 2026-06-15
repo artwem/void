@@ -22,7 +22,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.10.0">
+<link rel="stylesheet" href="css/app.css?v=1.14.0">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -445,9 +445,9 @@ if ('serviceWorker' in navigator) {
       <span class="setting-label">Тема</span>
       <select id="theme-picker" onchange="setTheme(this.value)" style="border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:500;-webkit-appearance:none;appearance:none;cursor:pointer;font-family:inherit;max-width:140px"></select>
     </div>
-    <div class="setting-row" onclick="setPrivacyMode(!document.getElementById('privacy-toggle').checked)" style="cursor:pointer">
+    <div class="setting-row" onclick="setPrivacyMode(!DB.privacyMode)" style="cursor:pointer">
       <span class="setting-label">🫣 Приватный режим</span>
-      <input type="checkbox" id="privacy-toggle" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;pointer-events:none" onchange="setPrivacyMode(this.checked)"/>
+      <div class="sw-track" id="privacy-toggle"><div class="sw-thumb"></div></div>
     </div>
   </div>
   <div class="spacer"></div>
@@ -910,7 +910,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1120,10 +1120,8 @@ function readSyncUrlFromCookie(){
 
 // ─── HELPERS ────────────────────────────────────────────────────────
 function monthKey(y,m){return y+'-'+String(m+1).padStart(2,'0')}
-function fmt(n){
-  if(DB.privacyMode) return '●●● ₽';
-  return Math.round(n).toLocaleString('ru-RU')+'₽';
-}
+function fmt(n){return Math.round(n).toLocaleString('ru-RU')+'₽'}
+function fmtH(n){return `<span class="prv">${fmt(n)}</span>`;}
 
 function parseMoney(str){
   return parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
@@ -1174,7 +1172,6 @@ function setMoneyInput(id, val){
 }
 
 function fmtShort(n){
-  if(DB.privacyMode) return '●';
   const a = Math.abs(n);
   if(a >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'М';
   if(a >= 1000)    return (n/1000).toFixed(0)+'к';
@@ -1385,10 +1382,10 @@ function renderBudget(){
       grpRight.style.cssText = 'display:flex;align-items:center;gap:8px';
       const s1 = document.createElement('span');
       s1.style.cssText = 'font-size:12px;font-weight:600;color:'+(groupOver?'var(--red)':'var(--text)');
-      s1.textContent = fmt(groupSpent);
+      s1.innerHTML = fmtH(groupSpent);
       const s2 = document.createElement('span');
       s2.style.cssText = 'font-size:11px;color:var(--muted)';
-      s2.textContent = '/ '+fmt(groupLimit);
+      s2.innerHTML = '/ '+fmtH(groupLimit);
       const s3 = document.createElement('span');
       s3.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;background:'+(groupOver?'var(--red-light)':color+'22')+';color:'+(groupOver?'var(--red)':color);
       s3.textContent = groupPct.toFixed(0)+'%';
@@ -1404,10 +1401,10 @@ function renderBudget(){
     }
   });
   const left = totalLimit - totalSpent;
-  document.getElementById('sum-spent').textContent = fmt(totalSpent);
-  document.getElementById('sum-limit').textContent = fmt(totalLimit);
+  document.getElementById('sum-spent').innerHTML = fmtH(totalSpent);
+  document.getElementById('sum-limit').innerHTML = fmtH(totalLimit);
   const leftEl = document.getElementById('sum-left');
-  leftEl.textContent = fmt(Math.abs(left));
+  leftEl.innerHTML = fmtH(Math.abs(left));
   leftEl.className = 's-val '+(left<0?'over':'ok');
 
   // Days remaining row — current month only
@@ -1426,10 +1423,10 @@ function renderBudget(){
       const parts = [
         '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
         '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' +
-          (ok ? '✓ ' : '⚠ ') + fmt(Math.abs(dailyAllowance)) + '/день' +
+          (ok ? '✓ ' : '⚠ ') + fmtH(Math.abs(dailyAllowance)) + '/день' +
         '</span>',
       ];
-      if(daysGone > 0) parts.push('<span>факт ' + fmt(dailySpent) + '/день</span>');
+      if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
       daysRow.style.display = 'flex';
       daysRow.innerHTML = parts.join('');
     } else {
@@ -1466,8 +1463,8 @@ function makeCatRow(i, spent, lim, totalLimit, inGroup){
       </div>
     </div>
     <div class="cat-nums">
-      <span class="cat-spent">${fmt(spent)}</span>
-      <span class="cat-limit-txt">из ${fmt(lim)} · ${pctOfBudget.toFixed(0)}% бюджета</span>
+      <span class="cat-spent">${fmtH(spent)}</span>
+      <span class="cat-limit-txt">из ${fmtH(lim)} · ${pctOfBudget.toFixed(0)}% бюджета</span>
     </div>
     <div class="progress"><div class="progress-fill ${barClass}" style="width:${bar}%"></div></div>
   `;
@@ -1573,7 +1570,7 @@ function renderCatExpensesList(catIdx, y, m) {
     return `<div class="exp-list-item">
       <div class="exp-list-date">${dy}.${mo}</div>
       <div class="exp-list-body">
-        <div class="exp-list-amount">${fmt(e.amount)}</div>
+        <div class="exp-list-amount">${fmtH(e.amount)}</div>
         ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
       <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
@@ -1655,7 +1652,7 @@ function renderDay(){
   renderDenomWidget();
   const entries = getDayExpenses(currentDay);
   const total = entries.reduce((s,e)=>s+e.amount,0);
-  document.getElementById('day-total').textContent = fmt(total);
+  document.getElementById('day-total').innerHTML = fmtH(total);
   const list = document.getElementById('entry-list');
   list.innerHTML='';
   if(!entries.length){
@@ -1684,7 +1681,7 @@ function renderDay(){
       header.innerHTML = `
         <div class="entry-dot" style="background:${color}"></div>
         <div class="entry-info"><div class="entry-cat">${esc(catName)}</div></div>
-        <div class="entry-amount" style="font-weight:600">${fmt(catTotal)}</div>
+        <div class="entry-amount" style="font-weight:600">${fmtH(catTotal)}</div>
         <button class="entry-del" onclick="openAddExpense(${cat})">+</button>
       `;
       list.appendChild(header);
@@ -1697,7 +1694,7 @@ function renderDay(){
           <div class="entry-info" style="flex:1">
             <div class="entry-note">${e.comment ? esc(e.comment) : '<span style="color:var(--muted);font-style:italic">—</span>'}</div>
           </div>
-          <div class="entry-amount">${fmt(e.amount)}</div>
+          <div class="entry-amount">${fmtH(e.amount)}</div>
           <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
         `;
         _makeSwipeable(row, ()=>deleteExpenseById(e.id));
@@ -1714,7 +1711,7 @@ function renderDay(){
           <div class="entry-cat">${esc(catName)}</div>
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
-        <div class="entry-amount">${fmt(e.amount)}</div>
+        <div class="entry-amount">${fmtH(e.amount)}</div>
         <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
       `;
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
@@ -1746,7 +1743,7 @@ function renderExpenseSearch(query){
   // Итог по найденному
   const totalBar = document.createElement('div');
   totalBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 16px 4px;font-size:13px';
-  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700">${fmt(all.reduce((s,e)=>s+e.amount,0))}</span>`;
+  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700">${fmtH(all.reduce((s,e)=>s+e.amount,0))}</span>`;
   list.appendChild(totalBar);
   // Group by date
   let lastDate = null;
@@ -1771,7 +1768,7 @@ function renderExpenseSearch(query){
         <div class="entry-cat">${esc(catName)}</div>
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
-      <div class="entry-amount">${fmt(e.amount)}</div>
+      <div class="entry-amount">${fmtH(e.amount)}</div>
       <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
     `;
     _makeSwipeable(row, ()=>deleteExpenseById(e.id));
@@ -1797,7 +1794,7 @@ function renderTemplateChips(){
     const color = t.color || getCatColor(t.cat);
     return `<button onclick="addFromTemplate('${t.id}',this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmt(t.amount)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
     </button>`;
   }).join('');
 }
@@ -1891,7 +1888,7 @@ function renderTemplateSettings(){
       <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;margin-right:4px"></span>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px">${esc(t.name)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(catName)} · ${fmt(t.amount)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(catName)} · ${fmtH(t.amount)}</div>
       </div>
       <button class="btn small icon-btn" onclick="openTemplateModal('${t.id}')"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     </div>`;
@@ -2025,10 +2022,10 @@ function renderIncome(){
   const totalExpenses = getMonthExpenses(y, m).reduce((s,e) => s+e.amount, 0);
   const balance = totalIncome - totalExpenses;
 
-  document.getElementById('income-total').textContent = fmt(totalIncome);
-  document.getElementById('income-expenses').textContent = fmt(totalExpenses);
+  document.getElementById('income-total').innerHTML = fmtH(totalIncome);
+  document.getElementById('income-expenses').innerHTML = fmtH(totalExpenses);
   const balEl = document.getElementById('income-balance');
-  balEl.textContent = fmt(Math.abs(balance));
+  balEl.innerHTML = fmtH(Math.abs(balance));
   balEl.className = 's-val ' + (balance >= 0 ? 'ok' : 'over');
 
   const list = document.getElementById('income-list');
@@ -2051,7 +2048,7 @@ function renderIncome(){
         <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
-      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmt(inc.amount)}</span>
+      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
     `;
     list.appendChild(row);
@@ -2082,7 +2079,7 @@ function renderIncomeSearch(query){
   // Итог по найденному
   const totalBar = document.createElement('div');
   totalBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0 4px;font-size:13px';
-  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700;color:var(--green)">+${fmt(all.reduce((s,e)=>s+e.amount,0))}</span>`;
+  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700;color:var(--green)">+${fmtH(all.reduce((s,e)=>s+e.amount,0))}</span>`;
   list.appendChild(totalBar);
   const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
   let lastDate = null;
@@ -2106,7 +2103,7 @@ function renderIncomeSearch(query){
         <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
-      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmt(inc.amount)}</span>
+      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
     `;
     list.appendChild(row);
@@ -2223,7 +2220,9 @@ function applyTheme(){
 function setPrivacyMode(on){
   DB.privacyMode = !!on;
   localStorage.setItem('privacyMode', on ? '1' : '0');
-  document.getElementById('privacy-toggle').checked = !!on;
+  const t = document.getElementById('privacy-toggle');
+  if(t) t.classList.toggle('on', !!on);
+  document.body.classList.toggle('privacy-mode', !!on);
   renderCurrentPage();
 }
 
@@ -2266,7 +2265,7 @@ function _renderStatsSummary(lastN){
       +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
       +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
       +`</div>`
-      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmt(total)}</div>`
+      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
       +(pct ? `<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}</div>` : '')
       +`</div>`;
   };
@@ -2281,7 +2280,7 @@ function _renderStatsSummary(lastN){
       +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
       +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
       +`</div>`
-      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmt(total)}</div>`
+      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
       +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
       +`</div>`;
   };
@@ -2298,7 +2297,7 @@ function _renderStatsSummary(lastN){
     ].map((s,si)=>
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
-      +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmt(s.abs?Math.abs(s.val):s.val)}</div>`
+      +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmtH(s.abs?Math.abs(s.val):s.val)}</div>`
       +(s.pct!==null ? `<div style="font-size:10px;color:${s.color};opacity:0.8;margin-top:2px">${s.pct}%</div>` : '')
       +`</div>`
     ).join('')
@@ -2343,7 +2342,7 @@ function _renderStatsSummary(lastN){
       // Stacked proportional bar
       const stackedBar = activeSav.map(s=>{
         const w = Math.round(s.saved/balance*100);
-        return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}: ${fmt(s.saved)}"></div>`;
+        return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}: ${fmtH(s.saved)}"></div>`;
       }).join('');
 
       html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
@@ -2357,7 +2356,7 @@ function _renderStatsSummary(lastN){
             +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
             +  `<div style="width:${barW}%;height:100%;background:${s.color};border-radius:3px"></div>`
             +`</div>`
-            +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmt(s.saved)}</div>`
+            +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(s.saved)}</div>`
             +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
             +`</div>`;
         }).join('');
@@ -2440,11 +2439,11 @@ function renderSavingsCharts(){
         responsive:true, maintainAspectRatio:false,
         plugins:{
           legend:{display:true, labels:{color:'#888', font:{size:10}, boxWidth:10, padding:8}},
-          tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmt(v.raw)}}
+          tooltip:{callbacks:{label:v=>v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
         },
         scales:{
           x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-          y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+          y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:'#888'}}
         }
       }
     });
@@ -2533,10 +2532,10 @@ function renderStats(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:v=>fmt(v.raw)}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},
       scales:{
         x:{grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+        y:{grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:'#888'}}
       }
     }
   });
@@ -2678,7 +2677,7 @@ function renderStats(){
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: true, labels: { color: '#888', font: { size: 10 }, boxWidth: 10, padding: 8 } },
-          tooltip: { callbacks: { label: v => v.dataset.label + ': ' + fmt(v.raw) } }
+          tooltip: { callbacks: { label: v => v.dataset.label + ': ' + (DB.privacyMode?'—':fmt(v.raw)) } }
         },
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888', maxTicksLimit: 10 } },
@@ -2693,10 +2692,10 @@ function renderStats(){
     const diffSign  = diff >= 0 ? '+' : '';
     const diffPctStr = diffPct !== null ? ' (' + diffSign + diffPct + '%)' : '';
     let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#888;padding:2px 0 6px">`;
-    html += `<span>${SHORT_MONTHS[pM]}: <b style="color:var(--text)">${fmt(prevTotal)}</b></span>`;
-    html += `<span>${SHORT_MONTHS[selM]}: <b style="color:var(--text)">${fmt(selTotal)}</b></span>`;
+    html += `<span>${SHORT_MONTHS[pM]}: <b style="color:var(--text)">${fmtH(prevTotal)}</b></span>`;
+    html += `<span>${SHORT_MONTHS[selM]}: <b style="color:var(--text)">${fmtH(selTotal)}</b></span>`;
     if (prevTotal > 0) {
-      html += `<span style="color:${diffColor};font-weight:600">${diffSign}${fmt(diff)}${diffPctStr}</span>`;
+      html += `<span style="color:${diffColor};font-weight:600">${diffSign}${fmtH(diff)}${diffPctStr}</span>`;
     }
     html += `</div>`;
     if (avgHist && vsAvgDiff !== null) {
@@ -2705,8 +2704,8 @@ function renderStats(){
       const vsPctStr = vsAvgPct !== null ? ' (' + vsSign + vsAvgPct + '%)' : '';
       const vsLabel = vsAvgDiff <= 0 ? 'Экономнее обычного' : 'Больше обычного';
       html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">`;
-      html += `Среднее за ${histMonthCount} мес.: <b style="color:var(--text)">${fmt(avgHist)}</b> — `;
-      html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmt(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
+      html += `Среднее за ${histMonthCount} мес.: <b style="color:var(--text)">${fmtH(avgHist)}</b> — `;
+      html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmtH(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
       html += `</div>`;
     }
     sumEl.innerHTML = html;
@@ -2761,7 +2760,7 @@ function renderStats(){
       vals.style.cssText = 'text-align:right;flex-shrink:0';
       const amtEl = document.createElement('div');
       amtEl.style.cssText = 'font-size:12px;font-weight:600;color:#888';
-      amtEl.textContent = fmt(x.v);
+      amtEl.innerHTML = fmtH(x.v);
       const pctEl = document.createElement('div');
       pctEl.style.cssText = 'font-size:10px;color:#666';
       pctEl.textContent = pct+'%';
@@ -2825,14 +2824,14 @@ function renderStats(){
                 const idx=v.dataIndex;
                 const total=groupDatasets.reduce((s,ds)=>s+(ds.data[idx]||0),0);
                 const pct=total>0?Math.round(v.raw/total*100):0;
-                return v.dataset.label+': '+fmt(v.raw)+(pct?' ('+pct+'%)':'');
+                return v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))+(pct?' ('+pct+'%)':'');
               }
             }
           }
         },
         scales:{
           x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-          y:{stacked:true, grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+          y:{stacked:true, grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:'#888'}}
         }
       }
     });
@@ -2871,11 +2870,11 @@ function renderStats(){
           responsive:true, maintainAspectRatio:false,
           plugins:{
             legend:{display:true, labels:{color:'#888', font:{size:9}, boxWidth:8, padding:6}},
-            tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmt(v.raw)}}
+            tooltip:{callbacks:{label:v=>v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
           },
           scales:{
             x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:'#888'}},
-            y:{stacked:true, grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}
+            y:{stacked:true, grid:{color:'rgba(128,128,128,.1)'}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:'#888'}}
           }
         }
       });
@@ -2931,7 +2930,7 @@ function renderAssetsHistory(rows, showAll){
 
     const td2 = tr.insertCell();
     td2.style.cssText = 'padding:12px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)';
-    td2.textContent = fmt(r.total);
+    td2.innerHTML = fmtH(r.total);
     if(diff !== null){
       const sp = document.createElement('span');
       sp.style.cssText = 'font-size:11px;margin-left:6px;color:'+(diff>=0?'#1d9e75':'var(--red)');
@@ -2987,7 +2986,7 @@ function renderAssets(){
   Object.entries(byBank).forEach(([name,data])=>{
     total += isCredit(name) ? -data.latest : data.latest;
   });
-  document.getElementById('total-val').textContent=fmt(total);
+  document.getElementById('total-val').innerHTML=fmtH(total);
   const depCnt = (DB.deposits||[]).filter(d=>!d._deleted).length;
   const depBtn = document.getElementById('deposits-btn-count');
   if(depBtn) depBtn.textContent = depCnt ? ' · '+depCnt : '';
@@ -3014,7 +3013,7 @@ function renderAssets(){
       const amtSpan = document.createElement('span');
       amtSpan.className = 'asset-amount';
       amtSpan.style.color = credit ? 'var(--red)' : '';
-      amtSpan.textContent = hasData ? (credit ? '−' : '') + fmt(data.latest) : '—';
+      amtSpan.innerHTML = hasData ? (credit ? '−' : '') + fmtH(data.latest) : '—';
       const editBtn = document.createElement('button');
       editBtn.className = 'btn small icon-btn';
       editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -3049,7 +3048,7 @@ function renderAssets(){
       charts.assets=new Chart(document.getElementById('chartAssets'),{
         type:'line',
         data:{labels,datasets:[{data,borderColor:'#185fa5',backgroundColor:'rgba(24,95,165,.08)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#185fa5',borderWidth:2}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>fmt(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888'}},y:{grid:{color:'rgba(128,128,128,.1)'},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:'#888'}}}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#888'}},y:{grid:{color:'rgba(128,128,128,.1)'},ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:'#888'}}}}
       });
     }
   }catch(e){ console.error('assets chart:', e); }
@@ -3098,14 +3097,14 @@ function renderGoals(){
         const now = new Date();
         const monthsLeft = (dy - now.getFullYear())*12 + ((dm-1) - now.getMonth());
         if(monthsLeft < 0){
-          paceLine = `<span style="color:var(--red);font-weight:600">🔴 Срок прошёл · осталось ${fmt(remaining)}</span>`;
+          paceLine = `<span style="color:var(--red);font-weight:600">🔴 Срок прошёл · осталось ${fmtH(remaining)}</span>`;
         } else {
           const perMonth = Math.ceil(remaining / Math.max(1, monthsLeft));
           const whenStr = monthsLeft === 0 ? 'в этом месяце' : monthsLeft+' мес';
-          paceLine = `Осталось ${fmt(remaining)} · ${whenStr} · <span style="color:${color};font-weight:600">${fmt(perMonth)}/мес</span>`;
+          paceLine = `Осталось ${fmtH(remaining)} · ${whenStr} · <span style="color:${color};font-weight:600">${fmtH(perMonth)}/мес</span>`;
         }
       } else {
-        paceLine = `Осталось ${fmt(remaining)}`;
+        paceLine = `Осталось ${fmtH(remaining)}`;
       }
     }
 
@@ -3119,8 +3118,8 @@ function renderGoals(){
           <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:600;color:${color}">${fmt(g.saved)}</span>
-          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">✓ Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmt(g.target)} · ${pct}%</span>`}
+          <span style="font-size:13px;font-weight:600;color:${color}">${fmtH(g.saved)}</span>
+          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">✓ Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmtH(g.target)} · ${pct}%</span>`}
         </div>
         ${paceLine?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${paceLine}</div>`:''}
       </div>
@@ -3135,7 +3134,7 @@ function openGoalTopup(id, ev){
   const g = (DB.goals||[]).find(x=>x.id===id);
   if(!g) return;
   _topupGoalId = id;
-  document.getElementById('goal-topup-name').textContent = g.name + ' · накоплено ' + fmt(g.saved) + ' из ' + fmt(g.target);
+  document.getElementById('goal-topup-name').innerHTML = esc(g.name) + ' · накоплено ' + fmtH(g.saved) + ' из ' + fmtH(g.target);
   document.getElementById('goal-topup-amount').value = '';
   openModal('modal-goal-topup');
   setTimeout(()=>{ const i=document.getElementById('goal-topup-amount'); if(i) i.focus(); }, 50);
@@ -3259,7 +3258,7 @@ function renderDeposits(){
   const list = document.getElementById('deposits-list');
   if(!list) return;
   const deps = (DB.deposits||[]).filter(d=>!d._deleted).sort((a,b)=>(a.endDate||'').localeCompare(b.endDate||''));
-  document.getElementById('deposits-total-now').textContent = fmt(deps.reduce((s,d)=>s+d.amount,0));
+  document.getElementById('deposits-total-now').innerHTML = fmtH(deps.reduce((s,d)=>s+d.amount,0));
   const fc = document.getElementById('deposits-forecast-wrap');
   if(!deps.length){
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет вкладов — нажмите + чтобы добавить</p>';
@@ -3281,8 +3280,8 @@ function renderDeposits(){
         <span style="font-size:12px;color:var(--muted)">${d.rate}%${eff!==null?' · эфф. '+eff+'%':' год.'}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;font-weight:600">${fmt(d.amount)} → ${fmt(atEnd)}</span>
-        <span style="font-size:12px;color:var(--green);font-weight:600">+${fmt(profit)}</span>
+        <span style="font-size:13px;font-weight:600">${fmtH(d.amount)} → ${fmtH(atEnd)}</span>
+        <span style="font-size:12px;color:var(--green);font-weight:600">+${fmtH(profit)}</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px">${closed
         ? '✓ Срок вышел '+_fmtDateRu(d.endDate)
@@ -3297,7 +3296,7 @@ function renderDeposits(){
   }
   const norm = avgMonthlySavings();
   document.getElementById('dep-forecast-norm-lbl').textContent =
-    norm > 0 ? '+ накопления по моей норме (~'+fmt(norm)+'/мес)' : '+ накопления по норме (нет данных за прошлые месяцы)';
+    norm > 0 ? '+ накопления по моей норме (~'+fmtH(norm)+'/мес)' : '+ накопления по норме (нет данных за прошлые месяцы)';
   renderDepositForecast();
 }
 
@@ -3317,11 +3316,11 @@ function renderDepositForecast(){
     extra = Math.round(norm*months);
   }
   el.innerHTML = `
-    <div style="font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:10px">${fmt(depTotal+extra)}</div>
+    <div style="font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:10px">${fmtH(depTotal+extra)}</div>
     <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Тело вкладов</span><span>${fmt(principal)}</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Проценты</span><span style="color:var(--green);font-weight:600">+${fmt(interest)}</span></div>
-      ${extra>0?`<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Накопления (${months} мес × ${fmt(norm)})</span><span style="color:var(--green);font-weight:600">+${fmt(extra)}</span></div>`:''}
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Тело вкладов</span><span>${fmtH(principal)}</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Проценты</span><span style="color:var(--green);font-weight:600">+${fmtH(interest)}</span></div>
+      ${extra>0?`<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Накопления (${months} мес × ${fmtH(norm)})</span><span style="color:var(--green);font-weight:600">+${fmtH(extra)}</span></div>`:''}
     </div>
     ${(()=>{const n=deps.filter(d=>d.capitalization==='end'&&d.endDate>dateStr).length;
       return n?`<div style="font-size:11px;color:var(--muted);margin-top:8px">${n} вкл. с выплатой % в конце ещё не закроются к этой дате — учтено только тело</div>`:'';})()}`;
@@ -3699,7 +3698,7 @@ function renderSettings(){
     themeEl.value = cur;
   }
   const privEl = document.getElementById('privacy-toggle');
-  if(privEl) privEl.checked = !!DB.privacyMode;
+  if(privEl) privEl.classList.toggle('on', !!DB.privacyMode);
   renderNotifToggle();
   const catCount = document.getElementById('cat-count-display');
   if(catCount) catCount.textContent = DB.categories.length + ' шт.';
@@ -5038,6 +5037,7 @@ function init(){
   initOverlays();
   loadDB();
   applyTheme();
+  document.body.classList.toggle('privacy-mode', !!DB.privacyMode);
   const now=new Date();
   currentMonth={y:now.getFullYear(),m:now.getMonth()};
   currentDay=today();
