@@ -445,6 +445,10 @@ if ('serviceWorker' in navigator) {
       <span class="setting-label">Тема</span>
       <select id="theme-picker" onchange="setTheme(this.value)" style="border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:500;-webkit-appearance:none;appearance:none;cursor:pointer;font-family:inherit;max-width:140px"></select>
     </div>
+    <div class="setting-row" onclick="setPrivacyMode(!document.getElementById('privacy-toggle').checked)" style="cursor:pointer">
+      <span class="setting-label">🫣 Приватный режим</span>
+      <input type="checkbox" id="privacy-toggle" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;pointer-events:none" onchange="setPrivacyMode(this.checked)"/>
+    </div>
   </div>
   <div class="spacer"></div>
   <div class="sec-hdr"><span class="sec-title">Данные</span></div>
@@ -906,7 +910,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.13.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1048,6 +1052,8 @@ function loadDB(){
   if(!DB.assets) DB.assets = [];
   if(!DB.templates) DB.templates = [];
   if(!DB.deposits) DB.deposits = [];
+  // privacyMode — device-local, не синкается
+  DB.privacyMode = localStorage.getItem('privacyMode') === '1';
   if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
   if(!DB.incomeTagColors) DB.incomeTagColors = {};
   // First run — no data at all: populate with defaults so app isn't empty
@@ -1114,7 +1120,10 @@ function readSyncUrlFromCookie(){
 
 // ─── HELPERS ────────────────────────────────────────────────────────
 function monthKey(y,m){return y+'-'+String(m+1).padStart(2,'0')}
-function fmt(n){return Math.round(n).toLocaleString('ru-RU')+'₽'}
+function fmt(n){
+  if(DB.privacyMode) return '●●● ₽';
+  return Math.round(n).toLocaleString('ru-RU')+'₽';
+}
 
 function parseMoney(str){
   return parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
@@ -1165,6 +1174,7 @@ function setMoneyInput(id, val){
 }
 
 function fmtShort(n){
+  if(DB.privacyMode) return '●';
   const a = Math.abs(n);
   if(a >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'М';
   if(a >= 1000)    return (n/1000).toFixed(0)+'к';
@@ -2208,6 +2218,13 @@ function applyTheme(){
       if(bg) m.content = bg;
     }catch(_){}
   });
+}
+
+function setPrivacyMode(on){
+  DB.privacyMode = !!on;
+  localStorage.setItem('privacyMode', on ? '1' : '0');
+  document.getElementById('privacy-toggle').checked = !!on;
+  renderCurrentPage();
 }
 
 function setTheme(val){
@@ -3681,6 +3698,8 @@ function renderSettings(){
     ].map(t=>`<option value="${t.v}">${t.l}</option>`).join('');
     themeEl.value = cur;
   }
+  const privEl = document.getElementById('privacy-toggle');
+  if(privEl) privEl.checked = !!DB.privacyMode;
   renderNotifToggle();
   const catCount = document.getElementById('cat-count-display');
   if(catCount) catCount.textContent = DB.categories.length + ' шт.';
@@ -5067,7 +5086,8 @@ function buildPayload(){
   delete payload.syncToken;
   delete payload.notifsEnabled;
   delete payload.notifThreshold;
-  delete payload.theme;   // тема — настройка устройства, как и уведомления
+  delete payload.theme;         // тема — настройка устройства
+  delete payload.privacyMode;  // приватный режим — настройка устройства
   delete payload._dirty;
   return payload;
 }
