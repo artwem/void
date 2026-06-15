@@ -910,7 +910,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.4</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3295,7 +3295,7 @@ function renderDeposits(){
     inp.value = maxEnd > td ? maxEnd : td;
   }
   const norm = avgMonthlySavings();
-  document.getElementById('dep-forecast-norm-lbl').textContent =
+  document.getElementById('dep-forecast-norm-lbl').innerHTML =
     norm > 0 ? '+ накопления по моей норме (~'+fmtH(norm)+'/мес)' : '+ накопления по норме (нет данных за прошлые месяцы)';
   renderDepositForecast();
 }
