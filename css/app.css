@@ -200,4 +200,4 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 
 /* ── Privacy mode blur ── */
 .prv{display:inline-block}
-body.privacy-mode .prv{filter:blur(3px);user-select:none;pointer-events:none}
+body.privacy-mode .prv{filter:blur(3px);clip-path:inset(0);user-select:none;pointer-events:none}
