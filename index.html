@@ -1444,13 +1444,22 @@ function renderBudget(){
   const progressBar = document.getElementById('budget-progress-bar');
   if(progressBar){
     if(totalLimit > 0){
-      const pct = Math.min(Math.round(totalSpent / totalLimit * 100), 100);
-      const color = pct >= 100 ? 'var(--red)' : pct >= 85 ? '#e67e22' : 'var(--green)';
+      const segsData = DB.categories
+        .map((_,i) => ({color:getCatColor(i), val:spentArr[i]}))
+        .filter(s => s.val > 0);
+      const remainVal = Math.max(0, totalLimit - totalSpent);
+      const over = totalSpent > totalLimit;
+      const segHtml = segsData.map(s =>
+        `<div style="flex:${s.val};background:${s.color};min-width:2px"></div>`
+      ).join('');
+      const remainHtml = remainVal > 0
+        ? `<div style="flex:${remainVal};background:rgba(128,128,128,.12)"></div>` : '';
       progressBar.style.display = 'block';
       progressBar.innerHTML =
-        `<div style="background:rgba(128,128,128,.12);border-radius:4px;height:5px;overflow:hidden">`
-        +`<div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .4s"></div>`
-        +`</div>`;
+        `<div style="display:flex;border-radius:4px;overflow:hidden;height:6px;gap:1px">`
+        + segHtml + remainHtml
+        +`</div>`
+        +(over ? `<div style="font-size:10px;color:var(--red);text-align:right;margin-top:3px">+${fmtH(totalSpent-totalLimit)} превышение</div>` : '');
     } else {
       progressBar.style.display = 'none';
     }
