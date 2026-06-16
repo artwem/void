@@ -19,7 +19,8 @@
       "Bash(echo \"PID $!\")",
       "Bash(curl *)",
       "Bash(git diff *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\aanisimov\\\\code\\\\nto\" | Where-Object { $_.Name -ne \".git\" } | Select-Object Name, Mode)"
     ]
   }
 }
