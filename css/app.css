@@ -175,8 +175,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .sync-dot.none{background:var(--hint)}
 .sync-text{font-size:11px;color:var(--muted);white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:999;opacity:0;transition:opacity .2s,background .15s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
+.toast.ok{background:var(--green)}
+.toast.err{background:var(--red)}
 .toast.action{pointer-events:auto;display:inline-flex;align-items:center;gap:12px;padding:8px 8px 8px 18px}
 .toast-undo{background:rgba(255,255,255,.22);color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
 .toast-undo:active{background:rgba(255,255,255,.35)}

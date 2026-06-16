@@ -22,7 +22,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.14.6">
+<link rel="stylesheet" href="css/app.css?v=1.14.7">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -1223,12 +1223,18 @@ function getCatSpent(catIdx,y,m){
 
 // ─── TOAST ──────────────────────────────────────────────────────────
 let _toastTimer = null;
-function toast(msg){
+function toast(msg, type){
+  if(!type){
+    const m=(msg||'').toLowerCase();
+    if(/^(введите|нельзя|ошибка|неверный|проверьте|уже существует|уже есть|браузер не|разрешение не|библиотека|банк не найден)/.test(m)) type='err';
+    else if(/^(сохранено|добавлено|обновлено|удалено|✓|лимиты|резервная|данные восстановлены|скачана|переименовано|тег добавлен)/.test(m)||m.includes('добавлен')||m.includes('удалён')||m.includes('восстановлен')) type='ok';
+  }
   const el=document.getElementById('toast');
   if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
-  el.classList.remove('action');
+  el.classList.remove('action','ok','err');
+  if(type) el.classList.add(type);
   el.textContent=msg;el.classList.add('show');
-  _toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+  _toastTimer=setTimeout(()=>{ el.classList.remove('show','ok','err'); },2200);
 }
 // Toast with an "Отменить" action button. onUndo fires if tapped within `ms`.
 function toastUndo(msg, onUndo, ms=5000){
@@ -1806,7 +1812,7 @@ function renderExpenseSearch(query){
   all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
   list.innerHTML = '';
   if(!all.length){
-    list.innerHTML = '<div class="empty-day"><p>Ничего не найдено</p></div>';
+    list.innerHTML = '<div class="empty-day"><div style="font-size:28px">🔍</div><p>Ничего не найдено</p><p>Другой запрос или снимите фильтр</p></div>';
     return;
   }
   // Итог по найденному
@@ -2198,7 +2204,7 @@ function renderIncomeSearch(query){
   all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
   list.innerHTML = '';
   if(!all.length){
-    list.innerHTML = '<div class="empty-day"><p>Ничего не найдено</p></div>';
+    list.innerHTML = '<div class="empty-day"><div style="font-size:28px">🔍</div><p>Ничего не найдено</p><p>Другой запрос или тег</p></div>';
     return;
   }
   // Итог по найденному
