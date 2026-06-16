@@ -55,7 +55,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   categories:      ['ЖКУ + аренда', ...],    // ordered list
   catColors:       {0: '#185fa5', ...},       // category index → hex color
   expenses:        [{id, date, cat, amount, comment, _deleted?}, ...],
-  incomes:         [{id, date, source, amount}, ...],
+  incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],
   banks:           ['Сбербанк', ...],         // debit bank names
   creditBanks:     [...],                     // credit bank names (subtracted from net worth)
@@ -85,7 +85,7 @@ Each tab has a `render*()` function called after any data change:
 | Budget | `═══ budget.js ═══` | Categories grouped by color, limits, progress bars |
 | Day | `═══ day.js ═══` | Daily expense list |
 | Income | `═══ income.js ═══` | Income sources, monthly balance |
-| Stats | `═══ stats.js ═══` | Chart.js graphs (6-month trends, category breakdown) |
+| Аналитика | `═══ stats.js ═══` | Chart.js graphs (6-month trends, category breakdown, income by tag) |
 | Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, goals, deposits (вклады) |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
 
@@ -132,16 +132,18 @@ Cache-first for assets, network-first for HTML. The `V` timestamp at the top of 
 - `getAllBanks()` — returns `[...DB.banks, ...DB.creditBanks]`; use instead of inline spread
 - `isCredit(bankName)` — true if bank is in `DB.creditBanks`
 - `fmt(n)` — format as `12 345₽`
+- `fmtH(n)` — like `fmt(n)` but wraps in `<span class="prv">` for privacy-mode blurring; use for all monetary values in innerHTML
 - `fmtShort(n)` — compact: `12к`, `1.2М`
 - `esc(s)` — HTML-escape (always use for user-supplied strings in innerHTML)
 - `today()` — `YYYY-MM-DD`
 - `monthKey(y, m)` — `YYYY-MM` key used in `limits`
 - `getCatColor(idx)` — hex color for category (from `DB.catColors` or `CAT_COLORS` palette)
+- `getIncomeTagColor(tagName)` — hex color for income tag (from `DB.incomeTagColors` by index)
 - `getCatSpent(idx, y, m)` — sum of non-deleted expenses for category in month
 - `_getCurrentAssetsTotal()` / `renderAssets()` total — sum of **each bank's most recent non-deleted entry, regardless of date** (debit − credit; see "Assets Total" section below). To keep this fresh, asset entry uses a per-date snapshot (`openAssetSnapshot` → `openEditAssetDate(date, carryForward=true)`) that pre-fills all banks by **carrying forward** each bank's last known value (`_lastKnownAmount`), flagged "перенесено — проверьте". Editing a historical date from the history table passes `carryForward=false` (only that date's actual records).
 - `_makeSwipeable(row, onDelete)` — swipe-left-to-delete on day expense rows; `deleteExpenseById(id)` soft-deletes
 - `openModal(id)` / `closeModal(id)` — show/hide `.overlay` modals
-- `toast(msg)` — 2.2s bottom toast
+- `toast(msg, type?)` — 2.2s bottom toast; `type`: `'ok'` (green), `'err'` (red), or omit for auto-detect from message text
 - `uid()` — generates short alphanumeric ID; use for all new entity IDs
 - `checkBudgetNotifications()` — call after saving an expense to fire push notifications
 - `renderTemplateChips()` — re-renders quick-add template buttons on the Day tab header
@@ -149,6 +151,17 @@ Cache-first for assets, network-first for HTML. The `V` timestamp at the top of 
 - `GOAL_COLORS` — 7-color palette for goals
 - `TEMPLATE_COLORS` — 28-color palette for expense templates (wider range than CAT_COLORS)
 - `INCOME_TAG_COLORS` — 8-color palette for income tags
+- `_chartColors()` — returns object of theme-aware Chart.js colors read from CSS vars at render time (`.green`, `.red`, `.blue`, `.blueFill`, `.muted`, `.gridLine`, `.mutedBar`, `.mutedDim`, `.mutedFill`, `.mutedMid`); call inside chart creation, not at module level
+
+### UI State Patterns
+
+Session-persisted UI state uses `sessionStorage`:
+- `expViewMode` (`'cats'`|`'groups'`) — expense breakdown view in Аналитика; `setExpViewMode(m)` to change
+- `statsPeriod` — number of months shown in Аналитика charts
+
+Filter state (module-level variables, reset on tab re-render):
+- `_expCatFilter` (`null` | `Set<number>`) — Day tab category multi-select; `null` = show today, Set = filter all DB newest-first
+- `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter; `null` = current month, `''` = "без тега", string = specific tag
 
 ### Color Picker Pattern
 
