@@ -72,6 +72,7 @@ if ('serviceWorker' in navigator) {
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
   <div id="budget-days-row" style="display:none;padding:4px 16px 8px;font-size:12px;color:var(--muted);gap:12px;flex-wrap:wrap"></div>
+  <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
     <span class="sec-title">Категории</span>
     <span class="sec-action" onclick="openLimitEditor()">Лимиты ✎</span>
@@ -121,6 +122,7 @@ if ('serviceWorker' in navigator) {
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
       oninput="renderExpenseSearch(this.value)"/>
   </div>
+  <div id="expense-cat-filter" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:6px"></div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
 </div>
@@ -1428,10 +1430,29 @@ function renderBudget(){
         '</span>',
       ];
       if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
+      if(daysGone > 0 && daysLeft > 0){
+        const projected = Math.round(totalSpent + dailySpent * daysLeft);
+        const projColor = projected > totalLimit && totalLimit > 0 ? 'var(--red)' : 'var(--muted)';
+        parts.push('<span style="color:'+projColor+'">прогноз ' + fmtH(projected) + '</span>');
+      }
       daysRow.style.display = 'flex';
       daysRow.innerHTML = parts.join('');
     } else {
       daysRow.style.display = 'none';
+    }
+  }
+  const progressBar = document.getElementById('budget-progress-bar');
+  if(progressBar){
+    if(totalLimit > 0){
+      const pct = Math.min(Math.round(totalSpent / totalLimit * 100), 100);
+      const color = pct >= 100 ? 'var(--red)' : pct >= 85 ? '#e67e22' : 'var(--green)';
+      progressBar.style.display = 'block';
+      progressBar.innerHTML =
+        `<div style="background:rgba(128,128,128,.12);border-radius:4px;height:5px;overflow:hidden">`
+        +`<div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .4s"></div>`
+        +`</div>`;
+    } else {
+      progressBar.style.display = 'none';
     }
   }
 }
@@ -1634,6 +1655,40 @@ function saveLimits(){
 // ═══ day.js ═══
 
 // ─── RENDER: DAY ────────────────────────────────────────────────────
+let _expCatFilter = null; // null = все, number = индекс категории
+
+function renderExpenseCatChips(){
+  const wrap = document.getElementById('expense-cat-filter');
+  if(!wrap) return;
+  const cats = DB.categories || [];
+  if(!cats.length){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '';
+  const allActive = _expCatFilter === null;
+  const allChip = document.createElement('span');
+  allChip.textContent = 'Все';
+  allChip.style.cssText = 'display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(allActive?'var(--accent)':'var(--border2)')+';color:'+(allActive?'var(--accent)':'var(--muted)');
+  allChip.onclick = () => { _expCatFilter = null; renderExpenseCatChips(); const srch = document.getElementById('expense-search'); renderExpenseSearch(srch?srch.value:''); };
+  wrap.appendChild(allChip);
+  // Group indices by color — show one chip per group
+  const seen = {};
+  cats.forEach((name, i) => {
+    const color = getCatColor(i);
+    if(!seen[color]) seen[color] = [];
+    seen[color].push({i, name});
+  });
+  Object.values(seen).forEach(group => {
+    group.forEach(({i, name}) => {
+      const active = _expCatFilter === i;
+      const color = getCatColor(i);
+      const chip = document.createElement('span');
+      chip.textContent = name;
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
+      chip.onclick = () => { _expCatFilter = active ? null : i; renderExpenseCatChips(); const srch = document.getElementById('expense-search'); renderExpenseSearch(srch?srch.value:''); };
+      wrap.appendChild(chip);
+    });
+  });
+}
+
 function onDayCalChange(val){
   if(!val) return;
   currentDay = val;
@@ -1641,6 +1696,12 @@ function onDayCalChange(val){
 }
 
 function renderDay(){
+  renderExpenseCatChips();
+  if(_expCatFilter !== null){
+    const srch = document.getElementById('expense-search');
+    renderExpenseSearch(srch ? srch.value : '');
+    return;
+  }
   const srch = document.getElementById('expense-search');
   if(srch) srch.value = '';
   const d = new Date(currentDay+'T12:00:00');
@@ -1723,13 +1784,15 @@ function renderDay(){
 
 function renderExpenseSearch(query){
   const list = document.getElementById('entry-list');
-  const q = query.trim().toLowerCase();
-  if(!q){
+  const q = (query||'').trim().toLowerCase();
+  if(!q && _expCatFilter === null){
     renderDay();
     return;
   }
   const all = DB.expenses.filter(e => {
     if(e._deleted) return false;
+    if(_expCatFilter !== null && e.cat !== _expCatFilter) return false;
+    if(!q) return true;
     const cat = (DB.categories[e.cat]||'').toLowerCase();
     const comment = (e.comment||'').toLowerCase();
     const amount = String(e.amount);
