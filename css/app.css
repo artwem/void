@@ -218,3 +218,8 @@ body.privacy-mode .prv{display:inline-block;filter:blur(3px);clip-path:inset(0);
 .btn:active{transform:scale(.97)}
 .mn-btn{transition:background .12s,transform .1s}
 .mn-btn:active{transform:scale(.95)}
+
+/* Nav active indicator */
+.nav-btn{position:relative}
+.nav-btn.active{color:var(--accent)}
+.nav-btn.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:3px;background:var(--accent);border-radius:0 0 3px 3px;transition:none}
