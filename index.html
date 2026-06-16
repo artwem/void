@@ -122,7 +122,7 @@ if ('serviceWorker' in navigator) {
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
       oninput="renderExpenseSearch(this.value)"/>
   </div>
-  <div id="expense-cat-filter" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:6px"></div>
+  <div id="expense-cat-filter" style="padding:0 16px 8px;display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none"></div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
 </div>
@@ -1664,7 +1664,17 @@ function saveLimits(){
 // ═══ day.js ═══
 
 // ─── RENDER: DAY ────────────────────────────────────────────────────
-let _expCatFilter = null; // null = все, number = индекс категории
+let _expCatFilter = null; // null = показываем день; Set<number> = фильтр категорий по всей БД
+
+function _toggleExpCat(i){
+  if(_expCatFilter === null) _expCatFilter = new Set();
+  if(_expCatFilter.has(i)) _expCatFilter.delete(i);
+  else _expCatFilter.add(i);
+  if(_expCatFilter.size === 0) _expCatFilter = null;
+  renderExpenseCatChips();
+  const srch = document.getElementById('expense-search');
+  renderExpenseSearch(srch ? srch.value : '');
+}
 
 function renderExpenseCatChips(){
   const wrap = document.getElementById('expense-cat-filter');
@@ -1672,29 +1682,14 @@ function renderExpenseCatChips(){
   const cats = DB.categories || [];
   if(!cats.length){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = '';
-  const allActive = _expCatFilter === null;
-  const allChip = document.createElement('span');
-  allChip.textContent = 'Все';
-  allChip.style.cssText = 'display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(allActive?'var(--accent)':'var(--border2)')+';color:'+(allActive?'var(--accent)':'var(--muted)');
-  allChip.onclick = () => { _expCatFilter = null; renderExpenseCatChips(); const srch = document.getElementById('expense-search'); renderExpenseSearch(srch?srch.value:''); };
-  wrap.appendChild(allChip);
-  // Group indices by color — show one chip per group
-  const seen = {};
   cats.forEach((name, i) => {
+    const active = _expCatFilter !== null && _expCatFilter.has(i);
     const color = getCatColor(i);
-    if(!seen[color]) seen[color] = [];
-    seen[color].push({i, name});
-  });
-  Object.values(seen).forEach(group => {
-    group.forEach(({i, name}) => {
-      const active = _expCatFilter === i;
-      const color = getCatColor(i);
-      const chip = document.createElement('span');
-      chip.textContent = name;
-      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
-      chip.onclick = () => { _expCatFilter = active ? null : i; renderExpenseCatChips(); const srch = document.getElementById('expense-search'); renderExpenseSearch(srch?srch.value:''); };
-      wrap.appendChild(chip);
-    });
+    const chip = document.createElement('span');
+    chip.textContent = name;
+    chip.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
+    chip.onclick = () => _toggleExpCat(i);
+    wrap.appendChild(chip);
   });
 }
 
@@ -1706,7 +1701,7 @@ function onDayCalChange(val){
 
 function renderDay(){
   renderExpenseCatChips();
-  if(_expCatFilter !== null){
+  if(_expCatFilter !== null && _expCatFilter.size > 0){
     const srch = document.getElementById('expense-search');
     renderExpenseSearch(srch ? srch.value : '');
     return;
@@ -1794,13 +1789,14 @@ function renderDay(){
 function renderExpenseSearch(query){
   const list = document.getElementById('entry-list');
   const q = (query||'').trim().toLowerCase();
-  if(!q && _expCatFilter === null){
+  const hasCatFilter = _expCatFilter !== null && _expCatFilter.size > 0;
+  if(!q && !hasCatFilter){
     renderDay();
     return;
   }
   const all = DB.expenses.filter(e => {
     if(e._deleted) return false;
-    if(_expCatFilter !== null && e.cat !== _expCatFilter) return false;
+    if(hasCatFilter && !_expCatFilter.has(e.cat)) return false;
     if(!q) return true;
     const cat = (DB.categories[e.cat]||'').toLowerCase();
     const comment = (e.comment||'').toLowerCase();
