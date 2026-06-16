@@ -2026,6 +2026,17 @@ function renderIncomeTagChips(){
     renderIncomeSearch(srch ? srch.value : '');
   };
   wrap.appendChild(allChip);
+  const noTagActive = _incomeTagFilter === '';
+  const noTagChip = document.createElement('span');
+  noTagChip.textContent = 'Без тега';
+  noTagChip.style.cssText = 'display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(noTagActive?'var(--text)':'var(--border2)')+';color:'+(noTagActive?'var(--text)':'var(--muted)');
+  noTagChip.onclick = () => {
+    _incomeTagFilter = noTagActive ? null : '';
+    renderIncomeTagChips();
+    const srch = document.getElementById('income-search');
+    renderIncomeSearch(srch ? srch.value : '');
+  };
+  wrap.appendChild(noTagChip);
   tags.forEach(tag => {
     const active = _incomeTagFilter === tag;
     const color = getIncomeTagColor(tag);
@@ -2064,7 +2075,7 @@ function renderIncome(){
   balEl.innerHTML = fmtH(Math.abs(balance));
   balEl.className = 's-val ' + (balance >= 0 ? 'ok' : 'over');
 
-  if(_incomeTagFilter){
+  if(_incomeTagFilter !== null){
     const srch = document.getElementById('income-search');
     renderIncomeSearch(srch ? srch.value : '');
     return;
@@ -2100,13 +2111,15 @@ function renderIncome(){
 function renderIncomeSearch(query){
   const list = document.getElementById('income-list');
   const q = (query||'').trim().toLowerCase();
-  if(!q && !_incomeTagFilter){
+  if(!q && _incomeTagFilter === null){
     renderIncome();
     return;
   }
   const all = (DB.incomes||[]).filter(inc => {
     if(inc._deleted) return false;
-    if(_incomeTagFilter && inc.tag !== _incomeTagFilter) return false;
+    if(_incomeTagFilter !== null){
+      if(_incomeTagFilter === '' ? !!inc.tag : inc.tag !== _incomeTagFilter) return false;
+    }
     if(!q) return true;
     const source = (inc.source||'').toLowerCase();
     const comment = (inc.comment||'').toLowerCase();
