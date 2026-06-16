@@ -223,8 +223,8 @@ body.privacy-mode .prv{display:inline-block;filter:blur(3px);clip-path:inset(0);
 
 /* Nav active indicator */
 .nav-btn{position:relative}
-.nav-btn.active{color:var(--accent)}
-.nav-btn.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:3px;background:var(--accent);border-radius:0 0 3px 3px;transition:none}
+.nav-btn.active{color:var(--blue)}
+.nav-btn.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:3px;background:var(--blue);border-radius:0 0 3px 3px;transition:none}
 
 /* Bottom sheet drag handle */
 .sheet::before{content:'';display:block;width:32px;height:4px;background:var(--border2);border-radius:2px;margin:-8px auto 8px}
