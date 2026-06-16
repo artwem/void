@@ -192,9 +192,15 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
         <div class="chart-title" style="margin:0">Структура</div>
-        <select id="pie-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;text-align:right" onchange="renderStats()"></select>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div id="pie-view-toggle" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="pvm-cats" onclick="setPieViewMode('cats')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">Кат.</span>
+            <span id="pvm-groups" onclick="setPieViewMode('groups')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Гр.</span>
+          </div>
+          <select id="pie-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;text-align:right" onchange="renderStats()"></select>
+        </div>
       </div>
       <div id="chartPie" style="padding:4px 0"></div>
     </div>
@@ -913,7 +919,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.14.5</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.15.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2567,6 +2573,8 @@ function _renderStatsSummary(lastN){
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
 function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
+let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
+function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
 
 function setStatsPeriod(n){
   statsPeriod = n;
@@ -2937,30 +2945,65 @@ function renderStats(){
   const [pieY,pieM]=pieSel.value.split('-').map(Number);
   const curExp = getMonthExpenses(pieY,pieM);
   const catTotals = DB.categories.map((_,i)=>curExp.filter(e=>e.cat===i).reduce((s,e)=>s+e.amount,0));
-  const nonZero = catTotals.map((v,i)=>({v:Math.round(v),i})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  const nonZeroCats = catTotals.map((v,i)=>({v:Math.round(v),i})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+
+  // Группы по цвету — тогл показываем только если есть хотя бы одна группа из 2+ категорий
+  const pieColorGroups = {};
+  nonZeroCats.forEach(x=>{
+    const c = getCatColor(x.i);
+    if(!pieColorGroups[c]) pieColorGroups[c] = {color:c, v:0, indices:[]};
+    pieColorGroups[c].v += x.v;
+    pieColorGroups[c].indices.push(x.i);
+  });
+  const groupArr = Object.values(pieColorGroups).sort((a,b)=>b.v-a.v);
+  const hasGroups = groupArr.some(g=>g.indices.length>1);
+  const showGroups = hasGroups && _pieViewMode==='groups';
+
+  // Видимость/подсветка тогла
+  const pvmToggle = document.getElementById('pie-view-toggle');
+  if(pvmToggle){
+    pvmToggle.style.display = hasGroups ? 'flex' : 'none';
+    const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
+    document.getElementById('pvm-cats').style.cssText='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(!showGroups?aOn:aOff);
+    document.getElementById('pvm-groups').style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(showGroups?aOn:aOff);
+  }
+
+  // Элементы для отрисовки: либо категории, либо группы
+  let items;
+  if(showGroups){
+    items = groupArr.map(g=>{
+      // имя группы = самая крупная категория, подпись = остальные
+      const sorted = g.indices.slice().sort((a,b)=>catTotals[b]-catTotals[a]);
+      const name = DB.categories[sorted[0]]||'';
+      const sub = sorted.length>1 ? sorted.slice(1).map(i=>DB.categories[i]||'').join(' · ') : '';
+      return {v:g.v, color:g.color, name, sub, idx:null};
+    });
+  } else {
+    items = nonZeroCats.map(x=>({v:x.v, color:getCatColor(x.i), name:DB.categories[x.i]||'', sub:'', idx:x.i}));
+  }
+
   const pieEl = document.getElementById('chartPie');
   pieEl.innerHTML = '';
-  if(nonZero.length){
-    const grandTotal = nonZero.reduce((s,x)=>s+x.v,0);
-    const maxVal = nonZero[0].v;
-    nonZero.forEach(x=>{
+  if(items.length){
+    const grandTotal = items.reduce((s,x)=>s+x.v,0);
+    const maxVal = items[0].v;
+    items.forEach(x=>{
       const pct = grandTotal>0 ? (x.v/grandTotal*100).toFixed(1) : 0;
       const barW = maxVal>0 ? (x.v/maxVal*100) : 0;
-      const color = getCatColor(x.i);
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer';
-      row.addEventListener('click', ()=>openCatExpenses(x.i));
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;'+(x.idx!==null?'cursor:pointer':'');
+      if(x.idx!==null) row.addEventListener('click', ()=>openCatExpenses(x.idx));
       const dot = document.createElement('div');
-      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0';
+      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:'+x.color+';flex-shrink:0';
       const col = document.createElement('div');
       col.style.cssText = 'flex:1;min-width:0';
       const nameEl = document.createElement('div');
       nameEl.style.cssText = 'font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px';
-      nameEl.textContent = DB.categories[x.i]||'';
+      nameEl.textContent = x.name + (x.sub?' · '+x.sub:'');
       const track = document.createElement('div');
       track.style.cssText = 'height:6px;background:rgba(128,128,128,.15);border-radius:3px;overflow:hidden';
       const fill = document.createElement('div');
-      fill.style.cssText = 'height:100%;width:'+barW+'%;background:'+color+';border-radius:3px;transition:width .3s';
+      fill.style.cssText = 'height:100%;width:'+barW+'%;background:'+x.color+';border-radius:3px;transition:width .3s';
       track.appendChild(fill);
       col.appendChild(nameEl);
       col.appendChild(track);
