@@ -2427,16 +2427,7 @@ function _renderStatsSummary(lastN){
     html += `<div style="margin-bottom:16px"></div>`;
   }
 
-  // Expense categories
-  if(catTotals.length){
-    const hdrPct = expPct !== null
-      ? ` — <span style="color:var(--red,#d85a30);font-weight:600">${expPct}%</span> от дохода`
-      : '';
-    html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Расходы по категориям${hdrPct}</div>`
-      + catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('');
-  }
-
-  // Expense groups (by color)
+  // Expense categories / groups toggle
   if(catTotals.length){
     const groupMap = {};
     catTotals.forEach(c => {
@@ -2446,29 +2437,46 @@ function _renderStatsSummary(lastN){
     });
     const groupArr = Object.values(groupMap).sort((a,b)=>b.total-a.total);
     const hasGroups = groupArr.some(g=>g.cats.length > 1);
-    if(hasGroups){
+    const showGroups = hasGroups && _expViewMode === 'groups';
+
+    const hdrPct = expPct !== null
+      ? ` — <span style="color:var(--red,#d85a30);font-weight:600">${expPct}%</span> от дохода`
+      : '';
+    const toggleHtml = hasGroups
+      ? `<div style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">`
+        +`<span onclick="setExpViewMode('cats');renderStats()" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;${!showGroups?'background:rgba(128,128,128,0.18);color:var(--text)':'color:#888'}">Кат.</span>`
+        +`<span onclick="setExpViewMode('groups');renderStats()" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;${showGroups?'background:rgba(128,128,128,0.18);color:var(--text)':'color:#888'}">Гр.</span>`
+        +`</div>`
+      : '';
+
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`
+      +`<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">`
+      +`Расходы ${showGroups?'по группам':'по категориям'}${hdrPct}</div>`
+      +toggleHtml+`</div>`;
+
+    if(showGroups){
       const maxG = groupArr[0].total || 1;
-      html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 8px">Расходы по группам</div>`
-        + groupArr.map(g => {
-          const barW = Math.round(g.total / maxG * 100);
-          const pct = totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '';
-          const label = g.cats[0];
-          const sub = g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '';
-          return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">`
-            +`<div style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;margin-top:3px"></div>`
-            +`<div style="flex:1;min-width:0">`
-            +  `<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</div>`
-            +  (sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>` : '')
-            +`</div>`
-            +`<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">`
-            +  `<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px">`
-            +    `<div style="width:${barW}%;height:100%;background:${g.color};border-radius:3px"></div>`
-            +  `</div>`
-            +  `<div style="font-size:12px;font-weight:600;color:var(--muted);min-width:54px;text-align:right">${fmtH(g.total)}</div>`
-            +(pct?`<div style="font-size:10px;color:#888;width:34px;text-align:right">${pct}</div>`:'')
-            +`</div>`
-            +`</div>`;
-        }).join('');
+      html += groupArr.map(g => {
+        const barW = Math.round(g.total / maxG * 100);
+        const pct = totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '';
+        const sub = g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '';
+        return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">`
+          +`<div style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;margin-top:3px"></div>`
+          +`<div style="flex:1;min-width:0">`
+          +  `<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.cats[0])}</div>`
+          +  (sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>` : '')
+          +`</div>`
+          +`<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">`
+          +  `<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px">`
+          +    `<div style="width:${barW}%;height:100%;background:${g.color};border-radius:3px"></div>`
+          +  `</div>`
+          +  `<div style="font-size:12px;font-weight:600;color:var(--muted);min-width:54px;text-align:right">${fmtH(g.total)}</div>`
+          +(pct?`<div style="font-size:10px;color:#888;width:34px;text-align:right">${pct}</div>`:'')
+          +`</div>`
+          +`</div>`;
+      }).join('');
+    } else {
+      html += catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('');
     }
   }
 
@@ -2483,6 +2491,8 @@ function _renderStatsSummary(lastN){
 
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
+let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
+function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
 
 function setStatsPeriod(n){
   statsPeriod = n;
