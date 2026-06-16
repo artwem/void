@@ -2423,6 +2423,42 @@ function _renderStatsSummary(lastN){
       + catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('');
   }
 
+  // Expense groups (by color)
+  if(catTotals.length){
+    const groupMap = {};
+    catTotals.forEach(c => {
+      if(!groupMap[c.color]) groupMap[c.color] = {color:c.color, cats:[], total:0};
+      groupMap[c.color].cats.push(c.name);
+      groupMap[c.color].total += c.total;
+    });
+    const groupArr = Object.values(groupMap).sort((a,b)=>b.total-a.total);
+    const hasGroups = groupArr.some(g=>g.cats.length > 1);
+    if(hasGroups){
+      const maxG = groupArr[0].total || 1;
+      html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 8px">Расходы по группам</div>`
+        + groupArr.map(g => {
+          const barW = Math.round(g.total / maxG * 100);
+          const pct = totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '';
+          const label = g.cats[0];
+          const sub = g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '';
+          return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">`
+            +`<div style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;margin-top:3px"></div>`
+            +`<div style="flex:1;min-width:0">`
+            +  `<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</div>`
+            +  (sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>` : '')
+            +`</div>`
+            +`<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">`
+            +  `<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px">`
+            +    `<div style="width:${barW}%;height:100%;background:${g.color};border-radius:3px"></div>`
+            +  `</div>`
+            +  `<div style="font-size:12px;font-weight:600;color:var(--muted);min-width:54px;text-align:right">${fmtH(g.total)}</div>`
+            +(pct?`<div style="font-size:10px;color:#888;width:34px;text-align:right">${pct}</div>`:'')
+            +`</div>`
+            +`</div>`;
+        }).join('');
+    }
+  }
+
   // Income tags
   if(tagTotals.length){
     html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 8px">Доходы по источникам</div>`
@@ -3056,7 +3092,8 @@ function renderAssets(){
       const hasData = !!data.date;
       const row = document.createElement('div');
       row.className = 'asset-row';
-      row.style.cssText = 'gap:8px';
+      row.style.cssText = 'gap:8px;cursor:pointer';
+      row.addEventListener('click', openAssetSnapshot);
       const namePart = document.createElement('div');
       namePart.style.cssText = 'flex:1;min-width:0';
       const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
@@ -3067,13 +3104,8 @@ function renderAssets(){
       amtSpan.className = 'asset-amount';
       amtSpan.style.color = credit ? 'var(--red)' : '';
       amtSpan.innerHTML = hasData ? (credit ? '−' : '') + fmtH(data.latest) : '—';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn small icon-btn';
-      editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-      editBtn.addEventListener('click', () => openAssetSnapshot());
       row.appendChild(namePart);
       row.appendChild(amtSpan);
-      row.appendChild(editBtn);
       list.appendChild(row);
     });
   }
@@ -3713,8 +3745,8 @@ function saveAssetEdit(){
   allBanks.forEach((bankName, idx) => {
     const inp = document.getElementById('asset-edit-inp-'+idx);
     if(!inp) return;
+    if(!inp.value.trim()) return; // пропускаем пустые
     const val = parseMoney(inp.value);
-    if(!val || val <= 0) return; // пропускаем пустые/нулевые
     DB.assets.push({ id: uid(), bank: idx, bankName, amount: val, date, updatedAt: now });
   });
 
