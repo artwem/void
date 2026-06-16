@@ -200,3 +200,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 
 /* ── Privacy mode blur ── */
 body.privacy-mode .prv{display:inline-block;filter:blur(3px);clip-path:inset(0);user-select:none;pointer-events:none}
+
+/* ── Design refinements ─────────────────────────────────────────── */
+/* Tabular nums — все денежные значения через fmtH → .prv */
+.prv{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+/* Micro-interactions — физическое ощущение нажатия */
+.cat-row{transition:border-color .15s,background .15s,transform .1s}
+.cat-row:active{transform:scale(.98)}
+.entry-row{transition:background .12s,transform .1s}
+.entry-row:active{transform:scale(.98)}
+.asset-row{transition:background .12s,transform .1s}
+.asset-row:active{transform:scale(.98)}
+.setting-row{transition:background .12s,transform .1s}
+.setting-row:active{transform:scale(.98)}
+.btn{transition:background .12s,transform .1s}
+.btn:active{transform:scale(.97)}
+.mn-btn{transition:background .12s,transform .1s}
+.mn-btn:active{transform:scale(.95)}
