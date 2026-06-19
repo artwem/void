@@ -621,6 +621,13 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="tmpl-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="tmpl-comment" placeholder="Необязательно"/></div>
     <div class="fgrp"><label class="flbl">Цвет</label><div id="tmpl-color-picker" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px"></div></div>
+    <div class="fgrp"><label class="flbl">Тип</label>
+      <div class="spec-seg" id="tmpl-spec-seg">
+        <span data-v="" onclick="setTmplSpecial('')">Обычный</span>
+        <span data-v="oneoff" onclick="setTmplSpecial('oneoff')">Разовое</span>
+        <span data-v="recurring" onclick="setTmplSpecial('recurring')">Регулярное</span>
+      </div>
+    </div>
     <div class="btn-row">
       <button class="btn danger small" id="tmpl-delete-btn" onclick="deleteTemplate()" style="display:none">Удалить</button>
       <button class="btn" onclick="closeModal('modal-template')">Отмена</button>
@@ -933,7 +940,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.15.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1032,6 +1039,13 @@ function setExpSpecial(v){
   _selectedExpSpecial = v||'';
   document.querySelectorAll('#exp-spec-seg span').forEach(s=>{
     s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedExpSpecial);
+  });
+}
+let _selectedTmplSpecial = '';
+function setTmplSpecial(v){
+  _selectedTmplSpecial = v||'';
+  document.querySelectorAll('#tmpl-spec-seg span').forEach(s=>{
+    s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedTmplSpecial);
   });
 }
 let charts = {};
@@ -1929,7 +1943,7 @@ function renderTemplateChips(){
     const color = t.color || getCatColor(t.cat);
     return `<button onclick="addFromTemplate('${t.id}',this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${t.special?' '+(SPEC_BADGE[t.special]||''):''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
     </button>`;
   }).join('');
 }
@@ -1941,7 +1955,7 @@ function addFromTemplate(id,btn){
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
   const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
-  DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote, updatedAt:Date.now()});
+  DB.expenses.push({id:uid(), cat:t.cat, amount:t.amount, date, comment:tmplNote, special:t.special||null, updatedAt:Date.now()});
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
   toast(t.name+' добавлено');
@@ -1962,6 +1976,7 @@ function openTemplateModal(id){
     document.getElementById('tmpl-comment').value = t.comment||'';
     document.getElementById('tmpl-delete-btn').style.display='block';
     _selectedTemplateColor = t.color || TEMPLATE_COLORS[0];
+    setTmplSpecial(t.special||'');
   } else {
     document.getElementById('template-modal-title').textContent='Новый шаблон';
     document.getElementById('tmpl-name').value='';
@@ -1969,6 +1984,7 @@ function openTemplateModal(id){
     document.getElementById('tmpl-comment').value='';
     document.getElementById('tmpl-delete-btn').style.display='none';
     _selectedTemplateColor = TEMPLATE_COLORS[0];
+    setTmplSpecial('');
   }
   _renderTemplateColorPicker();
   openModal('modal-template');
@@ -1981,12 +1997,13 @@ function saveTemplate(){
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat = parseInt(document.getElementById('tmpl-cat').value);
   const comment = document.getElementById('tmpl-comment').value.trim();
+  const special = _selectedTmplSpecial || null;
   if(!DB.templates) DB.templates=[];
   if(_editingTemplateId){
     const t = DB.templates.find(x=>x.id===_editingTemplateId);
-    if(t){ t.name=name; t.cat=cat; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; t._deleted=false; t.updatedAt=Date.now(); }
+    if(t){ t.name=name; t.cat=cat; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; t.special=special; t._deleted=false; t.updatedAt=Date.now(); }
   } else {
-    DB.templates.push({id:uid(),name,cat,amount:amt,comment,color:_selectedTemplateColor,updatedAt:Date.now()});
+    DB.templates.push({id:uid(),name,cat,amount:amt,comment,color:_selectedTemplateColor,special,updatedAt:Date.now()});
   }
   saveDB();
   closeModal('modal-template');
@@ -2626,7 +2643,7 @@ function _renderStatsSummary(lastN){
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
-let statsInclSpecial = sessionStorage.getItem('statsInclSpecial')==='1';
+let statsInclSpecial = sessionStorage.getItem('statsInclSpecial')!=='0';
 function _statsExps(arr){ return statsInclSpecial ? arr : arr.filter(e=>!e.special); }
 function setStatsInclSpecial(v){
   statsInclSpecial = v;
@@ -2861,8 +2878,8 @@ function renderStats(){
     if (pM < 0) { pM = 11; pY--; }
     const daysInPrev = new Date(pY, pM + 1, 0).getDate();
 
-    const selExps  = getMonthExpenses(selY, selM);
-    const prevExps = getMonthExpenses(pY, pM);
+    const selExps  = _statsExps(getMonthExpenses(selY, selM));
+    const prevExps = _statsExps(getMonthExpenses(pY, pM));
 
     function cumByDay(exps, y2, m2, maxDay, totalDays) {
       const mk2 = monthKey(y2, m2);
@@ -2884,7 +2901,7 @@ function renderStats(){
       let hm = selM - i, hy = selY;
       if (hm < 0) { hm += 12; hy--; }
       const daysInHm = new Date(hy, hm + 1, 0).getDate();
-      const hExps = getMonthExpenses(hy, hm);
+      const hExps = _statsExps(getMonthExpenses(hy, hm));
       if (hExps.length === 0) continue;
       const mk3 = monthKey(hy, hm);
       let hcum = 0;
