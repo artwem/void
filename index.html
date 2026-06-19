@@ -22,7 +22,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.14.8">
+<link rel="stylesheet" href="css/app.css?v=1.14.9">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -171,6 +171,13 @@ if ('serviceWorker' in navigator) {
           <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
           <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
           <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-size:13px;font-weight:600">Особые в графиках</span>
+        <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
+          <span id="ss-off" onclick="setStatsInclSpecial(false)" style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">Скрыть</span>
+          <span id="ss-on" onclick="setStatsInclSpecial(true)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Учитывать</span>
         </div>
       </div>
       <div id="stats-summary"></div>
@@ -589,6 +596,13 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="exp-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Дата</label><input type="date" id="exp-date"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="exp-comment" placeholder="Необязательно"/></div>
+    <div class="fgrp"><label class="flbl">Тип</label>
+      <div class="spec-seg" id="exp-spec-seg">
+        <span data-v="" onclick="setExpSpecial('')">Обычный</span>
+        <span data-v="oneoff" onclick="setExpSpecial('oneoff')">Разовое</span>
+        <span data-v="recurring" onclick="setExpSpecial('recurring')">Регулярное</span>
+      </div>
+    </div>
     <div class="btn-row">
       <button class="btn danger small" id="exp-delete-btn" onclick="deleteExpense()" style="display:none">Удалить</button>
       <button class="btn" onclick="closeModal('modal-expense')">Отмена</button>
@@ -1011,6 +1025,15 @@ let DB = {
 let currentMonth = {y:0,m:0};
 let currentDay = '';
 let editingExpenseId = null;
+let _selectedExpSpecial = '';
+const SPEC_BADGE = {oneoff:'•', recurring:'↻'};
+const SPEC_LABEL = {oneoff:'разовое', recurring:'регулярное'};
+function setExpSpecial(v){
+  _selectedExpSpecial = v||'';
+  document.querySelectorAll('#exp-spec-seg span').forEach(s=>{
+    s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedExpSpecial);
+  });
+}
 let charts = {};
 
 function loadDB(){
@@ -1525,6 +1548,7 @@ function openAddExpense(prefillCat){
   document.getElementById('exp-date').value = currentPage==='day' ? currentDay : today();
   setMoneyInput('exp-amount','');
   document.getElementById('exp-comment').value='';
+  setExpSpecial('');
   openModal('modal-expense');
   if(prefillCat !== undefined) setTimeout(()=>{ document.getElementById('exp-cat').value = prefillCat; }, 50);
 }
@@ -1541,6 +1565,7 @@ function editExpense(id, e){
   setMoneyInput('exp-amount', exp.amount);
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
+  setExpSpecial(exp.special||'');
   openModal('modal-expense');
 }
 
@@ -1550,14 +1575,15 @@ function saveExpense(){
   const cat  = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value;
   const comment = document.getElementById('exp-comment').value;
+  const special = _selectedExpSpecial || null;
 
   if(editingExpenseId){
     const idx = DB.expenses.findIndex(e=>e.id===editingExpenseId);
     if(idx>=0){
-      DB.expenses[idx] = {...DB.expenses[idx], cat, amount: amt, date, comment, _deleted:false, updatedAt:Date.now()};
+      DB.expenses[idx] = {...DB.expenses[idx], cat, amount: amt, date, comment, special, _deleted:false, updatedAt:Date.now()};
     }
   } else {
-    DB.expenses.push({ id:uid(), cat, amount:amt, date, comment, updatedAt:Date.now() });
+    DB.expenses.push({ id:uid(), cat, amount:amt, date, comment, special, updatedAt:Date.now() });
   }
   saveDB();
   closeModal('modal-expense');
@@ -1613,7 +1639,7 @@ function renderCatExpensesList(catIdx, y, m) {
     return `<div class="exp-list-item">
       <div class="exp-list-date">${dy}.${mo}</div>
       <div class="exp-list-body">
-        <div class="exp-list-amount">${fmtH(e.amount)}</div>
+        <div class="exp-list-amount">${fmtH(e.amount)}${e.special?`<span class="spec-badge">${SPEC_BADGE[e.special]||''} ${SPEC_LABEL[e.special]||''}</span>`:''}</div>
         ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
       <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
@@ -1728,12 +1754,14 @@ function renderDay(){
     weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
   renderTemplateChips();
   renderDenomWidget();
-  const entries = getDayExpenses(currentDay);
+  const allEntries = getDayExpenses(currentDay);
+  const entries = allEntries.filter(e=>!e.special);
+  const specialEntries = allEntries.filter(e=>e.special);
   const total = entries.reduce((s,e)=>s+e.amount,0);
   document.getElementById('day-total').innerHTML = fmtH(total);
   const list = document.getElementById('entry-list');
   list.innerHTML='';
-  if(!entries.length){
+  if(!allEntries.length){
     list.innerHTML='<div class="empty-day"><div style="font-size:32px">📭</div><p>Нет расходов за этот день</p><p>Нажмите + чтобы добавить</p></div>';
     return;
   }
@@ -1796,6 +1824,32 @@ function renderDay(){
       list.appendChild(row);
     }
   });
+
+  // Особые расходы — отдельная приглушённая секция, не в сумме дня
+  if(specialEntries.length){
+    const specTotal = specialEntries.reduce((s,e)=>s+e.amount,0);
+    const hdr = document.createElement('div');
+    hdr.className = 'entry-special-hdr';
+    hdr.innerHTML = `<span>Особые</span><span>${fmtH(specTotal)}</span>`;
+    list.appendChild(hdr);
+    specialEntries.sort((a,b)=>b.amount-a.amount).forEach(e => {
+      const catName = DB.categories[e.cat]||'Неизвестно';
+      const color = getCatColor(e.cat);
+      const row = document.createElement('div');
+      row.className = 'entry-row entry-special';
+      row.innerHTML = `
+        <div class="entry-dot" style="background:${color}"></div>
+        <div class="entry-info">
+          <div class="entry-cat">${esc(catName)}<span class="spec-badge">${SPEC_BADGE[e.special]||''} ${SPEC_LABEL[e.special]||''}</span></div>
+          ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
+        </div>
+        <div class="entry-amount">${fmtH(e.amount)}</div>
+        <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+      `;
+      _makeSwipeable(row, ()=>deleteExpenseById(e.id));
+      list.appendChild(row);
+    });
+  }
 }
 
 function renderExpenseSearch(query){
@@ -2572,6 +2626,14 @@ function _renderStatsSummary(lastN){
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
+let statsInclSpecial = sessionStorage.getItem('statsInclSpecial')==='1';
+function _statsExps(arr){ return statsInclSpecial ? arr : arr.filter(e=>!e.special); }
+function setStatsInclSpecial(v){
+  statsInclSpecial = v;
+  sessionStorage.setItem('statsInclSpecial', v?'1':'0');
+  renderStats();
+  renderSavingsCharts();
+}
 function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
 let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
 function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
@@ -2620,7 +2682,7 @@ function renderSavingsCharts(){
   for(let i=statsPeriod-1;i>=0;i--){
     let m=now.getMonth()-i, y=now.getFullYear();
     if(m<0){m+=12;y--;}
-    const exps = getMonthExpenses(y,m);
+    const exps = _statsExps(getMonthExpenses(y,m));
     const totalExp = exps.reduce((s,e)=>s+e.amount,0);
     const totalInc = (DB.incomes||[])
       .filter(inc=>inc.date && inc.date.startsWith(monthKey(y,m)))
@@ -2713,7 +2775,7 @@ function renderStats(){
   for(let i=statsPeriod-1;i>=0;i--){
     let m=now.getMonth()-i, y=now.getFullYear();
     if(m<0){m+=12;y--;}
-    const exps = getMonthExpenses(y,m);
+    const exps = _statsExps(getMonthExpenses(y,m));
     const totalExp = exps.reduce((s,e)=>s+e.amount,0);
     const totalInc = (DB.incomes||[])
       .filter(inc=>inc.date && inc.date.startsWith(monthKey(y,m)))
@@ -2730,6 +2792,16 @@ function renderStats(){
     el.style.color = active ? 'var(--text)' : '#888';
     el.style.fontWeight = active ? '600' : '';
   });
+
+  // Тумблер «Особые в графиках» active state
+  const ssOff=document.getElementById('ss-off'), ssOn=document.getElementById('ss-on');
+  if(ssOff && ssOn){
+    [[ssOn,statsInclSpecial],[ssOff,!statsInclSpecial]].forEach(([el,a])=>{
+      el.style.background = a ? 'rgba(128,128,128,0.18)' : '';
+      el.style.color = a ? 'var(--text)' : '#888';
+      el.style.fontWeight = a ? '600' : '';
+    });
+  }
 
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
@@ -2943,7 +3015,7 @@ function renderStats(){
     }
   }
   const [pieY,pieM]=pieSel.value.split('-').map(Number);
-  const curExp = getMonthExpenses(pieY,pieM);
+  const curExp = _statsExps(getMonthExpenses(pieY,pieM));
   const catTotals = DB.categories.map((_,i)=>curExp.filter(e=>e.cat===i).reduce((s,e)=>s+e.amount,0));
   const nonZeroCats = catTotals.map((v,i)=>({v:Math.round(v),i})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
 
