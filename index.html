@@ -225,12 +225,6 @@ if ('serviceWorker' in navigator) {
       <div style="position:relative;height:200px"><canvas id="chartIncomeTags"></canvas></div>
     </div>
   </div>
-  <div class="chart-wrap">
-    <div class="chart-card">
-      <div class="chart-title">Расходы по месяцам</div>
-      <div style="position:relative;height:180px"><canvas id="chartMonthly" role="img" aria-label="Расходы по месяцам">Гистограмма расходов по месяцам</canvas></div>
-    </div>
-  </div>
 
   <div class="page-end"></div>
 </div>
@@ -2823,28 +2817,6 @@ function renderStats(){
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
 
-  // ── 1. Расходы по месяцам ──────────────────────────────────────────
-  if(charts.monthly) charts.monthly.destroy();
-  charts.monthly = new Chart(document.getElementById('chartMonthly'),{
-    type:'bar',
-    data:{
-      labels: lastN.map(x=>x.label),
-      datasets:[{
-        data: lastN.map(x=>Math.round(x.totalExp)),
-        backgroundColor: lastN.map((_,i)=>i===lastN.length-1?_chartColors().blue:_chartColors().mutedBar),
-        borderRadius:5, borderSkipped:false
-      }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},
-      scales:{
-        x:{grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-        y:{grid:{color:_chartColors().gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_chartColors().muted}}
-      }
-    }
-  });
-
   // ── 2. День за днём vs прошлый месяц ──────────────────────────────
   {
     const dn = new Date();
@@ -3148,11 +3120,32 @@ function renderStats(){
 
   if(charts.grouped) charts.grouped.destroy();
   if(groupDatasets.length){
+    // Итог за месяц — подпись над каждым стэком
+    const grpTotals = lastN.map((_,idx)=>groupDatasets.reduce((s,ds)=>s+(ds.data[idx]||0),0));
+    const grpTotalLabels = {
+      id:'grpTotalLabels',
+      afterDatasetsDraw(chart){
+        if(DB.privacyMode) return;
+        const {ctx, scales:{x,y}} = chart;
+        ctx.save();
+        ctx.font='600 10px system-ui,-apple-system,sans-serif';
+        ctx.fillStyle=_chartColors().muted;
+        ctx.textAlign='center';
+        ctx.textBaseline='bottom';
+        grpTotals.forEach((t,idx)=>{
+          if(t<=0) return;
+          ctx.fillText(fmtShort(t)+'₽', x.getPixelForValue(idx), y.getPixelForValue(t)-3);
+        });
+        ctx.restore();
+      }
+    };
     charts.grouped = new Chart(document.getElementById('chartGrouped'),{
       type:'bar',
       data:{labels:lastN.map(x=>x.label), datasets:groupDatasets},
+      plugins:[grpTotalLabels],
       options:{
         responsive:true, maintainAspectRatio:false,
+        layout:{padding:{top:16}},
         plugins:{
           legend:{
             display:true,
