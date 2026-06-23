@@ -20,7 +20,10 @@
       "Bash(curl *)",
       "Bash(git diff *)",
       "Read(//tmp/**)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\aanisimov\\\\code\\\\nto\" | Where-Object { $_.Name -ne \".git\" } | Select-Object Name, Mode)"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\aanisimov\\\\code\\\\nto\" | Where-Object { $_.Name -ne \".git\" } | Select-Object Name, Mode)",
+      "Bash(git push *)",
+      "PowerShell(git pull *)",
+      "Bash(git restore *)"
     ]
   }
 }

@@ -3203,11 +3203,32 @@ function renderStats(){
     if(active.length){
       if(emptyEl) emptyEl.style.display = 'none';
       if(canvasEl) canvasEl.style.display = 'block';
+      // Итог за месяц — подпись над каждым стэком
+      const incTotals = lastN.map((_,idx)=>active.reduce((s,ds)=>s+(ds.data[idx]||0),0));
+      const incTotalLabels = {
+        id:'incTotalLabels',
+        afterDatasetsDraw(chart){
+          if(DB.privacyMode) return;
+          const {ctx, scales:{x,y}} = chart;
+          ctx.save();
+          ctx.font='600 10px system-ui,-apple-system,sans-serif';
+          ctx.fillStyle=_chartColors().muted;
+          ctx.textAlign='center';
+          ctx.textBaseline='bottom';
+          incTotals.forEach((t,idx)=>{
+            if(t<=0) return;
+            ctx.fillText(fmtShort(t)+'₽', x.getPixelForValue(idx), y.getPixelForValue(t)-3);
+          });
+          ctx.restore();
+        }
+      };
       charts.incomeTags = new Chart(canvasEl, {
         type:'bar',
         data:{labels:lastN.map(x=>x.label), datasets:active},
+        plugins:[incTotalLabels],
         options:{
           responsive:true, maintainAspectRatio:false,
+          layout:{padding:{top:16}},
           plugins:{
             legend:{display:true, labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}},
             tooltip:{callbacks:{label:v=>v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
