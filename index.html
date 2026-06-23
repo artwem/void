@@ -3148,7 +3148,7 @@ function renderStats(){
         layout:{padding:{top:16}},
         plugins:{
           legend:{
-            display:true,
+            display:true, position:'bottom',
             labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}
           },
           tooltip:{
@@ -3223,7 +3223,7 @@ function renderStats(){
           responsive:true, maintainAspectRatio:false,
           layout:{padding:{top:16}},
           plugins:{
-            legend:{display:true, labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}},
+            legend:{display:true, position:'bottom', labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}},
             tooltip:{callbacks:{label:v=>v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
           },
           scales:{
