@@ -184,6 +184,10 @@ if ('serviceWorker' in navigator) {
           <span id="dcm-full" onclick="document.getElementById('day-compare-mode').dataset.mode='full';renderStats()" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px" title="Весь месяц">▦</span>
           <span id="dcm-today" onclick="document.getElementById('day-compare-mode').dataset.mode='today';renderStats()" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0" title="До сегодня">◧</span>
         </div>
+        <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Особые расходы">
+          <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Особые</span>
+          <span id="dsm-off" onclick="setDayInclSpecial(false)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Без</span>
+        </div>
         <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
       </div>
       <div style="position:relative;height:190px"><canvas id="chartDayCompare"></canvas></div>
@@ -927,7 +931,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2630,8 +2634,15 @@ function _renderStatsSummary(lastN){
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
-// Особые расходы исключены из всех графиков, кроме «День за днём» (там — raw expenses)
+// Особые расходы исключены из всех графиков, кроме «День за днём» (там — переключатель)
 function _statsExps(arr){ return arr.filter(e=>!e.special); }
+let dayInclSpecial = sessionStorage.getItem('dayInclSpecial')!=='0';
+function setDayInclSpecial(v){
+  dayInclSpecial = v;
+  sessionStorage.setItem('dayInclSpecial', v?'1':'0');
+  renderStats();
+}
+function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!e.special); }
 function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
 let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
 function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
@@ -2827,9 +2838,9 @@ function renderStats(){
     if (pM < 0) { pM = 11; pY--; }
     const daysInPrev = new Date(pY, pM + 1, 0).getDate();
 
-    // «День за днём» — единственный график, учитывающий особые расходы
-    const selExps  = getMonthExpenses(selY, selM);
-    const prevExps = getMonthExpenses(pY, pM);
+    // «День за днём» — единственный график с переключателем особых расходов
+    const selExps  = _dayExps(getMonthExpenses(selY, selM));
+    const prevExps = _dayExps(getMonthExpenses(pY, pM));
 
     function cumByDay(exps, y2, m2, maxDay, totalDays) {
       const mk2 = monthKey(y2, m2);
@@ -2851,7 +2862,7 @@ function renderStats(){
       let hm = selM - i, hy = selY;
       if (hm < 0) { hm += 12; hy--; }
       const daysInHm = new Date(hy, hm + 1, 0).getDate();
-      const hExps = getMonthExpenses(hy, hm);
+      const hExps = _dayExps(getMonthExpenses(hy, hm));
       if (hExps.length === 0) continue;
       const mk3 = monthKey(hy, hm);
       let hcum = 0;
@@ -2884,6 +2895,12 @@ function renderStats(){
     document.getElementById('dcm-full').style.color       = showFull  ? 'var(--text)' : '#888';
     document.getElementById('dcm-today').style.background = !showFull ? 'rgba(128,128,128,0.18)' : '';
     document.getElementById('dcm-today').style.color      = !showFull ? 'var(--text)' : '#888';
+
+    document.getElementById('day-special-mode').dataset.special = dayInclSpecial ? '1' : '0';
+    document.getElementById('dsm-on').style.background  = dayInclSpecial ? 'rgba(128,128,128,0.18)' : '';
+    document.getElementById('dsm-on').style.color       = dayInclSpecial ? 'var(--text)' : '#888';
+    document.getElementById('dsm-off').style.background = !dayInclSpecial ? 'rgba(128,128,128,0.18)' : '';
+    document.getElementById('dsm-off').style.color      = !dayInclSpecial ? 'var(--text)' : '#888';
 
     if (charts.dayCompare) charts.dayCompare.destroy();
     const avgDataset = histMonthCount > 0 ? [{
