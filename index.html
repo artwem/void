@@ -173,13 +173,6 @@ if ('serviceWorker' in navigator) {
           <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <span style="font-size:13px;font-weight:600">Особые в графиках</span>
-        <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="ss-off" onclick="setStatsInclSpecial(false)" style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">Скрыть</span>
-          <span id="ss-on" onclick="setStatsInclSpecial(true)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Учитывать</span>
-        </div>
-      </div>
       <div id="stats-summary"></div>
     </div>
   </div>
@@ -934,7 +927,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2637,14 +2630,8 @@ function _renderStatsSummary(lastN){
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
-let statsInclSpecial = sessionStorage.getItem('statsInclSpecial')!=='0';
-function _statsExps(arr){ return statsInclSpecial ? arr : arr.filter(e=>!e.special); }
-function setStatsInclSpecial(v){
-  statsInclSpecial = v;
-  sessionStorage.setItem('statsInclSpecial', v?'1':'0');
-  renderStats();
-  renderSavingsCharts();
-}
+// Особые расходы исключены из всех графиков, кроме «День за днём» (там — raw expenses)
+function _statsExps(arr){ return arr.filter(e=>!e.special); }
 function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
 let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
 function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
@@ -2804,16 +2791,6 @@ function renderStats(){
     el.style.fontWeight = active ? '600' : '';
   });
 
-  // Тумблер «Особые в графиках» active state
-  const ssOff=document.getElementById('ss-off'), ssOn=document.getElementById('ss-on');
-  if(ssOff && ssOn){
-    [[ssOn,statsInclSpecial],[ssOff,!statsInclSpecial]].forEach(([el,a])=>{
-      el.style.background = a ? 'rgba(128,128,128,0.18)' : '';
-      el.style.color = a ? 'var(--text)' : '#888';
-      el.style.fontWeight = a ? '600' : '';
-    });
-  }
-
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
 
@@ -2850,8 +2827,9 @@ function renderStats(){
     if (pM < 0) { pM = 11; pY--; }
     const daysInPrev = new Date(pY, pM + 1, 0).getDate();
 
-    const selExps  = _statsExps(getMonthExpenses(selY, selM));
-    const prevExps = _statsExps(getMonthExpenses(pY, pM));
+    // «День за днём» — единственный график, учитывающий особые расходы
+    const selExps  = getMonthExpenses(selY, selM);
+    const prevExps = getMonthExpenses(pY, pM);
 
     function cumByDay(exps, y2, m2, maxDay, totalDays) {
       const mk2 = monthKey(y2, m2);
@@ -2873,7 +2851,7 @@ function renderStats(){
       let hm = selM - i, hy = selY;
       if (hm < 0) { hm += 12; hy--; }
       const daysInHm = new Date(hy, hm + 1, 0).getDate();
-      const hExps = _statsExps(getMonthExpenses(hy, hm));
+      const hExps = getMonthExpenses(hy, hm);
       if (hExps.length === 0) continue;
       const mk3 = monthKey(hy, hm);
       let hcum = 0;
