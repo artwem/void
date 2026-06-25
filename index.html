@@ -931,7 +931,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.16.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2634,8 +2634,9 @@ function _renderStatsSummary(lastN){
 // ─── RENDER: STATS ──────────────────────────────────────────────────
 let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
-// Особые расходы исключены из всех графиков, кроме «День за днём» (там — переключатель)
-function _statsExps(arr){ return arr.filter(e=>!e.special); }
+// Особые расходы влияют только на график «День за днём» (там — переключатель).
+// В остальной аналитике учитываются как обычные расходы — _statsExps не фильтрует.
+function _statsExps(arr){ return arr; }
 let dayInclSpecial = sessionStorage.getItem('dayInclSpecial')!=='0';
 function setDayInclSpecial(v){
   dayInclSpecial = v;
