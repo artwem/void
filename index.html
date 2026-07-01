@@ -147,6 +147,7 @@ if ('serviceWorker' in navigator) {
       <div><div class="s-lbl">Баланс</div><div class="s-val" id="income-balance">0₽</div></div>
     </div>
   </div>
+  <div style="padding:8px 16px"><button class="btn" style="width:100%" onclick="openAddIncome()">+ Добавить доход</button></div>
   <div class="sec-hdr"><span class="sec-title">Источники дохода</span></div>
   <div style="padding:0 16px 8px">
     <input id="income-search" type="search" placeholder="🔍 Поиск по доходам..." autocomplete="off"
@@ -155,7 +156,6 @@ if ('serviceWorker' in navigator) {
   </div>
   <div id="income-tag-filter" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:6px"></div>
   <div class="settings-list" id="income-list" style="padding:0 16px;gap:5px;display:flex;flex-direction:column"></div>
-  <div style="padding:8px 16px"><button class="btn" style="width:100%" onclick="openAddIncome()">+ Добавить доход</button></div>
   <div class="page-end"></div>
 </div>
 
