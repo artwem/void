@@ -66,9 +66,10 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   deposits:        [{id, name, amount, rate, openDate, endDate, capitalization, _deleted?}, ...],  // вклады; capitalization: 'monthly'|'end'
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
+  listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
   notifsEnabled:   false,
   notifThreshold:  90,                        // % of limit that triggers push notification
-  _lastSyncedLimits: {},                      // baseline for 3-way merge conflict detection
+  _lastSyncedLimits: {},                      // snapshot of limits at last successful sync — 3-way merge baseline (device-local, stripped from payload)
   _dirty:          true/false
 }
 ```
@@ -94,26 +95,30 @@ Forecast (`page-calc`) and Deposits (`page-deposits`) have no navbar tab — bot
 
 ### Sync — `js/sync.js` + `apps-script/Code.gs`
 
-Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets). Auto-syncs every 15 seconds when `DB._dirty` — the interval handler **pulls+merges before pushing** (so a full-payload push can't clobber another device's recent edits on Drive). On startup: **push first if dirty** (prevents pull from overwriting unsaved offline edits), then pull. A `visibilitychange` listener also runs the startup sync (throttled to once per minute) when the app returns to foreground, so edits from other devices arrive without a relaunch.
+Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets).
+
+**All sync entry points (startup, 15s interval, visibilitychange, manual pull/push buttons) go through a single `syncCycle()`** (in `═══ init.js ═══`): pull → merge → push-if-dirty, guarded by one shared in-flight promise. Never push before pulling — the merge protects local edits, while push-first would clobber other devices' unseen changes on Drive. `saveDB()` increments a `_dirtyGen` counter; `syncCycle` clears `DB._dirty` only if the counter is unchanged after the awaits (an edit made mid-sync stays dirty). The interval fires when `DB._dirty` **or** when the last pull is >5 min old (so idle devices still receive peers' edits). After 3 consecutive failures the sync widget shows a red «Ошибка» instead of the amber last-sync time (`_syncFailCount`).
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth, backward compatible). If set, the same string must be entered in the app's sync modal; it's stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
 **What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`.
 
-**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme` (device-local). `buildPayload()` strips exactly these five fields plus `_dirty` before pushing.
+**What syncs (also):** `listsMeta` — the LWW timestamps for the lists above.
+
+**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty` before pushing.
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
 
 **Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — set `_deleted: true` (amount zeroed) instead of removing, so the deletion propagates on sync. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are **no longer stripped before push** — they must reach Drive for other devices to learn of the delete.
 
 **Merge logic (`mergePullData`):**
-- `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`: **last-write-wins by `id`** — for each id keep the record with the greater `updatedAt`; ties go to remote (safe because push precedes pull on startup). This propagates edits and deletes, not just inserts.
-- `categories`/`catColors`, `banks`, `creditBanks`, `incomeTags`/`incomeTagColors`: remote wins if it has more entries (additive — another device added items)
-- `limits`: remote wins per month-key (safe because push always precedes pull on startup)
+- `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`: **last-write-wins by `id`** — for each id keep the record with the strictly greater `updatedAt`; ties keep local (pull precedes push). This propagates edits and deletes, not just inserts. Any code that mutates records in bulk (category-index remap, bank/tag rename) MUST stamp `updatedAt = Date.now()` on each mutated record, or the merge reverts them.
+- `categories`/`catColors`, `banks`, `creditBanks`, `incomeTags`/`incomeTagColors`: **LWW by `listsMeta[name]`** (stamped via `touchList(name)` on every add/rename/delete/recolor). Fallback when neither side has a timestamp (pre-v1.17 clients): remote wins if longer.
+- `limits`: **3-way merge** — remote wins per month-key only if the local value equals the `_lastSyncedLimits` baseline (i.e. unchanged locally since the last sync); locally-edited months keep the local value and get pushed. `syncCycle` refreshes the baseline after each successful cycle.
 
 **Updating Apps Script:** edit `apps-script/Code.gs` locally → copy contents into the Google Apps Script editor → deploy new version. `build.sh` automatically inlines Code.gs into `dist/index.html`; in dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs` directly.
 
-**Code.gs v10.2:** writes are serialized with `LockService` (concurrent pushes from two devices queue instead of racing). The data file is located by ID stored in `ScriptProperties` (`dataFileId`), falling back to name lookup — `getFilesByName` alone could pick an arbitrary duplicate.
+**Code.gs v10.3:** writes are serialized with `LockService` (concurrent pushes from two devices queue instead of racing). The data file is located by ID stored in `ScriptProperties` (`dataFileId`), falling back to name lookup — `getFilesByName` alone could pick an arbitrary duplicate. **Wipe guard:** a push whose payload is <30% of the stored file size (and the file is >20 KB) is rejected unless `force:true` — the manual «Выгрузить в Drive» button sends `force`, auto-sync doesn't. **Daily backup:** before overwriting, at most once per 24h, the current file is copied to `nto_data.bak.json` (`bakFileId`/`lastBakTs` in ScriptProperties).
 
 ### Excel Export
 

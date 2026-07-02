@@ -24,7 +24,8 @@
       "Bash(git push *)",
       "PowerShell(git pull *)",
       "Bash(git restore *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(git *)"
     ]
   }
 }

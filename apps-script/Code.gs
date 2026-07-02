@@ -1,4 +1,4 @@
-// ===== BUDGET TRACKER APPS SCRIPT v10.2 — Drive Storage =====
+// ===== BUDGET TRACKER APPS SCRIPT v10.3 — Drive Storage =====
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 // Данные хранятся в файле nto_data.json в Google Drive (не в таблице)
@@ -15,8 +15,8 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     if (SECRET && body.token !== SECRET) return out({ error: 'Unauthorized' });
     const action = body.action || '';
-    if (action === 'ping') return out({ ok: true, version: '10.2' });
-    if (action === 'push') return out(saveData(JSON.stringify(body.data || {})));
+    if (action === 'ping') return out({ ok: true, version: '10.3' });
+    if (action === 'push') return out(saveData(JSON.stringify(body.data || {}), !!body.force));
     if (action === 'pull') return readData();
     return out({ error: 'Unknown action: ' + action });
   } catch(err) {
@@ -28,9 +28,9 @@ function doGet(e) {
   const p = e.parameter || {};
   if (SECRET && p.token !== SECRET) return out({ error: 'Unauthorized' });
   const action = p.action || '';
-  if (action === 'ping') return out({ ok: true, version: '10.2' });
+  if (action === 'ping') return out({ ok: true, version: '10.3' });
   if (action === 'pull') return readData();
-  return out({ info: 'Budget Tracker API v10.2' });
+  return out({ info: 'Budget Tracker API v10.3' });
 }
 
 // Файл ищем по сохранённому ID (стабильно), имя — только как fallback.
@@ -55,12 +55,21 @@ function getDataFile() {
   return null;
 }
 
-function saveData(content) {
+function saveData(content, force) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000); // одновременные push с двух устройств — по очереди
     const file = getDataFile();
     if (file) {
+      // Страховка от обнулённого клиента: payload сильно меньше файла на Drive —
+      // отклоняем. Осознанная перезапись — кнопка «Выгрузить» шлёт force.
+      if (!force) {
+        const oldSize = file.getSize();
+        if (oldSize > 20000 && content.length < oldSize * 0.3) {
+          return { error: 'Push отклонён: локальных данных заметно меньше, чем на Drive. Проверьте данные и нажмите «Выгрузить в Drive».' };
+        }
+      }
+      backupIfDue(file);
       file.setContent(content);
     } else {
       const created = DriveApp.createFile(FILE_DATA, content, MimeType.PLAIN_TEXT);
@@ -72,6 +81,27 @@ function saveData(content) {
   } finally {
     try { lock.releaseLock(); } catch(_) {}
   }
+}
+
+// Раз в сутки перед перезаписью откладываем копию в nto_data.bak.json
+function backupIfDue(file) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const last = Number(props.getProperty('lastBakTs') || 0);
+    if (Date.now() - last < 24 * 3600 * 1000) return;
+    const content = file.getBlob().getDataAsString();
+    const bakId = props.getProperty('bakFileId');
+    let bak = null;
+    if (bakId) {
+      try { const f = DriveApp.getFileById(bakId); if (!f.isTrashed()) bak = f; } catch(_) {}
+    }
+    if (bak) bak.setContent(content);
+    else {
+      const created = DriveApp.createFile('nto_data.bak.json', content, MimeType.PLAIN_TEXT);
+      props.setProperty('bakFileId', created.getId());
+    }
+    props.setProperty('lastBakTs', String(Date.now()));
+  } catch(_) {}
 }
 
 function readData() {

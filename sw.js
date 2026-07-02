@@ -2,7 +2,7 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-06-25 v1.16.3';
+const V = '2026-07-03 v1.17.0';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
@@ -51,7 +51,9 @@ self.addEventListener('fetch', e => {
           }
           return r;
         })
-        .catch(() => caches.match(e.request))
+        // ignoreSearch: URL с query (?source=pwa и т.п.) должен находить закешированный './'
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then(r => r || caches.match('./')))
     );
   } else {
     // Остальные ресурсы — кеш, если нет — сеть
