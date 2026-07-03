@@ -188,6 +188,11 @@ if ('serviceWorker' in navigator) {
           <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Особые</span>
           <span id="dsm-off" onclick="setDayInclSpecial(false)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Без</span>
         </div>
+        <div id="day-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Глубина средней линии, месяцев">
+          <span id="dam-3" onclick="setDayAvgMonths(3)" style="padding:2px 5px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
+          <span id="dam-6" onclick="setDayAvgMonths(6)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border)">6</span>
+          <span id="dam-12" onclick="setDayAvgMonths(12)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">12</span>
+        </div>
         <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
       </div>
       <div style="position:relative;height:190px"><canvas id="chartDayCompare"></canvas></div>
@@ -1000,7 +1005,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.23.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.24.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1809,10 +1814,22 @@ function loadLimitEditor(){
   const key = document.getElementById('limit-month-sel').value;
   const [y,m] = key.split('-').map(Number);
   const limits = getLimits(y,m-1);
+  // Средние траты категории за последние 3 месяца с данными (до месяца
+  // лимита, глубина поиска 6) — тап по подсказке подставляет в поле
+  const avgs = DB.categories.map((_,i)=>{
+    const vals = [];
+    for(let k=1; k<=6 && vals.length<3; k++){
+      let mm = (m-1)-k, yy = y;
+      while(mm<0){ mm+=12; yy--; }
+      if(!getMonthExpenses(yy,mm).length) continue; // месяц без учёта пропускаем
+      vals.push(getCatSpent(i,yy,mm));
+    }
+    return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
+  });
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
-      <span class="limit-edit-name">${esc(c)}</span>
+      <span class="limit-edit-name">${esc(c)}${avgs[i]!==null?`<span onclick="document.getElementById('lim_${i}').value=${avgs[i]}" style="display:block;font-size:10px;color:var(--blue);cursor:pointer;margin-top:1px">⌀ ${fmt(avgs[i])}/мес — подставить</span>`:''}</span>
       <input class="limit-edit-input" type="number" id="lim_${i}" value="${limits[i]||0}" inputmode="decimal"/>
     </div>
   `).join('');
@@ -2784,6 +2801,7 @@ function setDayInclSpecial(v){
   renderStats();
 }
 function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!e.special); }
+function setDayAvgMonths(n){ sessionStorage.setItem('dayAvgMonths', n); renderStats(); }
 function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
 let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
 function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
@@ -3000,9 +3018,10 @@ function renderStats(){
     const selCum  = cumByDay(selExps,  selY, selM, Math.min(maxDaySel, displayDays),  displayDays);
     const prevCum = cumByDay(prevExps, pY,   pM,   Math.min(daysInPrev, displayDays), displayDays);
 
-    // Historical avg: 6 months before selected, displayDays length
+    // Historical avg: N months before selected (3/6/12, sessionStorage), displayDays length
+    const avgMonths = parseInt(sessionStorage.getItem('dayAvgMonths')) || 6;
     const histCumByDay = Array.from({length: displayDays}, () => []);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= avgMonths; i++) {
       let hm = selM - i, hy = selY;
       if (hm < 0) { hm += 12; hy--; }
       const daysInHm = new Date(hy, hm + 1, 0).getDate();
@@ -3046,9 +3065,16 @@ function renderStats(){
     document.getElementById('dsm-off').style.background = !dayInclSpecial ? 'rgba(128,128,128,0.18)' : '';
     document.getElementById('dsm-off').style.color      = !dayInclSpecial ? 'var(--text)' : '#888';
 
+    [3,6,12].forEach(n=>{
+      const s = document.getElementById('dam-'+n);
+      if(!s) return;
+      s.style.background = avgMonths===n ? 'rgba(128,128,128,0.18)' : '';
+      s.style.color      = avgMonths===n ? 'var(--text)' : '#888';
+    });
+
     if (charts.dayCompare) charts.dayCompare.destroy();
     const avgDataset = histMonthCount > 0 ? [{
-      label: 'Среднее',
+      label: 'Среднее '+avgMonths+'м',
       data: avgCumLine,
       borderColor: 'rgba(200,140,50,0.7)',
       backgroundColor: 'transparent',
