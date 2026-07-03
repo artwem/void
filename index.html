@@ -233,7 +233,12 @@ if ('serviceWorker' in navigator) {
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);margin:-4px 0 8px">с вкладами: <span id="total-with-deps-val"></span></div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">Рост накоплений</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="chart-title">Рост накоплений</div>
+        <div id="assets-chart-deps-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+          <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады</span>
+        </div>
+      </div>
       <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
     </div>
   </div>
@@ -711,27 +716,39 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="fgrp">
       <label class="flbl">Сумма, ₽</label>
-      <input type="text" id="deposit-amount" class="finp" inputmode="decimal" placeholder="100 000" oninput="formatMoneyInput(this)">
+      <input type="text" id="deposit-amount" class="finp" inputmode="decimal" placeholder="100 000" oninput="formatMoneyInput(this);_depRateFromFinal()">
     </div>
     <div class="fgrp">
+      <label class="flbl">Доходность</label>
+      <div id="dep-mode-seg" style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden;user-select:none">
+        <span data-v="rate" onclick="setDepMode('rate')" style="flex:1;text-align:center;padding:6px;cursor:pointer">Ставка %</span>
+        <span data-v="final" onclick="setDepMode('final')" style="flex:1;text-align:center;padding:6px;cursor:pointer;border-left:1px solid var(--border)">Сумма в конце</span>
+      </div>
+    </div>
+    <div class="fgrp" id="dep-rate-grp">
       <label class="flbl">Ставка, % годовых</label>
       <input type="number" id="deposit-rate" class="finp" inputmode="decimal" step="0.1" placeholder="16">
     </div>
+    <div class="fgrp" id="dep-final-grp" style="display:none">
+      <label class="flbl">Сумма на дату закрытия, ₽</label>
+      <input type="text" id="deposit-final" class="finp" inputmode="decimal" placeholder="110 000" oninput="formatMoneyInput(this);_depRateFromFinal()">
+      <div id="dep-final-rate-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+    </div>
     <div class="fgrp">
       <label class="flbl">Дата открытия</label>
-      <input type="date" id="deposit-open" class="finp" onchange="_depDaysFromDates()">
+      <input type="date" id="deposit-open" class="finp" onchange="_depDaysFromDates();_depRateFromFinal()">
     </div>
     <div class="fgrp">
       <label class="flbl">Дата закрытия</label>
-      <input type="date" id="deposit-end" class="finp" onchange="_depDaysFromDates()">
+      <input type="date" id="deposit-end" class="finp" onchange="_depDaysFromDates();_depRateFromFinal()">
     </div>
     <div class="fgrp">
       <label class="flbl">…или срок, дней</label>
-      <input type="number" id="deposit-days" class="finp" inputmode="numeric" placeholder="181" oninput="_depEndFromDays()">
+      <input type="number" id="deposit-days" class="finp" inputmode="numeric" placeholder="181" oninput="_depEndFromDays();_depRateFromFinal()">
     </div>
     <div class="fgrp">
       <label class="flbl">Проценты</label>
-      <select id="deposit-cap" class="finp">
+      <select id="deposit-cap" class="finp" onchange="_depRateFromFinal()">
         <option value="monthly">Капитализация ежемесячно</option>
         <option value="end">Выплата в конце срока</option>
       </select>
@@ -945,7 +962,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.18.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.19.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3412,6 +3429,12 @@ function renderAssetsHistory(rows, showAll){
 
 let _assetsHistoryRows = [];
 
+// Переключатель графика «банки / +вклады» (настройка устройства)
+function setAssetsChartDeps(on){
+  try{ localStorage.setItem('assetsChartDeps', on ? '1' : '0'); }catch(_){}
+  renderAssets();
+}
+
 function renderAssets(){
   const allBanks = getAllBanks();
   const allEntries = DB.assets.filter(a=>!a._deleted);
@@ -3504,6 +3527,25 @@ function renderAssets(){
     });
     data.push(Math.round(total));
   });
+  // Тумблер «банки / +вклады»: добавить к каждой точке стоимость живых вкладов на эту дату
+  {
+    const chartDeps = (DB.deposits||[]).filter(x=>!x._deleted);
+    const tgl = document.getElementById('assets-chart-deps-toggle');
+    const depsOn = localStorage.getItem('assetsChartDeps') === '1' && chartDeps.length > 0;
+    if(tgl){
+      tgl.style.display = chartDeps.length ? 'inline-flex' : 'none';
+      const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
+      const offEl=document.getElementById('acd-off'), onEl=document.getElementById('acd-on');
+      if(offEl) offEl.style.cssText='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(depsOn?aOff:aOn);
+      if(onEl)  onEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(depsOn?aOn:aOff);
+    }
+    if(depsOn){
+      allDates.forEach((date,i)=>{
+        const depSum = chartDeps.reduce((s,d)=> s + (d.openDate && d.openDate <= date ? depositValueAt(d, date) : 0), 0);
+        data[i] += Math.round(depSum);
+      });
+    }
+  }
   try{
     if(charts.assets) charts.assets.destroy();
     if(labels.length>0){
@@ -3689,9 +3731,23 @@ function depositValueAt(d, dateStr){
   const days = Math.max(0, Math.round((new Date(stop) - new Date(d.openDate))/86400000));
   const r = (d.rate||0)/100;
   if(d.capitalization === 'end'){
-    return dateStr >= d.endDate ? Math.round(d.amount * (1 + r*days/365)) : d.amount;
+    if(dateStr < d.endDate) return d.amount;
+    // finalAmount задан вручную — он точнее производной ставки
+    return d.finalAmount ? Math.round(d.finalAmount) : Math.round(d.amount * (1 + r*days/365));
   }
+  if(d.finalAmount && dateStr >= d.endDate) return Math.round(d.finalAmount);
   return Math.round(d.amount * Math.pow(1 + r/12, days/30.4375));
+}
+
+// Годовая ставка (%) из известной суммы на закрытие
+function _calcDepRate(amount, final, openDate, endDate, cap){
+  const days = Math.round((new Date(endDate) - new Date(openDate))/86400000);
+  if(!amount || amount<=0 || !final || final<=0 || days<=0) return null;
+  const ratio = final/amount;
+  const r = cap === 'end'
+    ? (ratio - 1) * 365 / days                          // простые проценты
+    : 12 * (Math.pow(ratio, 30.4375/days) - 1);         // ежемесячная капитализация
+  return Math.round(r * 10000) / 100; // % с двумя знаками
 }
 
 function _fmtDateRu(ds){
@@ -3834,6 +3890,36 @@ function confirmCloseDeposit(){
   toast('✓ '+fmt(val)+' → '+bank);
 }
 
+// Режим доходности: 'rate' — ввод ставки, 'final' — ввод суммы на закрытие
+let _depMode = 'rate';
+
+function setDepMode(m){
+  _depMode = m;
+  document.querySelectorAll('#dep-mode-seg span').forEach(s=>{
+    const on = (s.getAttribute('data-v')||'') === m;
+    s.style.background = on ? 'rgba(128,128,128,0.18)' : '';
+    s.style.fontWeight = on ? '600' : '';
+  });
+  document.getElementById('dep-rate-grp').style.display  = m==='rate'  ? '' : 'none';
+  document.getElementById('dep-final-grp').style.display = m==='final' ? '' : 'none';
+  _depRateFromFinal();
+}
+
+// Подсказка «≈ N% годовых» под полем суммы на закрытие
+function _depRateFromFinal(){
+  if(_depMode !== 'final') return;
+  const hint = document.getElementById('dep-final-rate-hint');
+  if(!hint) return;
+  const rate = _calcDepRate(
+    parseMoney(document.getElementById('deposit-amount').value),
+    parseMoney(document.getElementById('deposit-final').value),
+    document.getElementById('deposit-open').value,
+    document.getElementById('deposit-end').value,
+    document.getElementById('deposit-cap').value
+  );
+  hint.textContent = rate !== null ? '≈ '+rate+'% годовых' : '';
+}
+
 function openDepositModal(id){
   _editingDepositId = id || null;
   const d = id ? (DB.deposits||[]).find(x=>x.id===id) : null;
@@ -3841,11 +3927,13 @@ function openDepositModal(id){
   document.getElementById('deposit-name').value = d ? d.name : '';
   setMoneyInput('deposit-amount', d ? d.amount : '');
   document.getElementById('deposit-rate').value = d ? d.rate : '';
+  setMoneyInput('deposit-final', d && d.finalAmount ? d.finalAmount : '');
   document.getElementById('deposit-open').value = d ? d.openDate : today();
   document.getElementById('deposit-end').value = d ? d.endDate : '';
   document.getElementById('deposit-days').value = '';
   document.getElementById('deposit-cap').value = d ? (d.capitalization||'monthly') : 'monthly';
   document.getElementById('deposit-delete-btn').style.display = d ? '' : 'none';
+  setDepMode(d && d.finalAmount ? 'final' : 'rate');
   _depDaysFromDates();
   openModal('modal-deposit');
 }
@@ -3869,20 +3957,28 @@ function _depDaysFromDates(){
 function saveDeposit(){
   const name = document.getElementById('deposit-name').value.trim();
   const amount = parseMoney(document.getElementById('deposit-amount').value);
-  const rate = parseFloat(document.getElementById('deposit-rate').value);
   const openDate = document.getElementById('deposit-open').value;
   const endDate = document.getElementById('deposit-end').value;
   const capitalization = document.getElementById('deposit-cap').value;
   if(!name){ toast('Введите название'); return; }
   if(!amount || amount<=0){ toast('Введите сумму'); return; }
-  if(!rate || rate<=0){ toast('Введите ставку'); return; }
   if(!openDate || !endDate || endDate<=openDate){ toast('Проверьте даты'); return; }
+  let rate, finalAmount = null;
+  if(_depMode === 'final'){
+    finalAmount = parseMoney(document.getElementById('deposit-final').value);
+    if(!finalAmount || finalAmount<=0){ toast('Введите сумму на закрытие'); return; }
+    if(finalAmount < amount){ toast('Сумма на закрытие меньше тела вклада'); return; }
+    rate = _calcDepRate(amount, finalAmount, openDate, endDate, capitalization) || 0;
+  } else {
+    rate = parseFloat(document.getElementById('deposit-rate').value);
+    if(!rate || rate<=0){ toast('Введите ставку'); return; }
+  }
   if(!DB.deposits) DB.deposits=[];
   if(_editingDepositId){
     const idx = DB.deposits.findIndex(x=>x.id===_editingDepositId);
-    if(idx>=0) DB.deposits[idx]={...DB.deposits[idx],name,amount,rate,openDate,endDate,capitalization,_deleted:false,updatedAt:Date.now()};
+    if(idx>=0) DB.deposits[idx]={...DB.deposits[idx],name,amount,rate,finalAmount,openDate,endDate,capitalization,_deleted:false,updatedAt:Date.now()};
   } else {
-    DB.deposits.push({id:uid(),name,amount,rate,openDate,endDate,capitalization,updatedAt:Date.now()});
+    DB.deposits.push({id:uid(),name,amount,rate,finalAmount,openDate,endDate,capitalization,updatedAt:Date.now()});
   }
   saveDB(); closeModal('modal-deposit');
   renderDeposits();
