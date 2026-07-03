@@ -481,6 +481,10 @@ if ('serviceWorker' in navigator) {
       <span class="setting-label">📥 Экспорт Excel</span>
       <span class="setting-chevron">›</span>
     </div>
+    <div class="setting-row" onclick="openDataAudit()">
+      <span class="setting-label">🩺 Проверка данных</span>
+      <span class="setting-chevron">›</span>
+    </div>
     <div class="setting-row" onclick="doDriveSave()" id="drive-save-row">
       <span class="setting-label">☁️ Сохранить на Drive</span>
       <span class="setting-chevron">›</span>
@@ -786,6 +790,14 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<div class="overlay" id="modal-data-audit">
+  <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
+    <button class="close-btn" onclick="closeModal('modal-data-audit')">✕</button>
+    <h2 style="margin-bottom:12px">Проверка данных</h2>
+    <div id="data-audit-body" style="font-size:13px"></div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-close-deposit">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-close-deposit')">✕</button>
@@ -988,7 +1000,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.21.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.21.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4974,6 +4986,146 @@ function deleteIncomeTag(i){
 
 // ─── EXPORT CSV ─────────────────────────────────────────────────────
 // ─── BACKUP / RESTORE ───────────────────────────────────────────────
+// ─── Проверка данных: призраки, дубли, пересечение дат вкладов ──────
+let _auditGhosts = [];
+
+function _auditBankName(a, known){
+  return a.bankName || known[a.bank] || ('банк #'+a.bank);
+}
+
+function openDataAudit(){ renderDataAudit(); openModal('modal-data-audit'); }
+
+function renderDataAudit(){
+  const el = document.getElementById('data-audit-body');
+  if(!el) return;
+  const known = getAllBanks();
+  const knownSet = new Set(known);
+  const live = (DB.assets||[]).filter(a=>!a._deleted);
+  const byName = {};
+  live.forEach(a=>{
+    const n = _auditBankName(a, known);
+    (byName[n] = byName[n]||[]).push(a);
+  });
+  const latest = {};
+  Object.entries(byName).forEach(([n,recs])=>{
+    latest[n] = recs.reduce((m,r)=> r.date > m.date ? r : m);
+  });
+  // итог как в шапке Активов (все записи) vs только зарегистрированные банки
+  let total = 0, visTotal = 0;
+  Object.entries(latest).forEach(([n,r])=>{
+    const v = isCredit(n) ? -r.amount : r.amount;
+    total += v;
+    if(knownSet.has(n)) visTotal += v;
+  });
+  const ghosts = Object.keys(byName).filter(n=>!knownSet.has(n)).sort();
+  _auditGhosts = ghosts;
+  // дубли: несколько записей одного банка на одну дату
+  const dups = [];
+  Object.entries(byName).forEach(([n,recs])=>{
+    const c = {};
+    recs.forEach(r=>{ c[r.date]=(c[r.date]||0)+1; });
+    Object.entries(c).filter(([,k])=>k>1).forEach(([d,k])=>dups.push({bank:n,date:d,count:k}));
+  });
+  // вклады vs даты снимков счетов
+  const lastSnap = live.reduce((m,a)=> a.date>m ? a.date : m, '');
+  const liveDeps = (DB.deposits||[]).filter(d=>!d._deleted);
+  const unseenDeps = liveDeps.filter(d=>d.openDate > lastSnap);
+  const lostDeps = (DB.deposits||[]).filter(d=>d._deleted && !d.updatedAt);
+
+  let h = `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Всего активов (все записи)</span><b>${fmtH(total)}</b></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Сумма видимых счетов</span><b>${fmtH(visTotal)}</b></div>
+    ${total!==visTotal?`<div style="display:flex;justify-content:space-between;color:var(--red)"><span>Разница — записи-призраки</span><b>${fmtH(total-visTotal)}</b></div>`:''}
+  </div>`;
+
+  if(ghosts.length){
+    h += `<div class="s-lbl" style="margin-bottom:6px">Записи банков вне списков (${ghosts.length})</div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Остаются после переименования или удаления банка: считаются в итоге и истории, но не видны в списке счетов. «Слить» переносит записи в выбранный банк.</p>`;
+    ghosts.forEach((n,gi)=>{
+      const r = latest[n], cnt = byName[n].length;
+      h += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><b>${esc(n)}</b><span>${fmtH(r.amount)}</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cnt} запис. · последняя ${r.date}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="ghost-target-${gi}" class="finp" style="flex:1;padding:6px;font-size:12px">${known.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('')}</select>
+          <button class="btn small" onclick="auditMergeGhost(${gi})">Слить</button>
+          <button class="btn small danger" onclick="auditDeleteGhost(${gi})">Удалить</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  if(dups.length){
+    h += `<div class="s-lbl" style="margin:10px 0 6px">Дубли записей (${dups.length})</div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Несколько записей одного банка на одну дату — в истории и итоге участвует одна, остальные мусор.</p>
+      ${dups.slice(0,10).map(d=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${esc(d.bank)} · ${d.date}</span><span style="color:var(--muted)">×${d.count}</span></div>`).join('')}
+      ${dups.length>10?`<div style="color:var(--muted);font-size:12px">…и ещё ${dups.length-10}</div>`:''}
+      <button class="btn small" style="margin-top:6px" onclick="auditFixDups()">Исправить — оставить последнюю по updatedAt</button>`;
+  }
+
+  if(unseenDeps.length || lostDeps.length || liveDeps.length){
+    h += `<div class="s-lbl" style="margin:10px 0 6px">Вклады и даты</div>`;
+    if(unseenDeps.length){
+      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${unseenDeps.map(d=>esc(d.name)).join(', ')}: вклад открыт позже последнего снимка счетов (${lastSnap||'—'}). В истории он не появится, пока не внесёте снимок счетов свежей датой — при этом в «с вкладами» на сегодня он уже учтён.</p>`;
+    }
+    if(lostDeps.length){
+      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${lostDeps.length} удалённых вкладов без даты удаления — в истории не учитываются.</p>`;
+    }
+    h += `<p style="color:var(--muted);font-size:12px;margin:0">Норма: история оценивает вклад на дату строки, а «с вкладами» под итогом — на сегодня, поэтому между снимками цифры расходятся на набежавшие проценты. Если при открытии вклада вы не уменьшили остаток банка снимком на ту же дату, «Всего» задвоит эти деньги до следующего снимка.</p>`;
+  }
+
+  if(!ghosts.length && !dups.length && !unseenDeps.length && !lostDeps.length){
+    h += `<div style="color:var(--green);font-weight:600;margin-top:4px">✓ Аномалий в записях не найдено</div>`;
+  }
+  el.innerHTML = h;
+}
+
+function auditMergeGhost(i){
+  const name = _auditGhosts[i];
+  if(name === undefined) return;
+  const target = document.getElementById('ghost-target-'+i).value;
+  if(!target || target === name) return;
+  const known = getAllBanks();
+  const now = Date.now();
+  let n = 0;
+  (DB.assets||[]).forEach(a=>{
+    if(a._deleted) return;
+    if(_auditBankName(a, known) === name){ a.bankName = target; a.updatedAt = now; n++; }
+  });
+  saveDB(); renderDataAudit(); renderAssets();
+  toast('✓ '+n+' запис. → '+target);
+}
+
+function auditDeleteGhost(i){
+  const name = _auditGhosts[i];
+  if(name === undefined) return;
+  const known = getAllBanks();
+  const recs = (DB.assets||[]).filter(a=>!a._deleted && _auditBankName(a, known) === name);
+  if(!confirm('Удалить '+recs.length+' записей «'+name+'»? Итог и история пересчитаются.')) return;
+  const now = Date.now();
+  recs.forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; });
+  saveDB(); renderDataAudit(); renderAssets();
+  toast('Записи удалены');
+}
+
+function auditFixDups(){
+  const known = getAllBanks();
+  const now = Date.now();
+  const groups = {};
+  (DB.assets||[]).filter(a=>!a._deleted).forEach(a=>{
+    const key = _auditBankName(a, known)+'|'+a.date;
+    (groups[key] = groups[key]||[]).push(a);
+  });
+  let n = 0;
+  Object.values(groups).forEach(g=>{
+    if(g.length < 2) return;
+    g.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+    g.slice(1).forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; n++; });
+  });
+  saveDB(); renderDataAudit(); renderAssets();
+  toast('✓ Убрано дублей: '+n);
+}
+
 function backupDB(){
   const json = JSON.stringify(DB, null, 2);
   const a = document.createElement('a');
