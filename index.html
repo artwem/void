@@ -988,7 +988,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.20.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.21.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3388,14 +3388,19 @@ function renderAssetsHistory(rows, showAll){
   const hasMore = rows.length > LIMIT;
 
   tbl.innerHTML = '';
+  // Колонки «Счета/Вклады» — только если в истории вообще есть вклады
+  const hasDeps = rows.some(r => r.deps);
 
   // Header
   const hdr = tbl.insertRow();
   hdr.style.background = 'var(--bg)';
-  [{t:'Дата',a:'left'},{t:'Общий актив',a:'right'},{t:'',a:'center'}].forEach(({t,a}) => {
+  const cols = hasDeps
+    ? [{t:'Дата',a:'left'},{t:'Счета',a:'right'},{t:'Вклады',a:'right'},{t:'Всего',a:'right'},{t:'Δ',a:'right'},{t:'',a:'center'}]
+    : [{t:'Дата',a:'left'},{t:'Всего',a:'right'},{t:'Δ',a:'right'},{t:'',a:'center'}];
+  cols.forEach(({t,a}) => {
     const th = document.createElement('th');
     th.textContent = t;
-    th.style.cssText = 'padding:6px 8px;text-align:'+a+';color:var(--muted);font-weight:500;font-size:11px';
+    th.style.cssText = 'padding:6px 4px;text-align:'+a+';color:var(--muted);font-weight:500;font-size:11px';
     hdr.appendChild(th);
   });
 
@@ -3410,22 +3415,29 @@ function renderAssetsHistory(rows, showAll){
     const _date = r.date; // capture for closure
 
     const td1 = tr.insertCell();
-    td1.style.cssText = 'padding:12px 8px;font-size:13px;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.05)';
+    td1.style.cssText = 'padding:12px 4px 12px 8px;font-size:12px;color:var(--muted)';
     td1.textContent = r.date;
 
-    const td2 = tr.insertCell();
-    td2.style.cssText = 'padding:12px 8px;font-size:13px;font-weight:600;text-align:right;color:var(--text)';
-    td2.innerHTML = fmtH(r.total);
-    if(diff !== null){
-      const sp = document.createElement('span');
-      sp.style.cssText = 'font-size:11px;margin-left:6px;color:'+(diff>=0?'#1d9e75':'var(--red)');
-      sp.textContent = (diff>=0?'+':'')+fmtShort(diff)+'₽';
-      td2.appendChild(sp);
+    if(hasDeps){
+      const tdB = tr.insertCell();
+      tdB.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--text)';
+      tdB.innerHTML = '<span class="prv">'+fmtShort(r.banks)+'₽</span>';
+      const tdD = tr.insertCell();
+      tdD.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--muted)';
+      tdD.innerHTML = r.deps ? '<span class="prv">'+fmtShort(r.deps)+'₽</span>' : '—';
     }
+
+    const td2 = tr.insertCell();
+    td2.style.cssText = 'padding:12px 4px;font-size:13px;font-weight:600;text-align:right;color:var(--text)';
+    td2.innerHTML = fmtH(r.total);
+
+    const tdDiff = tr.insertCell();
+    tdDiff.style.cssText = 'padding:12px 4px;font-size:11px;text-align:right;color:'+(diff!==null&&diff<0?'var(--red)':'#1d9e75');
+    tdDiff.innerHTML = diff===null ? '' : '<span class="prv">'+(diff>=0?'+':'')+fmtShort(diff)+'₽</span>';
 
     // Edit button — separate cell, big tap target
     const td3 = tr.insertCell();
-    td3.style.cssText = 'padding:8px 6px;text-align:center;width:44px';
+    td3.style.cssText = 'padding:8px 6px 8px 2px;text-align:center;width:36px';
     const editBtn = document.createElement('button');
     editBtn.className = 'btn small icon-btn';
     editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -3437,7 +3449,7 @@ function renderAssetsHistory(rows, showAll){
   if(hasMore){
     const tr = tbl.insertRow();
     const td = tr.insertCell();
-    td.colSpan = 2;
+    td.colSpan = cols.length;
     td.style.padding = '8px';
     const btn = document.createElement('button');
     btn.className = 'btn small';
@@ -3570,34 +3582,48 @@ function renderAssets(){
     byDate[a.date][key]=a.amount;
   });
   const allDates=Object.keys(byDate).sort();
-  const labels=[],data=[];
+  // Точка даты — carry-forward: банк без записи на эту дату берётся по
+  // последней известной записи (иначе одиночная запись, например от
+  // «Перенести в банк», обрушивает точку до одного банка)
+  const lastVal={};
+  const bankSeries=[], depSeries=[];
+  // Закрытый (soft-deleted) вклад учитывается до дня закрытия — иначе
+  // прошлые точки графика проседают задним числом после «Перенести в банк»
+  const histDeps=(DB.deposits||[]).filter(d=>d.openDate);
+  const _depDelDay = d => {
+    if(!d._deleted || !d.updatedAt) return null;
+    const t = new Date(d.updatedAt); // локальный день, не UTC — закрытие ночью не должно сдвигать дату
+    return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  };
   allDates.forEach(date=>{
-    labels.push(date.slice(5));
+    Object.entries(byDate[date]).forEach(([b,amt])=>{ lastVal[b]=amt; });
     let total = 0;
-    Object.entries(byDate[date]).forEach(([bname,amt]) => {
+    Object.entries(lastVal).forEach(([bname,amt]) => {
       total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
     });
-    data.push(Math.round(total));
+    bankSeries.push(Math.round(total));
+    depSeries.push(Math.round(histDeps.reduce((s,d)=>{
+      if(d.openDate > date) return s;
+      const delDay = _depDelDay(d);
+      if(d._deleted && (!delDay || date >= delDay)) return s;
+      return s + depositValueAt(d, date);
+    },0)));
   });
-  // Тумблер «банки / +вклады»: добавить к каждой точке стоимость живых вкладов на эту дату
+  const labels = allDates.map(d=>d.slice(5));
+  // Тумблер «банки / +вклады»: добавить к каждой точке стоимость вкладов на эту дату
+  const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length;
+  const depsOn = localStorage.getItem('assetsChartDeps') === '1' && liveDepsCnt > 0;
   {
-    const chartDeps = (DB.deposits||[]).filter(x=>!x._deleted);
     const tgl = document.getElementById('assets-chart-deps-toggle');
-    const depsOn = localStorage.getItem('assetsChartDeps') === '1' && chartDeps.length > 0;
     if(tgl){
-      tgl.style.display = chartDeps.length ? 'inline-flex' : 'none';
+      tgl.style.display = liveDepsCnt ? 'inline-flex' : 'none';
       const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
       const offEl=document.getElementById('acd-off'), onEl=document.getElementById('acd-on');
       if(offEl) offEl.style.cssText='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(depsOn?aOff:aOn);
       if(onEl)  onEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(depsOn?aOn:aOff);
     }
-    if(depsOn){
-      allDates.forEach((date,i)=>{
-        const depSum = chartDeps.reduce((s,d)=> s + (d.openDate && d.openDate <= date ? depositValueAt(d, date) : 0), 0);
-        data[i] += Math.round(depSum);
-      });
-    }
   }
+  const data = bankSeries.map((v,i)=> v + (depsOn ? depSeries[i] : 0));
   try{
     if(charts.assets) charts.assets.destroy();
     if(labels.length>0){
@@ -3615,7 +3641,8 @@ function renderAssets(){
   const tbl = document.getElementById('assets-history-table');
   if(wrap && tbl && allDates.length > 0){
     wrap.style.display = 'block';
-    const rows = allDates.map((date, idx) => ({date, total: data[idx]}))
+    // История всегда с разбивкой «счета | вклады | всего», независимо от тумблера графика
+    const rows = allDates.map((date, idx) => ({date, banks: bankSeries[idx], deps: depSeries[idx], total: bankSeries[idx] + depSeries[idx]}))
                          .sort((a,b) => b.date.localeCompare(a.date));
     _assetsHistoryRows = rows;
     renderAssetsHistory(rows, false);
