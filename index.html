@@ -830,7 +830,7 @@ if ('serviceWorker' in navigator) {
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-asset-edit')">✕</button>
     <h2 id="asset-edit-title">Редактировать</h2>
-    <div id="asset-edit-note" style="display:none;font-size:12px;color:var(--muted);background:var(--hint-bg,rgba(128,128,128,.1));padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px">↻ Значения перенесены с прошлой даты — проверьте и поправьте, где изменилось.</div>
+    <div id="asset-edit-note" style="display:none;font-size:12px;color:var(--muted);background:var(--hint-bg,rgba(128,128,128,.1));padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px">↻ Значения перенесены с прошлой даты — проверьте и поправьте, где изменилось. Пустое поле = записи не будет (история продолжит показывать старое значение). Обнулить счёт — введите 0 или кнопка «0».</div>
     <div id="asset-edit-rows" style="margin-bottom:8px"></div>
     <div class="btn-row">
       <button class="btn danger small" id="asset-edit-delete-btn" onclick="deleteAssetDateConfirm()">Удалить дату</button>
@@ -1000,7 +1000,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.22.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.23.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3586,42 +3586,8 @@ function renderAssets(){
       list.appendChild(row);
     });
   }
-  // Chart
-  const assetsSorted=[...DB.assets].filter(a=>!a._deleted).sort((a,b)=>a.date.localeCompare(b.date));
-  const byDate={};
-  assetsSorted.forEach(a=>{
-    const key = a.bankName || allBanks[a.bank] || String(a.bank);
-    if(!byDate[a.date])byDate[a.date]={};
-    byDate[a.date][key]=a.amount;
-  });
-  const allDates=Object.keys(byDate).sort();
-  // Точка даты — carry-forward: банк без записи на эту дату берётся по
-  // последней известной записи (иначе одиночная запись, например от
-  // «Перенести в банк», обрушивает точку до одного банка)
-  const lastVal={};
-  const bankSeries=[], depSeries=[];
-  // Закрытый (soft-deleted) вклад учитывается до дня закрытия — иначе
-  // прошлые точки графика проседают задним числом после «Перенести в банк»
-  const histDeps=(DB.deposits||[]).filter(d=>d.openDate);
-  const _depDelDay = d => {
-    if(!d._deleted || !d.updatedAt) return null;
-    const t = new Date(d.updatedAt); // локальный день, не UTC — закрытие ночью не должно сдвигать дату
-    return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
-  };
-  allDates.forEach(date=>{
-    Object.entries(byDate[date]).forEach(([b,amt])=>{ lastVal[b]=amt; });
-    let total = 0;
-    Object.entries(lastVal).forEach(([bname,amt]) => {
-      total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
-    });
-    bankSeries.push(Math.round(total));
-    depSeries.push(Math.round(histDeps.reduce((s,d)=>{
-      if(d.openDate > date) return s;
-      const delDay = _depDelDay(d);
-      if(d._deleted && (!delDay || date >= delDay)) return s;
-      return s + depositValueAt(d, date);
-    },0)));
-  });
+  // Chart — общие серии (carry-forward, вклады до дня закрытия)
+  const {dates: allDates, bankSeries, depSeries} = _buildAssetSeries();
   const labels = allDates.map(d=>d.slice(5));
   // Тумблер «банки / +вклады»: добавить к каждой точке стоимость вкладов на эту дату
   const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length;
@@ -3844,6 +3810,45 @@ function depositValueAt(d, dateStr){
   // finalAmount задан вручную — он точнее производной ставки
   if(d.finalAmount && dateStr >= d.endDate) return Math.round(d.finalAmount);
   return Math.round(_depValueWithRate(d, dateStr, d.rate));
+}
+
+// Локальный день закрытия (soft-delete) вклада; null для живых
+function _depDelDay(d){
+  if(!d._deleted || !d.updatedAt) return null;
+  const t = new Date(d.updatedAt); // локальный день, не UTC — закрытие ночью не должно сдвигать дату
+  return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+}
+
+// Серии «счета / вклады» по датам снимков. Carry-forward: банк без записи
+// на дату берётся по последней известной. Вклады — с openDate, закрытые
+// учитываются до дня закрытия. Одна логика для графика, истории и аудита.
+function _buildAssetSeries(){
+  const allBanks = getAllBanks();
+  const byDate = {};
+  [...DB.assets].filter(a=>!a._deleted).sort((a,b)=>a.date.localeCompare(b.date)).forEach(a=>{
+    const key = a.bankName || allBanks[a.bank] || String(a.bank);
+    if(!byDate[a.date]) byDate[a.date] = {};
+    byDate[a.date][key] = a.amount;
+  });
+  const dates = Object.keys(byDate).sort();
+  const lastVal = {};
+  const bankSeries = [], depSeries = [];
+  const histDeps = (DB.deposits||[]).filter(d=>d.openDate);
+  dates.forEach(date=>{
+    Object.entries(byDate[date]).forEach(([b,amt])=>{ lastVal[b]=amt; });
+    let total = 0;
+    Object.entries(lastVal).forEach(([bname,amt])=>{
+      total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
+    });
+    bankSeries.push(Math.round(total));
+    depSeries.push(Math.round(histDeps.reduce((s,d)=>{
+      if(d.openDate > date) return s;
+      const delDay = _depDelDay(d);
+      if(d._deleted && (!delDay || date >= delDay)) return s;
+      return s + depositValueAt(d, date);
+    },0)));
+  });
+  return {dates, bankSeries, depSeries};
 }
 
 // Годовая ставка (%) из известной суммы на закрытие.
@@ -4399,9 +4404,21 @@ function openEditAssetDate(date, carryForward){
     const credit = isCredit(bankName);
     let existing = byBank[bankName];
     let carried = false;
-    if(existing === undefined && carryForward){
-      const prev = _lastKnownAmount(bankName, date);
-      if(prev !== undefined){ existing = prev; carried = true; carriedAny = true; }
+    // Последняя запись СТРОГО до этой даты — столько «останется» в истории,
+    // если запись за дату не внести (carry-forward)
+    let prevBefore;
+    {
+      let b = null;
+      (DB.assets||[]).forEach(a => {
+        if(a._deleted) return;
+        const n = a.bankName || allBanks[a.bank];
+        if(n !== bankName || a.date >= date) return;
+        if(!b || a.date > b.date) b = a;
+      });
+      prevBefore = b ? b.amount : undefined;
+    }
+    if(existing === undefined && carryForward && prevBefore !== undefined){
+      existing = prevBefore; carried = true; carriedAny = true;
     }
 
     const row = document.createElement('div');
@@ -4416,45 +4433,70 @@ function openEditAssetDate(date, carryForward){
     inp.type = 'text';
     inp.inputMode = 'decimal';
     inp.id = 'asset-edit-inp-'+idx;
-    inp.placeholder = '0';
+    inp.placeholder = '—';
     if(existing !== undefined){ inp.value = String(Math.round(existing)); formatMoneyInput(inp); }
-    inp.style.cssText = 'width:120px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid '+(carried?'var(--hint)':'var(--border2)')+';border-radius:var(--r-sm);background:var(--card);color:'+(carried?'var(--muted)':'var(--text)');
+    inp.style.cssText = 'width:104px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid '+(carried?'var(--hint)':'var(--border2)')+';border-radius:var(--r-sm);background:var(--card);color:'+(carried?'var(--muted)':'var(--text)');
     function _clearCarried(){
       if(!carried) return;
       carried = false;
       inp.style.borderColor = 'var(--border2)';
       const t = lbl.querySelector('.carried-tag'); if(t) t.remove();
     }
-    function _updateZeroState(){
+    // Три состояния: явный 0 → «обнулён»; пусто → «записи не будет, в истории
+    // останется прежняя сумма»; иначе обычное значение
+    function _updateStateTags(){
+      const empty = !inp.value.trim();
       const v = parseMoney(inp.value);
-      const zt = lbl.querySelector('.zeroed-tag');
-      if(v === 0){
+      let zt = lbl.querySelector('.zeroed-tag');
+      let nt = lbl.querySelector('.nodata-tag');
+      if(zt) zt.remove();
+      if(nt) nt.remove();
+      if(!empty && v === 0){
         inp.style.color = 'var(--muted)';
-        if(!zt){
-          const z = document.createElement('div');
-          z.className = 'zeroed-tag';
-          z.style.cssText = 'font-size:10px;color:var(--hint)';
-          z.textContent = '✕ обнулён';
-          lbl.appendChild(z);
-        }
+        const z = document.createElement('div');
+        z.className = 'zeroed-tag';
+        z.style.cssText = 'font-size:10px;color:var(--green)';
+        z.textContent = '✕ обнулён этой датой';
+        lbl.appendChild(z);
+      } else if(empty && prevBefore !== undefined && prevBefore !== 0 && !carried){
+        inp.style.color = 'var(--text)';
+        const z = document.createElement('div');
+        z.className = 'nodata-tag';
+        z.style.cssText = 'font-size:10px;color:#c98a1b';
+        z.textContent = '∅ записи не будет — в истории останется '+fmtShort(prevBefore)+'₽';
+        lbl.appendChild(z);
       } else {
         inp.style.color = 'var(--text)';
-        if(zt) zt.remove();
       }
     }
     inp.addEventListener('input', ()=>{
       formatMoneyInput(inp);
       _clearCarried();
-      _updateZeroState();
+      _updateStateTags();
     });
     inp.addEventListener('blur', ()=>{
       _clearCarried();
-      _updateZeroState();
+      _updateStateTags();
+    });
+
+    // Кнопка явного обнуления — записать 0 этой датой одним тапом
+    const zbtn = document.createElement('button');
+    zbtn.type = 'button';
+    zbtn.textContent = '0';
+    zbtn.title = 'Обнулить этой датой';
+    zbtn.style.cssText = 'width:30px;height:30px;flex-shrink:0;border-radius:50%;border:0.5px solid var(--border2);background:var(--card);color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit';
+    zbtn.addEventListener('click', ()=>{
+      inp.value = '0';
+      _clearCarried();
+      _updateStateTags();
     });
 
     row.appendChild(lbl);
     row.appendChild(inp);
+    row.appendChild(zbtn);
     container.appendChild(row);
+    // начальное состояние (историческая дата без записи → показать «останется N»)
+    _updateStateTags();
   });
 
   if(!allBanks.length){
@@ -5077,6 +5119,47 @@ function renderDataAudit(){
 
   if(!ghosts.length && !dups.length && !unseenDeps.length && !lostDeps.length){
     h += `<div style="color:var(--green);font-weight:600;margin-top:4px">✓ Аномалий в записях не найдено</div>`;
+  }
+
+  // ── Сверка по периодам: дельта активов vs (доходы − расходы) ──
+  // Даты вкладов можно двигать свободно: сдвиг даёт зеркальную пару ±X в
+  // соседних периодах, «накопл.» возвращается к прежнему уровню. Реальная
+  // проблема — когда «накопл.» уходит и не возвращается.
+  const series = _buildAssetSeries();
+  if(series.dates.length >= 2){
+    const totals = series.dates.map((d,i)=>({date:d, total: series.bankSeries[i]+series.depSeries[i]}));
+    const exps = (DB.expenses||[]).filter(x=>!x._deleted);
+    const incs = (DB.incomes||[]).filter(x=>!x._deleted);
+    const depEvents = [];
+    (DB.deposits||[]).forEach(d=>{
+      if(!d.openDate) return;
+      depEvents.push({date:d.openDate, txt:'открыт «'+d.name+'» '+fmtShort(d.amount)+'₽'});
+      (d.contributions||[]).forEach(c=>depEvents.push({date:c.date, txt:'пополнен «'+d.name+'» +'+fmtShort(c.amount)+'₽'}));
+      const dd = _depDelDay(d);
+      if(dd) depEvents.push({date:dd, txt:'закрыт «'+d.name+'»'});
+    });
+    let cum = 0, rowsH = '';
+    for(let i=1;i<totals.length;i++){
+      const a = totals[i-1], b = totals[i];
+      const inR = x => x.date > a.date && x.date <= b.date;
+      const inc = incs.filter(inR).reduce((s,x)=>s+x.amount,0);
+      const exp = exps.filter(inR).reduce((s,x)=>s+x.amount,0);
+      const mism = Math.round((b.total - a.total) - (inc - exp));
+      cum += mism;
+      const ev = depEvents.filter(e=>e.date > a.date && e.date <= b.date).map(e=>e.txt).join(' · ');
+      const warn = Math.abs(mism) > 15000;
+      rowsH += `<div style="padding:6px 0;border-top:0.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">
+          <span style="color:var(--muted);white-space:nowrap">${a.date.slice(5)} → ${b.date.slice(5)}</span>
+          <span style="${warn?'color:#c98a1b;font-weight:600':'color:var(--muted)'}">расх. <span class="prv">${mism>=0?'+':''}${fmtShort(mism)}₽</span></span>
+          <span style="color:var(--muted)">накопл. <span class="prv">${cum>=0?'+':''}${fmtShort(cum)}₽</span></span>
+        </div>
+        ${ev?`<div style="font-size:10px;color:var(--hint);margin-top:1px">${esc(ev)}</div>`:''}
+      </div>`;
+    }
+    h += `<div class="s-lbl" style="margin:14px 0 2px">Сверка: изменение активов vs доходы − расходы</div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 4px">«Расх.» — насколько изменение активов за период отличается от (доходы − расходы). Зеркальная пара ±X в соседних периодах — сдвиг даты вклада или снимка, безвредно: «накопл.» вернулось к прежнему уровню. Плохо, когда «накопл.» сдвинулось и осталось — деньги пришли/ушли мимо учёта. Первый период после начального снимка часто «грязный» — это калибровка.</p>
+      ${rowsH}`;
   }
   el.innerHTML = h;
 }
