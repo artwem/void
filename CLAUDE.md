@@ -53,8 +53,9 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 ```javascript
 {
   categories:      ['ЖКУ + аренда', ...],    // ordered list
+  catIds:          ['k3x9a1b2', ...],         // stable id per category, same position as categories[]
   catColors:       {0: '#185fa5', ...},       // category index → hex color
-  expenses:        [{id, date, cat, amount, comment, _deleted?}, ...],
+  expenses:        [{id, date, cat, catId, amount, comment, _deleted?}, ...],  // catId authoritative; cat = derived index
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],
   banks:           ['Сбербанк', ...],         // debit bank names
@@ -76,6 +77,8 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 
 `getLimits(y, m)` — returns limits for a month, falling back to most recent prior month's limits (not defaults).
 
+**Stable category ids (since v1.18.0):** `DB.catIds[i]` is a permanent id for `DB.categories[i]`. Records (`expenses`, `templates`) carry `catId` (authoritative, survives category deletion/reorder and sync) plus `cat` (derived positional index used by all render/aggregation code). `_ensureCatIds()` migrates old data (assigns ids, backfills `catId` from `cat`) and runs in `loadDB()`, after `mergePullData()`, in restore and test-data fill. `_reindexCats()` recomputes every record's `cat` from its `catId`; orphaned `catId` (category deleted) falls back to category 0. Any code creating/editing an expense or template MUST set `catId: DB.catIds[cat]`. `catIds` syncs and follows `categories` in the list LWW merge.
+
 ### Tab Modules
 
 Each tab has a `render*()` function called after any data change:
@@ -90,7 +93,7 @@ Each tab has a `render*()` function called after any data change:
 | Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, goals, deposits (вклады) |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
 
-Forecast (`page-calc`) and Deposits (`page-deposits`) have no navbar tab — both open via buttons on the Assets page (`showPage('calc')` / `showPage('deposits')`) and highlight the Assets nav button. Deposits code (renderDeposits, depositValueAt, avgMonthlySavings — average of last 6 *closed* months, current month excluded) lives in the `═══ assets.js ═══` section.
+Forecast (`page-calc`) and Deposits (`page-deposits`) have no navbar tab — both open via buttons on the Assets page (`showPage('calc')` / `showPage('deposits')`) and highlight the Assets nav button. Deposits code (renderDeposits, depositValueAt, avgMonthlySavings — average of last 6 *closed* months, current month excluded) lives in the `═══ assets.js ═══` section. Assets page shows an informational «с вкладами: N₽» line under the total (banks + `depositValueAt(d, today())` of live deposits). Matured deposits (endDate passed) get a «↳ Перенести в банк» button → `openCloseDeposit(id)` / `confirmCloseDeposit()`: adds the deposit's current value to a chosen debit bank as a today-dated asset record (extends today's record or carries forward the last known amount) and soft-deletes the deposit.
 | Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore (JSON + Excel), notifications |
 
 ### Sync — `js/sync.js` + `apps-script/Code.gs`
