@@ -230,7 +230,7 @@ if ('serviceWorker' in navigator) {
 <div id="page-assets" class="page">
   <div class="hdr"><h1>Накопления</h1></div>
   <div class="total-bar"><span class="total-lbl">Всего активов</span><span class="total-val" id="total-val">0 ₽</span></div>
-  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);margin:-4px 0 8px">с вкладами: <span id="total-with-deps-val"></span></div>
+  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);margin:-4px 0 8px">счета <span id="total-banks-val"></span> · вклады <span id="total-deps-val"></span></div>
   <div class="chart-wrap">
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1000,7 +1000,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.21.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.22.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3501,16 +3501,17 @@ function renderAssets(){
   Object.entries(byBank).forEach(([name,data])=>{
     total += isCredit(name) ? -data.latest : data.latest;
   });
-  document.getElementById('total-val').innerHTML=fmtH(total);
-  // Строка «с вкладами» — банки + текущая стоимость вкладов с процентами
+  // «Всего активов» = счета + вклады (вклады видны в списке счетов и в
+  // колонке «Всего» истории — шапка должна сходиться с ними)
   {
-    const wdEl = document.getElementById('total-with-deps');
     const liveDeps = (DB.deposits||[]).filter(d=>!d._deleted);
+    const depSumNow = liveDeps.reduce((s,d)=>s+depositValueAt(d,today()),0);
+    document.getElementById('total-val').innerHTML = fmtH(total + depSumNow);
+    const wdEl = document.getElementById('total-with-deps');
     if(wdEl){
       if(liveDeps.length){
-        const tdD = today();
-        const depSum = liveDeps.reduce((s,d)=>s+depositValueAt(d,tdD),0);
-        document.getElementById('total-with-deps-val').innerHTML = fmtH(total + depSum);
+        document.getElementById('total-banks-val').innerHTML = fmtH(total);
+        document.getElementById('total-deps-val').innerHTML = fmtH(depSumNow);
         wdEl.style.display = 'block';
       } else wdEl.style.display = 'none';
     }
@@ -5033,8 +5034,8 @@ function renderDataAudit(){
   const lostDeps = (DB.deposits||[]).filter(d=>d._deleted && !d.updatedAt);
 
   let h = `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
-    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Всего активов (все записи)</span><b>${fmtH(total)}</b></div>
-    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Сумма видимых счетов</span><b>${fmtH(visTotal)}</b></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Счета по всем записям</span><b>${fmtH(total)}</b></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Счета, видимые в списке</span><b>${fmtH(visTotal)}</b></div>
     ${total!==visTotal?`<div style="display:flex;justify-content:space-between;color:var(--red)"><span>Разница — записи-призраки</span><b>${fmtH(total-visTotal)}</b></div>`:''}
   </div>`;
 
