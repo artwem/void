@@ -263,13 +263,15 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
-  <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
-  <div id="goals-list" style="padding:0 16px 8px"></div>
-  <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
+  <div style="padding:8px 16px 0">
     <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('deposits')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
     </button>
+  </div>
+  <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
+  <div id="goals-list" style="padding:0 16px 8px"></div>
+  <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
     <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('calc')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
       Прогноз накоплений
@@ -753,9 +755,33 @@ if ('serviceWorker' in navigator) {
         <option value="end">Выплата в конце срока</option>
       </select>
     </div>
+    <div class="fgrp" id="dep-contribs-grp" style="display:none">
+      <label class="flbl">Пополнения</label>
+      <div id="dep-contribs-list" style="font-size:13px"></div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn danger" id="deposit-delete-btn" onclick="deleteDeposit()" style="display:none">Удалить</button>
       <button class="btn primary" onclick="saveDeposit()" style="flex:1">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-dep-contrib">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-dep-contrib')">✕</button>
+    <h2>Пополнить вклад</h2>
+    <p id="dep-contrib-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
+    <div class="fgrp">
+      <label class="flbl">Дата пополнения</label>
+      <input type="date" id="dep-contrib-date" class="finp">
+    </div>
+    <div class="fgrp">
+      <label class="flbl">Сумма, ₽</label>
+      <input type="text" id="dep-contrib-amount" class="finp" inputmode="decimal" placeholder="50 000" oninput="formatMoneyInput(this)">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal('modal-dep-contrib')">Отмена</button>
+      <button class="btn primary" onclick="saveDepContribution()">Пополнить</button>
     </div>
   </div>
 </div>
@@ -962,7 +988,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.19.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.20.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3509,6 +3535,32 @@ function renderAssets(){
       list.appendChild(row);
     });
   }
+  // Вклады — отдельной группой с пометкой «вклад» (в «Всего активов» не входят,
+  // их учитывает строка «с вкладами»); клик ведёт на страницу вкладов
+  {
+    const listDeps = (DB.deposits||[]).filter(d=>!d._deleted).sort((a,b)=>(a.endDate||'').localeCompare(b.endDate||''));
+    const tdDep = today();
+    listDeps.forEach(d => {
+      const closed = d.endDate <= tdDep;
+      const row = document.createElement('div');
+      row.className = 'asset-row';
+      row.style.cssText = 'gap:8px;cursor:pointer';
+      row.addEventListener('click', ()=>showPage('deposits'));
+      const namePart = document.createElement('div');
+      namePart.style.cssText = 'flex:1;min-width:0';
+      const depBadge = ' <span style="font-size:10px;background:var(--blue-bg);color:var(--blue);padding:1px 5px;border-radius:4px;margin-left:4px">вклад</span>';
+      const subLine = closed
+        ? `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ срок вышел ${_fmtDateRu(d.endDate)}</div>`
+        : `<div style="font-size:11px;color:var(--muted);margin-top:2px">до ${_fmtDateRu(d.endDate)} · ${d.rate}%</div>`;
+      namePart.innerHTML = `<div class="asset-name">${esc(d.name)}${depBadge}</div>` + subLine;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'asset-amount';
+      amtSpan.innerHTML = fmtH(depositValueAt(d, tdDep));
+      row.appendChild(namePart);
+      row.appendChild(amtSpan);
+      list.appendChild(row);
+    });
+  }
   // Chart
   const assetsSorted=[...DB.assets].filter(a=>!a._deleted).sort((a,b)=>a.date.localeCompare(b.date));
   const byDate={};
@@ -3726,28 +3778,56 @@ let _editingDepositId = null;
 // «% в конце»: досрочно закрыть нельзя, выплата только при закрытии —
 // до endDate считаем одно тело. Ежемесячная капитализация: начисленное
 // уже лежит на счету, учитываем по мере набегания.
-function depositValueAt(d, dateStr){
-  const stop = dateStr < d.endDate ? dateStr : d.endDate;
-  const days = Math.max(0, Math.round((new Date(stop) - new Date(d.openDate))/86400000));
-  const r = (d.rate||0)/100;
-  if(d.capitalization === 'end'){
-    if(dateStr < d.endDate) return d.amount;
-    // finalAmount задан вручную — он точнее производной ставки
-    return d.finalAmount ? Math.round(d.finalAmount) : Math.round(d.amount * (1 + r*days/365));
-  }
-  if(d.finalAmount && dateStr >= d.endDate) return Math.round(d.finalAmount);
-  return Math.round(d.amount * Math.pow(1 + r/12, days/30.4375));
+function _depDays(a, b){ return Math.max(0, Math.round((new Date(b) - new Date(a))/86400000)); }
+
+// Сумма пополнений вклада, внесённых не позже dateStr
+function _depContribsSum(d, dateStr){
+  return (d.contributions||[]).filter(c=>c.date<=dateStr).reduce((s,c)=>s+c.amount,0);
 }
 
-// Годовая ставка (%) из известной суммы на закрытие
-function _calcDepRate(amount, final, openDate, endDate, cap){
+// Стоимость вклада на дату при заданной ставке (finalAmount не учитывается).
+// Тело растёт с openDate, каждое пополнение — со своей даты.
+function _depValueWithRate(d, dateStr, rate){
+  const stop = dateStr < d.endDate ? dateStr : d.endDate;
+  const r = (rate||0)/100;
+  const cs = (d.contributions||[]).filter(c=>c.date<=stop);
+  if(d.capitalization === 'end'){
+    if(dateStr < d.endDate) return d.amount + cs.reduce((s,c)=>s+c.amount,0);
+    return d.amount * (1 + r*_depDays(d.openDate, d.endDate)/365)
+         + cs.reduce((s,c)=>s + c.amount * (1 + r*_depDays(c.date, d.endDate)/365), 0);
+  }
+  const grow = from => Math.pow(1 + r/12, _depDays(from, stop)/30.4375);
+  return d.amount * grow(d.openDate) + cs.reduce((s,c)=>s + c.amount * grow(c.date), 0);
+}
+
+function depositValueAt(d, dateStr){
+  // finalAmount задан вручную — он точнее производной ставки
+  if(d.finalAmount && dateStr >= d.endDate) return Math.round(d.finalAmount);
+  return Math.round(_depValueWithRate(d, dateStr, d.rate));
+}
+
+// Годовая ставка (%) из известной суммы на закрытие.
+// С пополнениями закрытой формулы нет — бисекция по ставке.
+function _calcDepRate(amount, final, openDate, endDate, cap, contribs){
   const days = Math.round((new Date(endDate) - new Date(openDate))/86400000);
   if(!amount || amount<=0 || !final || final<=0 || days<=0) return null;
-  const ratio = final/amount;
-  const r = cap === 'end'
-    ? (ratio - 1) * 365 / days                          // простые проценты
-    : 12 * (Math.pow(ratio, 30.4375/days) - 1);         // ежемесячная капитализация
-  return Math.round(r * 10000) / 100; // % с двумя знаками
+  const cs = (contribs||[]).filter(c=>c.date<=endDate);
+  if(!cs.length){
+    const ratio = final/amount;
+    const r = cap === 'end'
+      ? (ratio - 1) * 365 / days                          // простые проценты
+      : 12 * (Math.pow(ratio, 30.4375/days) - 1);         // ежемесячная капитализация
+    return Math.round(r * 10000) / 100; // % с двумя знаками
+  }
+  const invested = amount + cs.reduce((s,c)=>s+c.amount,0);
+  if(final <= invested) return null;
+  const dd = {amount, openDate, endDate, capitalization:cap, contributions:cs};
+  let lo = 0, hi = 300;
+  for(let i=0;i<60;i++){
+    const mid = (lo+hi)/2;
+    if(_depValueWithRate(dd, endDate, mid) < final) lo = mid; else hi = mid;
+  }
+  return Math.round((lo+hi)/2 * 100) / 100;
 }
 
 function _fmtDateRu(ds){
@@ -3788,8 +3868,10 @@ function renderDeposits(){
   fc.style.display='';
   const td = today();
   list.innerHTML = deps.map((d,idx)=>{
+    const contribSum = _depContribsSum(d, d.endDate);
+    const invested = d.amount + contribSum;
     const atEnd = depositValueAt(d, d.endDate);
-    const profit = atEnd - d.amount;
+    const profit = atEnd - invested;
     const daysLeft = Math.ceil((new Date(d.endDate) - new Date(td))/86400000);
     const closed = daysLeft <= 0;
     // эффективная годовая при ежемесячной капитализации: (1+r/12)^12 − 1
@@ -3800,13 +3882,16 @@ function renderDeposits(){
         <span style="font-size:12px;color:var(--muted)">${d.rate}%${eff!==null?' · эфф. '+eff+'%':' год.'}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;font-weight:600">${fmtH(d.amount)} → ${fmtH(atEnd)}</span>
+        <span style="font-size:13px;font-weight:600">${fmtH(invested)} → ${fmtH(atEnd)}</span>
         <span style="font-size:12px;color:var(--green);font-weight:600">+${fmtH(profit)}</span>
       </div>
+      ${contribSum>0?`<div style="font-size:11px;color:var(--muted);margin-top:2px">тело ${fmtH(d.amount)} + пополнения ${fmtH(contribSum)}</div>`:''}
       <div style="font-size:11px;color:var(--muted);margin-top:3px">${closed
         ? '✓ Срок вышел '+_fmtDateRu(d.endDate)
         : 'до '+_fmtDateRu(d.endDate)+' · осталось '+daysLeft+' дн · '+(d.capitalization==='end'?'% в конце':'капитализация')}</div>
-      ${closed?`<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">↳ Перенести в банк</button>`:''}
+      ${closed
+        ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">↳ Перенести в банк</button>`
+        : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>`}
     </div>`;
   }).join('');
   // дефолт даты прогноза — самое позднее закрытие
@@ -3827,7 +3912,7 @@ function renderDepositForecast(){
   const deps = (DB.deposits||[]).filter(d=>!d._deleted);
   const dateStr = document.getElementById('dep-forecast-date').value;
   if(!deps.length || !dateStr){ el.innerHTML=''; return; }
-  const principal = deps.reduce((s,d)=>s+d.amount,0);
+  const principal = deps.reduce((s,d)=>s + d.amount + _depContribsSum(d, dateStr), 0);
   const depTotal = deps.reduce((s,d)=>s+depositValueAt(d,dateStr),0);
   const interest = depTotal - principal;
   let extra = 0, months = 0;
@@ -3890,6 +3975,74 @@ function confirmCloseDeposit(){
   toast('✓ '+fmt(val)+' → '+bank);
 }
 
+// ── Пополнение вклада ───────────────────────────────────────────────
+let _contribDepositId = null;
+
+function openDepContribution(id){
+  const d = (DB.deposits||[]).find(x=>x.id===id && !x._deleted);
+  if(!d) return;
+  _contribDepositId = id;
+  document.getElementById('dep-contrib-info').textContent =
+    d.name+': проценты на пополнение набегают с его даты.';
+  document.getElementById('dep-contrib-date').value = today();
+  setMoneyInput('dep-contrib-amount','');
+  openModal('modal-dep-contrib');
+}
+
+function saveDepContribution(){
+  const d = (DB.deposits||[]).find(x=>x.id===_contribDepositId && !x._deleted);
+  if(!d) return;
+  const date = document.getElementById('dep-contrib-date').value;
+  const amount = parseMoney(document.getElementById('dep-contrib-amount').value);
+  if(!date){ toast('Укажите дату'); return; }
+  if(!amount || amount<=0){ toast('Введите сумму'); return; }
+  if(date < d.openDate){ toast('Дата раньше открытия вклада'); return; }
+  if(date > d.endDate){ toast('Дата позже закрытия вклада'); return; }
+  if(!d.contributions) d.contributions = [];
+  d.contributions.push({id:uid(), date, amount});
+  d.contributions.sort((a,b)=>a.date.localeCompare(b.date));
+  _reDeriveDepRate(d);
+  d.updatedAt = Date.now();
+  saveDB();
+  closeModal('modal-dep-contrib');
+  _contribDepositId = null;
+  renderDeposits();
+  if(typeof renderAssets==='function') renderAssets();
+  toast('✓ Пополнение '+fmt(amount));
+}
+
+function deleteDepContribution(depId, cid){
+  const d = (DB.deposits||[]).find(x=>x.id===depId);
+  if(!d || !d.contributions) return;
+  d.contributions = d.contributions.filter(c=>c.id!==cid);
+  _reDeriveDepRate(d);
+  d.updatedAt = Date.now();
+  saveDB();
+  _renderDepContribsList(d);
+  renderDeposits();
+  toast('Пополнение удалено');
+}
+
+// finalAmount задан → ставка производная, пересчитать под новый набор пополнений
+function _reDeriveDepRate(d){
+  if(!d.finalAmount) return;
+  const r = _calcDepRate(d.amount, d.finalAmount, d.openDate, d.endDate, d.capitalization, d.contributions);
+  if(r !== null) d.rate = r;
+}
+
+function _renderDepContribsList(d){
+  const grp = document.getElementById('dep-contribs-grp');
+  const list = document.getElementById('dep-contribs-list');
+  if(!grp || !list) return;
+  const cs = (d && d.contributions) || [];
+  if(!cs.length){ grp.style.display='none'; list.innerHTML=''; return; }
+  grp.style.display = '';
+  list.innerHTML = cs.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+    <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution('${esc(d.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+  </div>`).join('');
+}
+
 // Режим доходности: 'rate' — ввод ставки, 'final' — ввод суммы на закрытие
 let _depMode = 'rate';
 
@@ -3910,12 +4063,14 @@ function _depRateFromFinal(){
   if(_depMode !== 'final') return;
   const hint = document.getElementById('dep-final-rate-hint');
   if(!hint) return;
+  const _ed = _editingDepositId ? (DB.deposits||[]).find(x=>x.id===_editingDepositId) : null;
   const rate = _calcDepRate(
     parseMoney(document.getElementById('deposit-amount').value),
     parseMoney(document.getElementById('deposit-final').value),
     document.getElementById('deposit-open').value,
     document.getElementById('deposit-end').value,
-    document.getElementById('deposit-cap').value
+    document.getElementById('deposit-cap').value,
+    _ed ? _ed.contributions : null
   );
   hint.textContent = rate !== null ? '≈ '+rate+'% годовых' : '';
 }
@@ -3933,6 +4088,7 @@ function openDepositModal(id){
   document.getElementById('deposit-days').value = '';
   document.getElementById('deposit-cap').value = d ? (d.capitalization||'monthly') : 'monthly';
   document.getElementById('deposit-delete-btn').style.display = d ? '' : 'none';
+  _renderDepContribsList(d);
   setDepMode(d && d.finalAmount ? 'final' : 'rate');
   _depDaysFromDates();
   openModal('modal-deposit');
@@ -3963,12 +4119,15 @@ function saveDeposit(){
   if(!name){ toast('Введите название'); return; }
   if(!amount || amount<=0){ toast('Введите сумму'); return; }
   if(!openDate || !endDate || endDate<=openDate){ toast('Проверьте даты'); return; }
+  const _prev = _editingDepositId ? (DB.deposits||[]).find(x=>x.id===_editingDepositId) : null;
+  const _contribs = _prev ? _prev.contributions : null;
   let rate, finalAmount = null;
   if(_depMode === 'final'){
     finalAmount = parseMoney(document.getElementById('deposit-final').value);
     if(!finalAmount || finalAmount<=0){ toast('Введите сумму на закрытие'); return; }
-    if(finalAmount < amount){ toast('Сумма на закрытие меньше тела вклада'); return; }
-    rate = _calcDepRate(amount, finalAmount, openDate, endDate, capitalization) || 0;
+    const invested = amount + (_contribs||[]).reduce((s,c)=>s+c.amount,0);
+    if(finalAmount < invested){ toast('Сумма на закрытие меньше тела с пополнениями'); return; }
+    rate = _calcDepRate(amount, finalAmount, openDate, endDate, capitalization, _contribs) || 0;
   } else {
     rate = parseFloat(document.getElementById('deposit-rate').value);
     if(!rate || rate<=0){ toast('Введите ставку'); return; }
