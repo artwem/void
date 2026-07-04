@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**V.O.I.D. — Visual Overview of Income & Debt** is a Russian-language personal finance PWA (Progressive Web App) built with vanilla JavaScript, no frameworks, no build tools. UI labels and data are in Russian/Cyrillic.
+**V.O.I.D. — Visual Overview of Income & Debt** is a Russian-language personal finance PWA (Progressive Web App) built with vanilla JavaScript, no frameworks, no build tools. UI labels and data are in Russian/Cyrillic. Live at `https://artwem.github.io/void/`.
 
 ## Development
 
@@ -14,39 +14,42 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**Production build** (bundles everything into `dist/index.html`):
+**No test suite, no linter.** Manual browser testing is the workflow. Test on Safari (iOS), Chrome (Android), and desktop. A quick parse check for the inline scripts:
 ```bash
-./build.sh
+node -e "const html=require('fs').readFileSync('index.html','utf8');const re=/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g;let m,ok=true;while((m=re.exec(html))){try{new Function(m[1])}catch(e){ok=false;console.log('FAIL:',e.message)}};console.log(ok?'syntax OK':'ERRORS')"
 ```
 
-**No test suite, no linter.** Manual browser testing is the workflow. Test on Safari (iOS), Chrome (Android), and desktop.
+## Critical: index.html Is the Only Real Source
 
-**Deployment**: Push to `main` for GitHub Pages. Or run `./build.sh` and drop `dist/` on Netlify.
-
-## Critical: Two-File Reality
-
-**`index.html` is the authoritative source for dev mode.** The `js/*.js` files are only used by `build.sh` to bundle a production `dist/index.html`. Changes to `js/*.js` have **zero effect** during development — all logic must be edited directly inside `index.html`.
+**`index.html` is the authoritative source.** The `js/*.js`, `nav.html`, `pages.html`, `modals.html` files exist only as inputs to `build.sh` (Netlify single-file bundle) and are **stale** — features since ~v1.16 (deposits, contributions, data audit, annual report…) exist only in `index.html`. Editing `js/*.js` has zero effect on dev or the GitHub Pages deploy. Do not run `./build.sh` expecting a current app until those files are re-synced from `index.html`.
 
 Each JS module is inlined in `index.html` with a section marker comment:
 ```
-// ═══ db.js ═══
-// ═══ nav.js ═══
-// ═══ budget.js ═══
-// ═══ day.js ═══
-// ═══ income.js ═══
-// ═══ assets.js ═══
-// ═══ stats.js ═══
-// ═══ calc.js ═══
-// ═══ settings.js ═══
-// ═══ sync.js ═══
-// ═══ init.js ═══
+// ═══ db.js ═══      // ═══ nav.js ═══     // ═══ budget.js ═══
+// ═══ day.js ═══     // ═══ income.js ═══  // ═══ assets.js ═══
+// ═══ stats.js ═══   // ═══ calc.js ═══    // ═══ settings.js ═══
+// ═══ sync.js ═══    // ═══ init.js ═══
 ```
 
-Similarly, `nav.html`, `pages.html`, and `modals.html` are partial HTML fragments — they're only used by `build.sh`. The nav/pages/modals content must be edited directly in `index.html`.
+**`css/app.css` is the exception** — loaded directly via `<link rel="stylesheet" href="css/app.css?v=X.Y.Z">` (~line 25 of `index.html`), so CSS edits go to `css/app.css` even in dev mode. Every CSS change must bump the `?v=` query string, otherwise iOS PWAs keep serving stale CSS.
+
+## Deployment (GitHub Pages, push to main)
+
+Checklist for every deploy:
+1. Bump the visible version in `index.html` (About block, search `v1.`).
+2. Bump `const V` in `sw.js` — this is what forces iOS PWA cache refresh.
+3. Commit + push to `main`. Pages auto-builds (legacy branch build, workflow «pages build and deployment»).
+
+Deploy verification/ops (gh CLI is installed and authenticated as `artwem`):
+```powershell
+& "C:\Program Files\GitHub CLI\gh.exe" api repos/artwem/void/pages/builds/latest --jq '{status,commit}'
+& "C:\Program Files\GitHub CLI\gh.exe" api -X POST repos/artwem/void/pages/builds   # force fresh build
+```
+Pages deploys occasionally hang in `building`/`queued` (service-side). Remedies in order: force a fresh build via the API; empty-commit push; delete + recreate the Pages site (`DELETE /repos/artwem/void/pages`, then `POST` with `source[branch]=main`, `source[path]=/`) — same URL, fixes stuck pipelines. **Never bulk-delete old workflow runs**: the live deployment's artifact can go with them, 404ing the site until the next successful build.
 
 ## Architecture
 
-### Data Layer — `js/db.js` (inlined in `index.html`)
+### Data Layer — `═══ db.js ═══`
 
 Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every module reads from and writes to `DB`, then calls `saveDB()`. Schema:
 
@@ -55,16 +58,16 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   categories:      ['ЖКУ + аренда', ...],    // ordered list
   catIds:          ['k3x9a1b2', ...],         // stable id per category, same position as categories[]
   catColors:       {0: '#185fa5', ...},       // category index → hex color
-  expenses:        [{id, date, cat, catId, amount, comment, _deleted?}, ...],  // catId authoritative; cat = derived index
+  expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
-  assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],
+  assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],  // point-in-time balance per bank per date
   banks:           ['Сбербанк', ...],         // debit bank names
   creditBanks:     [...],                     // credit bank names (subtracted from net worth)
   limits:          {'2026-04': [15000, ...]}, // per-category monthly limits, keyed by monthKey()
   syncUrl:         'https://script.google.com/...',
   goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
-  deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, _deleted?}, ...],  // вклады; capitalization: 'monthly'|'end'; finalAmount = вручную заданная сумма на закрытие (rate тогда производная от неё, depositValueAt на endDate возвращает ровно finalAmount); contributions = пополнения [{id, date, amount}] — проценты на каждое набегают с его даты, при finalAmount ставка выводится бисекцией (_calcDepRate с 6-м аргументом)
+  deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, _deleted?}, ...],
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
   listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
@@ -77,7 +80,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 
 `getLimits(y, m)` — returns limits for a month, falling back to most recent prior month's limits (not defaults).
 
-**Stable category ids (since v1.18.0):** `DB.catIds[i]` is a permanent id for `DB.categories[i]`. Records (`expenses`, `templates`) carry `catId` (authoritative, survives category deletion/reorder and sync) plus `cat` (derived positional index used by all render/aggregation code). `_ensureCatIds()` migrates old data (assigns ids, backfills `catId` from `cat`) and runs in `loadDB()`, after `mergePullData()`, in restore and test-data fill. `_reindexCats()` recomputes every record's `cat` from its `catId`; orphaned `catId` (category deleted) falls back to category 0. Any code creating/editing an expense or template MUST set `catId: DB.catIds[cat]`. `catIds` syncs and follows `categories` in the list LWW merge.
+**Stable category ids (since v1.18.0):** `DB.catIds[i]` is a permanent id for `DB.categories[i]`. Records (`expenses`, `templates`) carry `catId` (authoritative, survives category deletion/reorder and sync) plus `cat` (derived positional index used by all render/aggregation code). `_ensureCatIds()` migrates old data and runs in `loadDB()`, after `mergePullData()`, in restore and test-data fill. `_reindexCats()` recomputes every record's `cat` from its `catId`; orphaned `catId` falls back to category 0. Any code creating/editing an expense or template MUST set `catId: DB.catIds[cat]`.
 
 ### Tab Modules
 
@@ -86,101 +89,99 @@ Each tab has a `render*()` function called after any data change:
 | Tab | Section marker | Responsibility |
 |-----|----------------|----------------|
 | (nav) | `═══ nav.js ═══` | Tab switching, month/day navigation, sync widget header |
-| Budget | `═══ budget.js ═══` | Categories grouped by color, limits, progress bars |
+| Budget | `═══ budget.js ═══` | Categories grouped by color, limits editor (⌀-hints), progress bars |
 | Day | `═══ day.js ═══` | Daily expense list |
-| Income | `═══ income.js ═══` | Income sources, monthly balance |
-| Аналитика | `═══ stats.js ═══` | Chart.js graphs (6-month trends, category breakdown, income by tag) |
-| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, goals, deposits (вклады) |
+| Income | `═══ income.js ═══` | Income sources, monthly balance, tag filter |
+| Аналитика | `═══ stats.js ═══` | Chart.js graphs, «День за днём», annual report page |
+| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, history, goals, deposits |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
+| Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore, Excel, notifications, data audit |
 
-Forecast (`page-calc`) and Deposits (`page-deposits`) have no navbar tab — both open via buttons on the Assets page (`showPage('calc')` / `showPage('deposits')`) and highlight the Assets nav button; Annual report (`page-report`, `renderReport()` in the `═══ stats.js ═══` section) opens via a «Годовой отчёт» button at the bottom of the Аналитика page (`showPage('report')`, highlights the stats nav button): year selector in the header, summary cards (income/expense/saved/rate), per-month table, year expense-by-category and income-by-tag breakdowns; the «Мои вклады» button sits between the «Текущие счета» list and «Цели накоплений», «Прогноз накоплений» stays at the bottom. Deposits code (renderDeposits, depositValueAt = rounded `_depValueWithRate(d, date, d.rate)` honoring finalAmount at endDate, avgMonthlySavings — average of last 6 *closed* months, current month excluded) lives in the `═══ assets.js ═══` section. Live deposits also render as read-only rows at the end of the «Текущие счета» list (blue «вклад» badge, value = `depositValueAt(d, today())`, click → deposits page). Since v1.22.0 «Всего активов» = banks + live deposits at today; a «счета X · вклады Y» breakdown line shows under the total when deposits exist. `_getCurrentAssetsTotal()` stays banks-only (feeds calc/goal prefills where deposit interest would double-count). Deposit top-ups (пополнения): «+ Пополнить» button on open deposit cards → `openDepContribution(id)` / `saveDepContribution()` appends to `d.contributions` (validated within [openDate, endDate], sorted by date, stamps `updatedAt`, re-derives rate via `_reDeriveDepRate` when finalAmount set); the edit modal lists contributions with immediate delete (`deleteDepContribution`). `_depContribsSum(d, date)` = sum of contributions dated ≤ date. **Bank↔deposit transfers**: `_bankAdjust(bankName, date, delta)` edits/creates the bank's asset record on that date (base = `_lastKnownAmount`); used by deposit close (+value), and by optional «Списать из банка» selects in the new-deposit and contribution modals (−amount on openDate/contribution date) — keeps the period reconciliation in «Проверка данных» clean. The snapshot modal has an editable «Дата снимка» field (max today; changing it reloads rows carry-forward) for backdated snapshots. Notifications: `checkAssetNotification` (1st/16th + stale snapshot >14 days, re-fires every 3 days), `checkDepositNotifications` (deposit closes in ≤3 days or matured, per-deposit 3-day stamp). Excel export includes a «Вклады» sheet. Matured deposits (endDate passed) get a «↳ Перенести в банк» button → `openCloseDeposit(id)` / `confirmCloseDeposit()`: adds the deposit's current value to a chosen debit bank as a today-dated asset record (extends today's record or carries forward the last known amount) and soft-deletes the deposit. The deposit modal has a «Ставка % / Сумма в конце» mode toggle (`_depMode`, `setDepMode`): in «Сумма в конце» mode the user enters `finalAmount` and the annual rate is derived via `_calcDepRate()` (simple interest for `cap='end'`, compound for `monthly`), shown live as a hint. The «Рост накоплений» chart builds per-date series with **carry-forward**: a bank without a record on a date uses its last known record (so a single-bank record, e.g. from «Перенести в банк», doesn't crater the point). `depSeries` counts deposits from `openDate`, including soft-deleted ones up to (excluding) their local deletion day (`updatedAt`) — so closing a deposit doesn't retroactively dent past points. The «банки / +вклады» toggle (`setAssetsChartDeps`, device-local `localStorage.assetsChartDeps`) adds `depSeries` to the chart line; the history table ignores the toggle and always shows columns Дата | Счета | Вклады | Всего | Δ (Счета/Вклады columns hidden when the history has no deposits).
-| Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore (JSON + Excel), notifications, data audit (`openDataAudit` — ghost bank records merge/delete, duplicate bank+date records fix, deposit/snapshot date mismatch warnings) |
+**Sub-pages without a navbar tab** (open via buttons, highlight the parent tab's nav button in `showPage`): `page-calc` and `page-deposits` from Assets; `page-report` (annual report: year selector, summary cards, per-month table, expenses-by-category, income-by-tag; `renderReport()` in stats.js section) from Аналитика.
 
-### Sync — `js/sync.js` + `apps-script/Code.gs`
+### Deposits (вклады) — in `═══ assets.js ═══`
+
+- `depositValueAt(d, dateStr)` = rounded `_depValueWithRate(d, date, d.rate)`; honors `finalAmount` exactly at/after `endDate`. Principal grows from `openDate`; **each contribution grows from its own date** (before its date it does not exist in the value). `capitalization: 'monthly'` — compound; `'end'` — body only until endDate, simple interest at close.
+- `finalAmount` mode («Сумма в конце» toggle, `_depMode`): user enters the closing sum, annual rate is derived by `_calcDepRate(amount, final, open, end, cap, contribs)` — closed form without contributions, **bisection** with them. Rate re-derives on contribution add/delete (`_reDeriveDepRate`).
+- Top-ups: «+ Пополнить» on open deposit cards → `openDepContribution`/`saveDepContribution` (validated within `[openDate, endDate]`, sorted, stamps `updatedAt`); edit modal lists contributions with immediate delete. `_depContribsSum(d, date)` = contributions dated ≤ date.
+- **Bank↔deposit transfers**: `_bankAdjust(bankName, date, delta)` edits/creates the bank's asset record on that date (base = `_lastKnownAmount`). Used by deposit close (`confirmCloseDeposit`, +value, soft-deletes the deposit) and by optional «Списать из банка» selects in new-deposit and contribution modals (−amount). Keeps period reconciliation clean — always prefer it over hand-written record math.
+- Matured deposits show «↳ Перенести в банк»; open ones «+ Пополнить».
+
+### Assets Page & Series
+
+- **«Всего активов» = banks + live deposits at today** (since v1.22.0), with a «счета X · вклады Y» breakdown line. `_getCurrentAssetsTotal()` stays banks-only (feeds calc/goal prefills where deposit interest would double-count). Bank total = each bank's **most recent non-deleted entry regardless of date** — never filter by a shared "latest date".
+- Live deposits render as read-only rows at the end of «Текущие счета» (blue «вклад» badge, click → deposits page). Zero/no-data banks hide behind a «Показать нулевые счета (N)» toggle (`_showZeroBanks`).
+- **`_buildAssetSeries()`** is the single source for chart, history table and audit: per-snapshot-date `bankSeries` (carry-forward — a bank without a record on a date uses its last known record) and `depSeries` (deposits from `openDate`, soft-deleted ones counted until their local deletion day `_depDelDay(d)` — closing a deposit doesn't retroactively dent history). The «банки / +вклады» chart toggle (`setAssetsChartDeps`, device-local `localStorage.assetsChartDeps`) adds `depSeries` to the line; the history table ignores the toggle and always shows Дата | Счета | Вклады | Всего | Δ.
+- **Snapshot modal semantics** (`openAssetSnapshot` → `openEditAssetDate(date, carryForward)`): editable «Дата снимка» field (max today) allows backdated snapshots; pre-fills carry-forward values flagged «↻ перенесено». **Empty input = no record** (carry-forward continues; amber «∅ записи не будет…» tag), **explicit 0 = real zero record** (green «✕ обнулён этой датой» tag, only when the last record before the date was non-zero); per-row round «0» button. On save, all previous records for the date are tombstoned and non-empty inputs re-added.
+- Data audit (Settings → «Проверка данных», `openDataAudit`): ghost bank records (merge/delete), duplicate bank+date records (keep max `updatedAt`), deposit/snapshot date warnings, and **period reconciliation** — per snapshot period, asset delta vs (incomes − expenses) with running cumulative; mirrored ±X pairs in adjacent periods mean a date shift (harmless), a persistent cumulative shift means unaccounted money.
+- Notifications: `checkBudgetNotifications` (limit threshold, call after saving an expense), `checkAssetNotification` (1st/16th + stale snapshot >14 days, re-fires every 3 days), `checkDepositNotifications` (closes in ≤3 days or matured; 3-day per-deposit stamp). All gated by `DB.notifsEnabled` + granted permission.
+
+### Sync — `═══ sync.js ═══` + `apps-script/Code.gs`
 
 Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`. Data is stored as `nto_data.json` on Google Drive (no spreadsheets).
 
-**All sync entry points (startup, 15s interval, visibilitychange, manual pull/push buttons) go through a single `syncCycle()`** (in `═══ init.js ═══`): pull → merge → push-if-dirty, guarded by one shared in-flight promise. Never push before pulling — the merge protects local edits, while push-first would clobber other devices' unseen changes on Drive. `saveDB()` increments a `_dirtyGen` counter; `syncCycle` clears `DB._dirty` only if the counter is unchanged after the awaits (an edit made mid-sync stays dirty). The interval fires when `DB._dirty` **or** when the last pull is >5 min old (so idle devices still receive peers' edits). After 3 consecutive failures the sync widget shows a red «Ошибка» instead of the amber last-sync time (`_syncFailCount`).
+**All sync entry points (startup, 15s interval, visibilitychange, manual pull/push buttons) go through a single `syncCycle()`** (in `═══ init.js ═══`): pull → merge → push-if-dirty, guarded by one shared in-flight promise. Never push before pulling. `saveDB()` increments a `_dirtyGen` counter; `syncCycle` clears `DB._dirty` only if the counter is unchanged after the awaits. The interval fires when `DB._dirty` **or** when the last pull is >5 min old. After 3 consecutive failures the sync widget shows a red «Ошибка» (`_syncFailCount`).
 
-**Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth, backward compatible). If set, the same string must be entered in the app's sync modal; it's stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
+**Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`.
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, plus `listsMeta` (LWW timestamps).
 
-**What syncs (also):** `listsMeta` — the LWW timestamps for the lists above.
+**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty`.
 
-**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty` before pushing.
+**`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie. `saveSyncUrlEverywhere()` writes to all three.
 
-**`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie (in that priority). `saveSyncUrlEverywhere()` writes to all three to keep them in sync.
-
-**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — set `_deleted: true` (amount zeroed) instead of removing, so the deletion propagates on sync. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are **no longer stripped before push** — they must reach Drive for other devices to learn of the delete.
+**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — `_deleted: true`, amount zeroed. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are pushed (other devices must learn of deletes).
 
 **Merge logic (`mergePullData`):**
-- `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`: **last-write-wins by `id`** — for each id keep the record with the strictly greater `updatedAt`; ties keep local (pull precedes push). This propagates edits and deletes, not just inserts. Any code that mutates records in bulk (category-index remap, bank/tag rename) MUST stamp `updatedAt = Date.now()` on each mutated record, or the merge reverts them.
-- `categories`/`catColors`, `banks`, `creditBanks`, `incomeTags`/`incomeTagColors`: **LWW by `listsMeta[name]`** (stamped via `touchList(name)` on every add/rename/delete/recolor). Fallback when neither side has a timestamp (pre-v1.17 clients): remote wins if longer.
-- `limits`: **3-way merge** — remote wins per month-key only if the local value equals the `_lastSyncedLimits` baseline (i.e. unchanged locally since the last sync); locally-edited months keep the local value and get pushed. `syncCycle` refreshes the baseline after each successful cycle.
+- Record arrays: **last-write-wins by `id`** — keep the strictly greater `updatedAt`; ties keep local. Any bulk mutation (category remap, bank/tag rename) MUST stamp `updatedAt` on each mutated record, or the merge reverts them.
+- Name lists + their colors: **LWW by `listsMeta[name]`** (`touchList(name)` on every mutation). Fallback for pre-v1.17 clients: remote wins if longer.
+- `limits`: **3-way merge** — remote wins per month-key only if the local value equals the `_lastSyncedLimits` baseline; locally-edited months keep local and get pushed. `syncCycle` refreshes the baseline after each successful cycle.
 
-**Updating Apps Script:** edit `apps-script/Code.gs` locally → copy contents into the Google Apps Script editor → deploy new version. `build.sh` automatically inlines Code.gs into `dist/index.html`; in dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs` directly.
+**Updating Apps Script:** edit `apps-script/Code.gs` locally → copy into the Google Apps Script editor → deploy new version. In dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs`.
 
-**Code.gs v10.3:** writes are serialized with `LockService` (concurrent pushes from two devices queue instead of racing). The data file is located by ID stored in `ScriptProperties` (`dataFileId`), falling back to name lookup — `getFilesByName` alone could pick an arbitrary duplicate. **Wipe guard:** a push whose payload is <30% of the stored file size (and the file is >20 KB) is rejected unless `force:true` — the manual «Выгрузить в Drive» button sends `force`, auto-sync doesn't. **Daily backup:** before overwriting, at most once per 24h, the current file is copied to `nto_data.bak.json` (`bakFileId`/`lastBakTs` in ScriptProperties).
+**Code.gs v10.3:** writes serialized with `LockService`; data file located by ID in `ScriptProperties` (`dataFileId`), falling back to name lookup. **Wipe guard:** a push <30% of the stored file size (file >20 KB) is rejected unless `force:true` — manual «Выгрузить в Drive» sends `force`, auto-sync doesn't. **Daily backup:** at most once per 24h the file is copied to `nto_data.bak.json`.
 
 ### Excel Export
 
-Settings → "Экспорт Excel" calls `exportExcel()` (in `═══ settings.js ═══`). Uses **SheetJS 0.18.5** loaded from CDN (`xlsx.full.min.js`). Produces a `.xlsx` file with the same visible sheet structure as Google Sheets: По дням YYYY, Шаблон, month sheets, Активы. Hidden sheets (Доходы, Комментарии, etc.) are excluded. For a full data backup use "Резервная копия" (JSON dump of entire `DB`).
+Settings → «Экспорт Excel» → `exportExcel()` (settings.js section). Uses **SheetJS 0.18.5** from CDN. Sheets: По дням YYYY, Шаблон, month sheets, Активы, Вклады (live deposits: body, contributions, rate, dates, value now/at close). For a full backup use «Резервная копия» (JSON dump of entire `DB`) — restorable via «Восстановить из файла».
 
 ### PWA Caching — `sw.js`
 
-Cache-first for assets, network-first for HTML. The `V` timestamp at the top of `sw.js` controls cache invalidation — **bump `V` on every deploy** to force iOS PWA cache refresh. Error responses (non-`ok`) are never cached.
-
-**`css/app.css` is loaded directly** via `<link rel="stylesheet" href="css/app.css?v=X.Y.Z">` (~line 25 of `index.html`) — CSS edits go to `css/app.css` even in dev mode (unlike `js/*.js`). Because iOS caches it separately and sw activation lags, **every `css/app.css` change must bump the `?v=` query string on that link**, otherwise iOS PWAs keep serving the stale CSS.
+Cache-first for assets, network-first for HTML. The `V` constant controls cache invalidation — **bump on every deploy**. Error responses (non-`ok`) are never cached.
 
 ### Key Globals
 
 - `saveDB()` — persist to localStorage; sets `DB._dirty = true`
 - `renderBudget()`, `renderDay()`, `renderAssets()`, `renderSettings()`, etc. — full tab re-render
-- `getAllBanks()` — returns `[...DB.banks, ...DB.creditBanks]`; use instead of inline spread
+- `getAllBanks()` — `[...DB.banks, ...DB.creditBanks]`; use instead of inline spread
 - `isCredit(bankName)` — true if bank is in `DB.creditBanks`
-- `fmt(n)` — format as `12 345₽`
-- `fmtH(n)` — like `fmt(n)` but wraps in `<span class="prv">` for privacy-mode blurring; use for all monetary values in innerHTML
-- `fmtShort(n)` — compact: `12к`, `1.2М`
-- `esc(s)` — HTML-escape (always use for user-supplied strings in innerHTML)
-- `today()` — `YYYY-MM-DD`
-- `monthKey(y, m)` — `YYYY-MM` key used in `limits`
-- `getCatColor(idx)` — hex color for category (from `DB.catColors` or `CAT_COLORS` palette)
-- `getIncomeTagColor(tagName)` — hex color for income tag (from `DB.incomeTagColors` by index)
+- `fmt(n)` — `12 345₽`; `fmtH(n)` — same wrapped in `<span class="prv">` for privacy-mode blurring (use for ALL monetary values in innerHTML); `fmtShort(n)` — `12к`, `1.2М` (no ₽)
+- `esc(s)` — HTML-escape (always for user-supplied strings in innerHTML)
+- `today()` — `YYYY-MM-DD`; `monthKey(y, m)` — `YYYY-MM`
+- `getCatColor(idx)` / `getIncomeTagColor(tagName)` — hex colors
 - `getCatSpent(idx, y, m)` — sum of non-deleted expenses for category in month
-- `_getCurrentAssetsTotal()` / `renderAssets()` total — sum of **each bank's most recent non-deleted entry, regardless of date** (debit − credit; see "Assets Total" section below). To keep this fresh, asset entry uses a per-date snapshot (`openAssetSnapshot` → `openEditAssetDate(date, carryForward=true)`) that pre-fills all banks by **carrying forward** each bank's last known value (`_lastKnownAmount`), flagged "перенесено — проверьте". Editing a historical date from the history table passes `carryForward=false` (only that date's actual records). In the date-edit modal an **empty input means "no record"** (chart/history carry-forward keeps showing the previous value — an amber «∅ записи не будет — в истории останется N₽» tag warns about this), while an **explicit 0 writes a real zero record** (green «✕ обнулён этой датой» tag, shown only when the last record before this date was non-zero); each row has a round «0» button for one-tap explicit zeroing. In the «Текущие счета» list zero/no-data banks are hidden behind a «Показать нулевые счета (N)» toggle row after the deposit rows (`_showZeroBanks`, module-level, resets on reload).
-- `_makeSwipeable(row, onDelete)` — swipe-left-to-delete on day expense rows; `deleteExpenseById(id)` soft-deletes
-- `openModal(id)` / `closeModal(id)` — show/hide `.overlay` modals
-- `toast(msg, type?)` — 2.2s bottom toast; `type`: `'ok'` (green), `'err'` (red), or omit for auto-detect from message text
-- `uid()` — generates short alphanumeric ID; use for all new entity IDs
-- `checkBudgetNotifications()` — call after saving an expense to fire push notifications
-- `renderTemplateChips()` — re-renders quick-add template buttons on the Day tab header
-- `CAT_COLORS` — 16-color palette for categories
-- `GOAL_COLORS` — 7-color palette for goals
-- `TEMPLATE_COLORS` — 28-color palette for expense templates (wider range than CAT_COLORS)
-- `INCOME_TAG_COLORS` — 8-color palette for income tags
-- `_chartColors()` — returns object of theme-aware Chart.js colors read from CSS vars at render time (`.green`, `.red`, `.blue`, `.blueFill`, `.muted`, `.gridLine`, `.mutedBar`, `.mutedDim`, `.mutedFill`, `.mutedMid`); call inside chart creation, not at module level
+- `getMonthExpenses(y, m)` — non-deleted expenses of a month
+- `_makeSwipeable(row, onDelete)` — swipe-left-to-delete; `deleteExpenseById(id)` soft-deletes
+- `openModal(id)` / `closeModal(id)` — `.overlay` modals
+- `toast(msg, type?)` — 2.2s toast, auto-detects ok/err from message text; `toastUndo(msg, onUndo)` — with an Отменить button
+- `uid()` — short alphanumeric ID for all new entities
+- `renderTemplateChips()` — quick-add template buttons on the Day tab
+- `CAT_COLORS` (16), `GOAL_COLORS` (7), `TEMPLATE_COLORS` (28), `INCOME_TAG_COLORS` (8) — palettes
+- `_chartColors()` — theme-aware Chart.js colors read from CSS vars at render time; call inside chart creation, not at module level
 
 ### UI State Patterns
 
 Session-persisted UI state uses `sessionStorage`:
-- `expViewMode` (`'cats'`|`'groups'`) — expense breakdown view in Аналитика; `setExpViewMode(m)` to change
-- `statsPeriod` — number of months shown in Аналитика charts
-- `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём»; `setDayAvgMonths(n)` to change
-- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of the «⌀ подставить» hints in the limit editor (`setLimitAvgMonths(n)`); the editor header shows the sum of all suggested averages
+- `expViewMode` (`'cats'`|`'groups'`), `pieViewMode` — breakdown views in Аналитика
+- `statsPeriod` — months shown in Аналитика charts
+- `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them)
+- `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
+- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`)
 
 Filter state (module-level variables, reset on tab re-render):
-- `_expCatFilter` (`null` | `Set<number>`) — Day tab category multi-select; `null` = show today, Set = filter all DB newest-first
-- `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter; `null` = current month, `''` = "без тега", string = specific tag
+- `_expCatFilter` (`null` | `Set<number>`) — Day tab category multi-select
+- `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter
 
 ### Color Picker Pattern
 
-Goals and templates share a single helper:
-```javascript
-renderColorPicker(elementId, palette, selectedColor, callbackName)
-```
-Each entity keeps its own `_selectedXxxColor` module-level variable and a thin `_renderXxxColorPicker()` wrapper that calls `renderColorPicker`. Replicate this pattern for any new color-selectable entity.
-
-### Assets Total
-
-`_getCurrentAssetsTotal()` sums each bank's **most recent non-deleted entry** regardless of date. Do not filter by a shared "latest date" — banks updated at different times are all included.
+Goals and templates share `renderColorPicker(elementId, palette, selectedColor, callbackName)`. Each entity keeps its own `_selectedXxxColor` module-level variable and a thin `_renderXxxColorPicker()` wrapper. Replicate for any new color-selectable entity.
