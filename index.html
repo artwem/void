@@ -774,6 +774,11 @@ if ('serviceWorker' in navigator) {
         <option value="end">Выплата в конце срока</option>
       </select>
     </div>
+    <div class="fgrp" id="deposit-src-grp">
+      <label class="flbl">Списать из банка</label>
+      <select id="deposit-src-bank" class="finp"></select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Баланс банка уменьшится записью на дату открытия</div>
+    </div>
     <div class="fgrp" id="dep-contribs-grp" style="display:none">
       <label class="flbl">Пополнения</label>
       <div id="dep-contribs-list" style="font-size:13px"></div>
@@ -797,6 +802,11 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp">
       <label class="flbl">Сумма, ₽</label>
       <input type="text" id="dep-contrib-amount" class="finp" inputmode="decimal" placeholder="50 000" oninput="formatMoneyInput(this)">
+    </div>
+    <div class="fgrp">
+      <label class="flbl">Списать из банка</label>
+      <select id="dep-contrib-src-bank" class="finp"></select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Баланс банка уменьшится записью на дату пополнения</div>
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-dep-contrib')">Отмена</button>
@@ -845,6 +855,7 @@ if ('serviceWorker' in navigator) {
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-asset-edit')">✕</button>
     <h2 id="asset-edit-title">Редактировать</h2>
+    <div class="fgrp"><label class="flbl">Дата снимка</label><input type="date" id="asset-edit-date" class="finp" onchange="if(this.value) openEditAssetDate(this.value, true)"></div>
     <div id="asset-edit-note" style="display:none;font-size:12px;color:var(--muted);background:var(--hint-bg,rgba(128,128,128,.1));padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px">↻ Значения перенесены с прошлой даты — проверьте и поправьте, где изменилось. Пустое поле = записи не будет (история продолжит показывать старое значение). Обнулить счёт — введите 0 или кнопка «0».</div>
     <div id="asset-edit-rows" style="margin-bottom:8px"></div>
     <div class="btn-row">
@@ -1015,7 +1026,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.25.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.26.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1825,6 +1836,16 @@ function setLimitAvgMonths(n){
   loadLimitEditor();
 }
 
+let _limitAvgs = [];
+function applyAllLimitAvgs(){
+  _limitAvgs.forEach((v,i)=>{
+    if(v === null) return;
+    const inp = document.getElementById('lim_'+i);
+    if(inp) inp.value = v;
+  });
+  toast('⌀ подставлены — не забудьте сохранить');
+}
+
 function loadLimitEditor(){
   const key = document.getElementById('limit-month-sel').value;
   const [y,m] = key.split('-').map(Number);
@@ -1848,9 +1869,12 @@ function loadLimitEditor(){
     }
     return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
   });
+  _limitAvgs = avgs;
   const avgTotal = avgs.reduce((s,v)=>s+(v||0),0);
   const totEl = document.getElementById('limit-avg-total');
-  if(totEl) totEl.innerHTML = avgTotal ? '⌀ сумма: <b>'+fmt(avgTotal)+'</b>/мес' : '';
+  if(totEl) totEl.innerHTML = avgTotal
+    ? '⌀ сумма: <b>'+fmt(avgTotal)+'</b>/мес<br><span onclick="applyAllLimitAvgs()" style="color:var(--blue);cursor:pointer">подставить все</span>'
+    : '';
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
@@ -4067,24 +4091,37 @@ function confirmCloseDeposit(){
   const bank = document.getElementById('close-dep-bank').value;
   if(!bank){ toast('Выберите банк'); return; }
   const val = depositValueAt(d, today());
-  const td = today();
-  const now = Date.now();
-  // Сегодняшняя запись банка: дополнить; иначе новая от последнего известного значения
-  let rec = (DB.assets||[]).find(a=>!a._deleted && a.date===td && (a.bankName||'')===bank);
-  if(rec){
-    rec.amount += val;
-    rec.updatedAt = now;
-  } else {
-    const base = _lastKnownAmount(bank, td) || 0;
-    DB.assets.push({id:uid(), date:td, bankName:bank, amount: base + val, updatedAt: now});
-  }
+  _bankAdjust(bank, today(), val);
   d._deleted = true;
-  d.updatedAt = now;
+  d.updatedAt = Date.now();
   saveDB();
   closeModal('modal-close-deposit');
   _closingDepositId = null;
   renderDeposits();
   toast('✓ '+fmt(val)+' → '+bank);
+}
+
+// ── Корректировка баланса банка записью на дату (перевод банк↔вклад) ──
+// delta со знаком: закрытие вклада +, открытие/пополнение −. Запись на дату
+// есть — правим её; нет — создаём от последнего известного значения.
+function _bankAdjust(bankName, date, delta){
+  const now = Date.now();
+  let rec = (DB.assets||[]).find(a=>!a._deleted && a.date===date && (a.bankName||'')===bankName);
+  if(rec){
+    rec.amount += delta;
+    rec.updatedAt = now;
+  } else {
+    const base = _lastKnownAmount(bankName, date) || 0;
+    DB.assets.push({id:uid(), date, bankName, amount: base + delta, updatedAt: now});
+  }
+}
+
+// Заполнить селект «Списать из банка» (первый пункт — не списывать)
+function _fillSrcBankSelect(id){
+  const sel = document.getElementById(id);
+  if(!sel) return;
+  sel.innerHTML = '<option value="">— не списывать</option>' +
+    (DB.banks||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
 }
 
 // ── Пополнение вклада ───────────────────────────────────────────────
@@ -4098,6 +4135,7 @@ function openDepContribution(id){
     d.name+': проценты на пополнение набегают с его даты.';
   document.getElementById('dep-contrib-date').value = today();
   setMoneyInput('dep-contrib-amount','');
+  _fillSrcBankSelect('dep-contrib-src-bank');
   openModal('modal-dep-contrib');
 }
 
@@ -4115,12 +4153,14 @@ function saveDepContribution(){
   d.contributions.sort((a,b)=>a.date.localeCompare(b.date));
   _reDeriveDepRate(d);
   d.updatedAt = Date.now();
+  const srcBank = document.getElementById('dep-contrib-src-bank').value;
+  if(srcBank) _bankAdjust(srcBank, date, -amount);
   saveDB();
   closeModal('modal-dep-contrib');
   _contribDepositId = null;
   renderDeposits();
   if(typeof renderAssets==='function') renderAssets();
-  toast('✓ Пополнение '+fmt(amount));
+  toast('✓ Пополнение '+fmt(amount)+(srcBank?' · '+srcBank+' −'+fmt(amount):''));
 }
 
 function deleteDepContribution(depId, cid){
@@ -4200,6 +4240,9 @@ function openDepositModal(id){
   document.getElementById('deposit-days').value = '';
   document.getElementById('deposit-cap').value = d ? (d.capitalization||'monthly') : 'monthly';
   document.getElementById('deposit-delete-btn').style.display = d ? '' : 'none';
+  // Списание из банка — только при создании нового вклада
+  document.getElementById('deposit-src-grp').style.display = d ? 'none' : '';
+  if(!d) _fillSrcBankSelect('deposit-src-bank');
   _renderDepContribsList(d);
   setDepMode(d && d.finalAmount ? 'final' : 'rate');
   _depDaysFromDates();
@@ -4250,9 +4293,12 @@ function saveDeposit(){
     if(idx>=0) DB.deposits[idx]={...DB.deposits[idx],name,amount,rate,finalAmount,openDate,endDate,capitalization,_deleted:false,updatedAt:Date.now()};
   } else {
     DB.deposits.push({id:uid(),name,amount,rate,finalAmount,openDate,endDate,capitalization,updatedAt:Date.now()});
+    const srcBank = document.getElementById('deposit-src-bank').value;
+    if(srcBank) _bankAdjust(srcBank, openDate, -amount);
   }
   saveDB(); closeModal('modal-deposit');
   renderDeposits();
+  if(typeof renderAssets==='function') renderAssets();
   toast('✓ Сохранено');
 }
 
@@ -4457,6 +4503,8 @@ function openEditAssetDate(date, carryForward){
   const allBanks = getAllBanks();
 
   document.getElementById('asset-edit-title').textContent = 'Активы за ' + date;
+  const dateInp = document.getElementById('asset-edit-date');
+  if(dateInp){ dateInp.value = date; dateInp.max = today(); }
 
   const container = document.getElementById('asset-edit-rows');
   container.innerHTML = '';
@@ -5411,13 +5459,48 @@ function checkBudgetNotifications(){
 function checkAssetNotification(){
   if(!DB.notifsEnabled || Notification.permission !== 'granted') return;
   const day = new Date().getDate();
-  if(day !== 1 && day !== 16) return;
-  const key = 'notif_assets_' + today();
-  if(localStorage.getItem(key)) return;
-  localStorage.setItem(key, '1');
-  new Notification('Обновите активы', {
-    body: 'Сегодня ' + day + '-е — самое время обновить остатки по счетам',
+  if(day === 1 || day === 16){
+    const key = 'notif_assets_' + today();
+    if(!localStorage.getItem(key)){
+      localStorage.setItem(key, '1');
+      new Notification('Обновите активы', {
+        body: 'Сегодня ' + day + '-е — самое время обновить остатки по счетам',
+        icon: './apple-touch-icon.png'
+      });
+      return;
+    }
+  }
+  // Снимок старше 14 дней — напоминание раз в 3 дня
+  const lastSnap = (DB.assets||[]).filter(a=>!a._deleted).reduce((m,a)=> a.date>m ? a.date : m, '');
+  if(!lastSnap) return;
+  const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(lastSnap+'T12:00:00'))/86400000);
+  if(ageDays <= 14) return;
+  const stamp = localStorage.getItem('notif_stale_snap');
+  if(stamp && (Date.now() - parseInt(stamp)) < 3*86400000) return;
+  localStorage.setItem('notif_stale_snap', String(Date.now()));
+  new Notification('Снимок счетов устарел', {
+    body: 'Последний снимок ' + ageDays + ' дн. назад (' + lastSnap + ') — внесите остатки, чтобы сверка была точной',
     icon: './apple-touch-icon.png'
+  });
+}
+
+// Вклады: скоро закрытие (≤3 дн) или срок вышел — раз в 3 дня на вклад
+function checkDepositNotifications(){
+  if(!DB.notifsEnabled || Notification.permission !== 'granted') return;
+  const td = today();
+  (DB.deposits||[]).filter(d=>!d._deleted && d.endDate).forEach(d=>{
+    const daysLeft = Math.ceil((new Date(d.endDate) - new Date(td))/86400000);
+    if(daysLeft > 3) return;
+    const stampKey = 'notif_dep_' + d.id;
+    const stamp = localStorage.getItem(stampKey);
+    if(stamp && (Date.now() - parseInt(stamp)) < 3*86400000) return;
+    localStorage.setItem(stampKey, String(Date.now()));
+    new Notification('Вклад: ' + d.name, {
+      body: daysLeft > 0
+        ? 'Закрывается через ' + daysLeft + ' дн. (' + _fmtDateRu(d.endDate) + ') — ' + fmt(depositValueAt(d, d.endDate))
+        : 'Срок вышел ' + _fmtDateRu(d.endDate) + ' — нажмите «Перенести в банк» на странице вкладов',
+      icon: './apple-touch-icon.png'
+    });
   });
 }
 
@@ -5531,6 +5614,25 @@ function exportExcel(){
   });
   const aWs = X.utils.aoa_to_sheet([aHdr,...aRows]);
   X.utils.book_append_sheet(wb, aWs, 'Активы');
+
+  // ── Вклады ───────────────────────────────────────────────────────────
+  const xDeps = (DB.deposits||[]).filter(d=>!d._deleted);
+  if(xDeps.length){
+    const tdX = today();
+    const dHdr = ['Название','Тело','Пополнения','Ставка %','Проценты','Открыт','Закрытие','Сейчас','На закрытии'];
+    const dRows = xDeps.map(d=>[
+      d.name,
+      d.amount,
+      _depContribsSum(d, d.endDate) || '',
+      d.rate,
+      d.capitalization === 'end' ? 'в конце' : 'капитализация',
+      d.openDate,
+      d.endDate,
+      depositValueAt(d, tdX),
+      depositValueAt(d, d.endDate)
+    ]);
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([dHdr,...dRows]), 'Вклады');
+  }
 
   X.writeFile(wb, 'budget_'+today()+'.xlsx');
   toast('Excel скачан');
@@ -6234,6 +6336,7 @@ function init(){
   document.getElementById('fab').textContent='+';
   renderBudget();
   checkAssetNotification();
+  checkDepositNotifications();
   // Auto-sync on start if URL configured
   initSyncWidget();
   if(DB.syncUrl){ syncCycle(); startAutoSync(); }
