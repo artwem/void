@@ -1005,7 +1005,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.24.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.25.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3505,6 +3505,9 @@ function renderAssetsHistory(rows, showAll){
 
 let _assetsHistoryRows = [];
 
+// Показ нулевых счетов в списке (сбрасывается при перезагрузке)
+let _showZeroBanks = false;
+
 // Переключатель графика «банки / +вклады» (настройка устройства)
 function setAssetsChartDeps(on){
   try{ localStorage.setItem('assetsChartDeps', on ? '1' : '0'); }catch(_){}
@@ -3552,42 +3555,46 @@ function renderAssets(){
     ...[...(DB.banks||[])].sort((a,b)=>(byBank[b]?.latest||0)-(byBank[a]?.latest||0)),
     ...[...(DB.creditBanks||[])].sort((a,b)=>(byBank[b]?.latest||0)-(byBank[a]?.latest||0))
   ];
+  function _buildBankRow(name){
+    const credit = isCredit(name);
+    const data = byBank[name] || {latest:0, date:''};
+    const hasData = !!data.date;
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    row.style.cssText = 'gap:8px;cursor:pointer';
+    row.addEventListener('click', openAssetSnapshot);
+    const namePart = document.createElement('div');
+    namePart.style.cssText = 'flex:1;min-width:0';
+    const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
+    // Свежесть: >14 дней — янтарный, >30 — красный с призывом обновить
+    let freshLine;
+    if(hasData){
+      const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(data.date+'T12:00:00'))/86400000);
+      if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${ageDays} дн. без обновления</div>`;
+      else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:#c98a1b;margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
+      else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`;
+    } else {
+      freshLine = `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`;
+    }
+    namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine;
+    const amtSpan = document.createElement('span');
+    amtSpan.className = 'asset-amount';
+    amtSpan.style.color = credit ? 'var(--red)' : '';
+    amtSpan.innerHTML = hasData ? (credit ? '−' : '') + fmtH(data.latest) : '—';
+    row.appendChild(namePart);
+    row.appendChild(amtSpan);
+    return row;
+  }
+  // Нулевые и пустые счета — вниз и спрятаны за кнопкой «показать»
+  const zeroBanks = allBanksOrdered.filter(n => !(byBank[n] && byBank[n].latest !== 0));
+  const visBanks  = allBanksOrdered.filter(n =>   byBank[n] && byBank[n].latest !== 0);
   if(!allBanksOrdered.length){
     list.innerHTML='<div style="padding:20px 0;text-align:center;color:var(--muted);font-size:13px">Нет банков. Нажмите «Управлять»</div>';
   } else {
-    allBanksOrdered.forEach(name => {
-      const credit = isCredit(name);
-      const data = byBank[name] || {latest:0, date:''};
-      const hasData = !!data.date;
-      const row = document.createElement('div');
-      row.className = 'asset-row';
-      row.style.cssText = 'gap:8px;cursor:pointer';
-      row.addEventListener('click', openAssetSnapshot);
-      const namePart = document.createElement('div');
-      namePart.style.cssText = 'flex:1;min-width:0';
-      const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
-      // Свежесть: >14 дней — янтарный, >30 — красный с призывом обновить
-      let freshLine;
-      if(hasData){
-        const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(data.date+'T12:00:00'))/86400000);
-        if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${ageDays} дн. без обновления</div>`;
-        else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:#c98a1b;margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
-        else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`;
-      } else {
-        freshLine = `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`;
-      }
-      namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine;
-      const amtSpan = document.createElement('span');
-      amtSpan.className = 'asset-amount';
-      amtSpan.style.color = credit ? 'var(--red)' : '';
-      amtSpan.innerHTML = hasData ? (credit ? '−' : '') + fmtH(data.latest) : '—';
-      row.appendChild(namePart);
-      row.appendChild(amtSpan);
-      list.appendChild(row);
-    });
+    visBanks.forEach(name => list.appendChild(_buildBankRow(name)));
   }
-  // Вклады — отдельной группой с пометкой «вклад» (в «Всего активов» не входят,
-  // их учитывает строка «с вкладами»); клик ведёт на страницу вкладов
+  // Вклады — отдельной группой с пометкой «вклад»; входят в «Всего активов»
+  // (разбивка «счета · вклады» под итогом); клик ведёт на страницу вкладов
   {
     const listDeps = (DB.deposits||[]).filter(d=>!d._deleted).sort((a,b)=>(a.endDate||'').localeCompare(b.endDate||''));
     const tdDep = today();
@@ -3611,6 +3618,15 @@ function renderAssets(){
       row.appendChild(amtSpan);
       list.appendChild(row);
     });
+  }
+  // Нулевые счета — после вкладов, по кнопке
+  if(zeroBanks.length){
+    if(_showZeroBanks) zeroBanks.forEach(name => list.appendChild(_buildBankRow(name)));
+    const tglRow = document.createElement('div');
+    tglRow.style.cssText = 'padding:8px 0;text-align:center;font-size:12px;color:var(--muted);cursor:pointer;user-select:none';
+    tglRow.textContent = _showZeroBanks ? 'Скрыть нулевые ▲' : 'Показать нулевые счета ('+zeroBanks.length+') ▼';
+    tglRow.addEventListener('click', ()=>{ _showZeroBanks = !_showZeroBanks; renderAssets(); });
+    list.appendChild(tglRow);
   }
   // Chart — общие серии (carry-forward, вклады до дня закрытия)
   const {dates: allDates, bankSeries, depSeries} = _buildAssetSeries();
@@ -4479,11 +4495,15 @@ function openEditAssetDate(date, carryForward){
       if(nt) nt.remove();
       if(!empty && v === 0){
         inp.style.color = 'var(--muted)';
-        const z = document.createElement('div');
-        z.className = 'zeroed-tag';
-        z.style.cssText = 'font-size:10px;color:var(--green)';
-        z.textContent = '✕ обнулён этой датой';
-        lbl.appendChild(z);
+        // тег только если до этой даты была сумма — счёт, уже стоявший в нуле,
+        // «обнулением» не является
+        if(prevBefore !== undefined && prevBefore !== 0){
+          const z = document.createElement('div');
+          z.className = 'zeroed-tag';
+          z.style.cssText = 'font-size:10px;color:var(--green)';
+          z.textContent = '✕ обнулён этой датой';
+          lbl.appendChild(z);
+        }
       } else if(empty && prevBefore !== undefined && prevBefore !== 0 && !carried){
         inp.style.color = 'var(--text)';
         const z = document.createElement('div');
