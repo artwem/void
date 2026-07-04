@@ -167,6 +167,7 @@ Session-persisted UI state uses `sessionStorage`:
 - `expViewMode` (`'cats'`|`'groups'`) — expense breakdown view in Аналитика; `setExpViewMode(m)` to change
 - `statsPeriod` — number of months shown in Аналитика charts
 - `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём»; `setDayAvgMonths(n)` to change
+- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of the «⌀ подставить» hints in the limit editor (`setLimitAvgMonths(n)`); the editor header shows the sum of all suggested averages
 
 Filter state (module-level variables, reset on tab re-render):
 - `_expCatFilter` (`null` | `Set<number>`) — Day tab category multi-select; `null` = show today, Set = filter all DB newest-first

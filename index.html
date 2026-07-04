@@ -662,6 +662,16 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-limits')">✕</button>
     <h2>Лимиты</h2>
     <div class="fgrp"><label class="flbl">Месяц</label><select id="limit-month-sel" onchange="loadLimitEditor()"></select></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">среднее за
+        <div id="limit-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+          <span id="lam-3" onclick="setLimitAvgMonths(3)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
+          <span id="lam-6" onclick="setLimitAvgMonths(6)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border)">6</span>
+          <span id="lam-12" onclick="setLimitAvgMonths(12)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">12</span>
+        </div> мес
+      </div>
+      <div id="limit-avg-total" style="font-size:11px;color:var(--muted);text-align:right"></div>
+    </div>
     <div id="limit-editor-rows"></div>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn" onclick="closeModal('modal-limits')">Отмена</button>
@@ -1005,7 +1015,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.25.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.25.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1810,15 +1820,27 @@ function openLimitEditor(){
   openModal('modal-limits');
 }
 
+function setLimitAvgMonths(n){
+  sessionStorage.setItem('limitAvgMonths', n);
+  loadLimitEditor();
+}
+
 function loadLimitEditor(){
   const key = document.getElementById('limit-month-sel').value;
   const [y,m] = key.split('-').map(Number);
   const limits = getLimits(y,m-1);
-  // Средние траты категории за последние 3 месяца с данными (до месяца
-  // лимита, глубина поиска 6) — тап по подсказке подставляет в поле
+  const avgMonths = parseInt(sessionStorage.getItem('limitAvgMonths')) || 3;
+  [3,6,12].forEach(n=>{
+    const s = document.getElementById('lam-'+n);
+    if(!s) return;
+    s.style.background = avgMonths===n ? 'rgba(128,128,128,0.18)' : '';
+    s.style.color      = avgMonths===n ? 'var(--text)' : '#888';
+  });
+  // Средние траты категории за последние N месяцев с данными (до месяца
+  // лимита, глубина поиска 2N) — тап по подсказке подставляет в поле
   const avgs = DB.categories.map((_,i)=>{
     const vals = [];
-    for(let k=1; k<=6 && vals.length<3; k++){
+    for(let k=1; k<=avgMonths*2 && vals.length<avgMonths; k++){
       let mm = (m-1)-k, yy = y;
       while(mm<0){ mm+=12; yy--; }
       if(!getMonthExpenses(yy,mm).length) continue; // месяц без учёта пропускаем
@@ -1826,6 +1848,9 @@ function loadLimitEditor(){
     }
     return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
   });
+  const avgTotal = avgs.reduce((s,v)=>s+(v||0),0);
+  const totEl = document.getElementById('limit-avg-total');
+  if(totEl) totEl.innerHTML = avgTotal ? '⌀ сумма: <b>'+fmt(avgTotal)+'</b>/мес' : '';
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
