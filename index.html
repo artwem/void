@@ -227,7 +227,24 @@ if ('serviceWorker' in navigator) {
       <div style="position:relative;height:200px"><canvas id="chartIncomeTags"></canvas></div>
     </div>
   </div>
+  <div style="padding:4px 16px 0">
+    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('report')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Годовой отчёт
+    </button>
+  </div>
 
+  <div class="page-end"></div>
+</div>
+
+<!-- PAGE: REPORT -->
+<div id="page-report" class="page">
+  <div class="hdr" style="display:flex;align-items:center;gap:10px">
+    <button onclick="showPage('stats',document.getElementById('nav-stats'))" aria-label="Назад к аналитике" style="background:none;border:none;color:var(--text);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px 4px 0;font-family:inherit">‹</button>
+    <div style="flex:1"><h1>Годовой отчёт</h1></div>
+    <select id="report-year" onchange="renderReport()" style="font-size:15px;font-weight:600;border:none;background:transparent;color:var(--text);cursor:pointer;outline:none"></select>
+  </div>
+  <div id="report-body" style="padding:0 16px"></div>
   <div class="page-end"></div>
 </div>
 
@@ -1026,7 +1043,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.26.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.27.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1463,6 +1480,8 @@ function showPage(name,btn){
   if(btn) btn.classList.add('active');
   // Прогноз и Вклады открываются из Активов — вкладок в навбаре у них нет, подсвечиваем Активы
   else if(name==='calc'||name==='deposits'){ const nb=document.getElementById('nav-assets'); if(nb) nb.classList.add('active'); }
+  // Годовой отчёт открывается из Аналитики
+  else if(name==='report'){ const nb=document.getElementById('nav-stats'); if(nb) nb.classList.add('active'); }
   currentPage = name;
   document.getElementById('fab').style.display = name==='budget' ? 'flex' : 'none';
   document.getElementById('fab').textContent = '+';
@@ -1476,6 +1495,7 @@ function showPage(name,btn){
     setTimeout(calcUpdate, 50);
   }
   if(name==='deposits') renderDeposits();
+  if(name==='report') renderReport();
   if(name==='income') renderIncome();
   if(name==='settings') renderSettings();
 }
@@ -5940,6 +5960,7 @@ function renderCurrentPage(){
   else if(currentPage==='stats') renderStats();
   else if(currentPage==='assets') renderAssets();
   else if(currentPage==='deposits') renderDeposits();
+  else if(currentPage==='report') renderReport();
   else if(currentPage==='income') renderIncome();
   else renderBudget();
 }
@@ -6061,6 +6082,121 @@ async function loadAppsScriptCode() {
   window._APPS_SCRIPT_CODE = "// ===== BUDGET TRACKER APPS SCRIPT v10 \u2014 Drive Storage =====\n// \u0414\u0435\u043f\u043b\u043e\u0439: \u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u0438\u044f \u2192 Apps Script \u2192 \u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u2192 \u041d\u043e\u0432\u043e\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044b\u0432\u0430\u043d\u0438\u0435\n// \u0422\u0438\u043f: \u0412\u0435\u0431-\u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 | \u0412\u044b\u043f\u043e\u043b\u043d\u044f\u0442\u044c \u043a\u0430\u043a: \u042f | \u0414\u043e\u0441\u0442\u0443\u043f: \u0412\u0441\u0435\n// \u0414\u0430\u043d\u043d\u044b\u0435 \u0445\u0440\u0430\u043d\u044f\u0442\u0441\u044f \u0432 \u0444\u0430\u0439\u043b\u0435 nto_data.json \u0432 Google Drive (\u043d\u0435 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435)\n\nconst FILE_DATA = 'nto_data.json';\n\nfunction doPost(e) {\n  try {\n    const body = JSON.parse(e.postData.contents);\n    const action = body.action || '';\n    if (action === 'ping') return out({ ok: true, version: '10.1' });\n    if (action === 'push') return out(saveFile(FILE_DATA, JSON.stringify(body.data || {})));\n    if (action === 'pull') return readFile(FILE_DATA);\n    return out({ error: 'Unknown action: ' + action });\n  } catch(err) {\n    return out({ error: err.message });\n  }\n}\n\nfunction doGet(e) {\n  const action = (e.parameter && e.parameter.action) || '';\n  if (action === 'ping') return out({ ok: true, version: '10.1' });\n  if (action === 'pull') return readFile(FILE_DATA);\n  return out({ info: 'Budget Tracker API v10.1' });\n}\n\nfunction saveFile(name, content) {\n  try {\n    const it = DriveApp.getFilesByName(name);\n    if (it.hasNext()) it.next().setContent(content);\n    else DriveApp.createFile(name, content, MimeType.PLAIN_TEXT);\n    return { ok: true };\n  } catch(err) { return { error: err.message }; }\n}\n\nfunction readFile(name) {\n  try {\n    const it = DriveApp.getFilesByName(name);\n    if (!it.hasNext()) return out({ empty: true });\n    return ContentService.createTextOutput(it.next().getBlob().getDataAsString())\n      .setMimeType(ContentService.MimeType.JSON);\n  } catch(err) { return out({ error: err.message }); }\n}\n\nfunction out(obj) {\n  return ContentService.createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
 }
 
+
+// ─── ГОДОВОЙ ОТЧЁТ ──────────────────────────────────────────────────
+function renderReport(){
+  const body = document.getElementById('report-body');
+  const sel = document.getElementById('report-year');
+  if(!body || !sel) return;
+  const exps = (DB.expenses||[]).filter(e=>!e._deleted);
+  const incs = (DB.incomes||[]).filter(x=>!x._deleted);
+  const years = [...new Set([
+    ...exps.map(e=>(e.date||'').slice(0,4)),
+    ...incs.map(x=>(x.date||'').slice(0,4))
+  ])].filter(y=>y.length===4).sort().reverse();
+  if(!years.length){
+    sel.innerHTML='';
+    body.innerHTML='<p style="color:var(--muted);font-size:13px;padding:16px 0">Нет данных — добавьте расходы или доходы</p>';
+    return;
+  }
+  const prevChoice = sel.value;
+  sel.innerHTML = years.map(yy=>`<option value="${yy}">${yy}</option>`).join('');
+  sel.value = years.includes(prevChoice) ? prevChoice : years[0];
+  const yr = sel.value;
+
+  // помесячные суммы
+  const mInc = Array(12).fill(0), mExp = Array(12).fill(0);
+  incs.forEach(x=>{ if((x.date||'').startsWith(yr+'-')) mInc[parseInt(x.date.slice(5,7))-1] += x.amount; });
+  exps.forEach(e=>{ if((e.date||'').startsWith(yr+'-')) mExp[parseInt(e.date.slice(5,7))-1] += e.amount; });
+  const totInc = mInc.reduce((s,v)=>s+v,0);
+  const totExp = mExp.reduce((s,v)=>s+v,0);
+  const totSaved = totInc - totExp;
+  const totRate = totInc > 0 ? Math.round(totSaved/totInc*100) : null;
+
+  // расходы по категориям за год
+  const catT = {};
+  exps.forEach(e=>{
+    if(!(e.date||'').startsWith(yr+'-')) return;
+    catT[e.cat] = (catT[e.cat]||0) + e.amount;
+  });
+  const catRows = Object.entries(catT)
+    .map(([i,sum])=>({i:+i, name:DB.categories[+i]||'?', sum}))
+    .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
+
+  // доходы по тегам за год
+  const tagT = {};
+  incs.forEach(x=>{
+    if(!(x.date||'').startsWith(yr+'-')) return;
+    const t = x.tag || 'Без тега';
+    tagT[t] = (tagT[t]||0) + x.amount;
+  });
+  const tagRows = Object.entries(tagT)
+    .map(([name,sum])=>({name,sum}))
+    .filter(r=>r.sum>0)
+    .sort((a,b)=> a.name==='Без тега' ? 1 : b.name==='Без тега' ? -1 : b.sum-a.sum);
+
+  let h = `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <div class="s-card"><div class="s-lbl">Доходы</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--green)">${fmtH(totInc)}</div></div>
+    <div class="s-card"><div class="s-lbl">Расходы</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--red)">${fmtH(totExp)}</div></div>
+    <div class="s-card"><div class="s-lbl">Накоплено</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:${totSaved>=0?'var(--green)':'var(--red)'}">${fmtH(totSaved)}</div></div>
+    <div class="s-card"><div class="s-lbl">Норма накопления</div><div style="font-size:18px;font-weight:700;margin-top:2px">${totRate!==null?totRate+'%':'—'}</div></div>
+  </div>`;
+
+  // таблица по месяцам (только месяцы с данными)
+  const monthRows = [];
+  for(let mm=0; mm<12; mm++){
+    if(!mInc[mm] && !mExp[mm]) continue;
+    const sv = mInc[mm]-mExp[mm];
+    const rt = mInc[mm]>0 ? Math.round(sv/mInc[mm]*100) : null;
+    monthRows.push(`<tr style="border-top:0.5px solid var(--border)">
+      <td style="padding:8px 4px 8px 0;font-size:12px;color:var(--muted)">${SHORT_MONTHS[mm]}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--green)">${fmtH(mInc[mm])}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--red)">${fmtH(mExp[mm])}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600;color:${sv>=0?'var(--green)':'var(--red)'}">${fmtH(sv)}</td>
+      <td style="padding:8px 0 8px 4px;font-size:12px;text-align:right;color:var(--muted)">${rt!==null?rt+'%':'—'}</td>
+    </tr>`);
+  }
+  if(monthRows.length){
+    h += `<div class="chart-card" style="margin-bottom:14px;overflow-x:auto">
+      <div class="chart-title">По месяцам</div>
+      <table style="width:100%;border-collapse:collapse">
+        <tr><th style="padding:4px 4px 4px 0;font-size:11px;color:var(--muted);font-weight:500;text-align:left">Мес</th>
+        <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Доход</th>
+        <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Расход</th>
+        <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Накоп.</th>
+        <th style="padding:4px 0 4px 4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">%</th></tr>
+        ${monthRows.join('')}
+      </table>
+    </div>`;
+  }
+
+  if(catRows.length){
+    h += `<div class="chart-card" style="margin-bottom:14px">
+      <div class="chart-title">Расходы по категориям</div>
+      ${catRows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
+        <span style="width:10px;height:10px;border-radius:50%;background:${getCatColor(r.i)};flex-shrink:0"></span>
+        <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
+        <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
+        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totExp>0?Math.round(r.sum/totExp*100):0}%</span>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  if(tagRows.length){
+    h += `<div class="chart-card" style="margin-bottom:14px">
+      <div class="chart-title">Доходы по тегам</div>
+      ${tagRows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
+        <span style="width:10px;height:10px;border-radius:50%;background:${r.name==='Без тега'?'var(--muted)':getIncomeTagColor(r.name)};flex-shrink:0"></span>
+        <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
+        <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
+        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totInc>0?Math.round(r.sum/totInc*100):0}%</span>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  body.innerHTML = h;
+}
 
 // ═══ calc.js ═══
 
