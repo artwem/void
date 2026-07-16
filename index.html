@@ -1043,7 +1043,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.27.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.28.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6123,6 +6123,17 @@ function renderReport(){
     .map(([i,sum])=>({i:+i, name:DB.categories[+i]||'?', sum}))
     .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
 
+  // расходы по группам (категории одного цвета) — catRows уже отсортированы desc
+  const grpMap = {};
+  catRows.forEach(r=>{
+    const color = getCatColor(r.i);
+    if(!grpMap[color]) grpMap[color] = {color, cats:[], sum:0};
+    grpMap[color].cats.push(r.name);
+    grpMap[color].sum += r.sum;
+  });
+  const grpRows = Object.values(grpMap).sort((a,b)=>b.sum-a.sum);
+  const hasGroups = grpRows.some(g=>g.cats.length>1);
+
   // доходы по тегам за год
   const tagT = {};
   incs.forEach(x=>{
@@ -6180,6 +6191,24 @@ function renderReport(){
         <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
         <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totExp>0?Math.round(r.sum/totExp*100):0}%</span>
       </div>`).join('')}
+    </div>`;
+  }
+
+  if(hasGroups){
+    h += `<div class="chart-card" style="margin-bottom:14px">
+      <div class="chart-title">Расходы по группам</div>
+      ${grpRows.map(g=>{
+        const sub = g.cats.length>1 ? g.cats.slice(1).join(' · ') : '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
+        <span style="width:10px;height:10px;border-radius:50%;background:${g.color};flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.cats[0])}</div>
+          ${sub?`<div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>`:''}
+        </div>
+        <span style="font-size:13px;font-weight:600">${fmtH(g.sum)}</span>
+        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totExp>0?Math.round(g.sum/totExp*100):0}%</span>
+      </div>`;
+      }).join('')}
     </div>`;
   }
 
