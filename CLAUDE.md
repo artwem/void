@@ -67,7 +67,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   syncUrl:         'https://script.google.com/...',
   goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
-  deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, _deleted?}, ...],
+  deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
   listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
@@ -101,8 +101,9 @@ Each tab has a `render*()` function called after any data change:
 
 ### Deposits (вклады) — in `═══ assets.js ═══`
 
-- `depositValueAt(d, dateStr)` = rounded `_depValueWithRate(d, date, d.rate)`; honors `finalAmount` exactly at/after `endDate`. Principal grows from `openDate`; **each contribution grows from its own date** (before its date it does not exist in the value). `capitalization: 'monthly'` — compound; `'end'` — body only until endDate, simple interest at close.
-- `finalAmount` mode («Сумма в конце» toggle, `_depMode`): user enters the closing sum, annual rate is derived by `_calcDepRate(amount, final, open, end, cap, contribs)` — closed form without contributions, **bisection** with them. Rate re-derives on contribution add/delete (`_reDeriveDepRate`).
+- `depositValueAt(d, dateStr)` = rounded `_depValueWithRate(d, date, d.rate)`; honors `finalAmount` exactly at/after `endDate`. Principal grows from `openDate`; **each contribution grows from its own date** (before its date it does not exist in the value). `capitalization: 'monthly'` — **discrete accruals** (since v1.29.0): accrual dates = open-day of each month (31st clamps to short months, `_depAccrualDates`), interest per period = body × rate × actual days/365, compounded into body, value flat between dates; `'end'` — body only until endDate, simple interest at close.
+- **Manual accrual corrections** (`d.accruals = {dateStr: amount}`): «График начислений» list in the deposit edit modal (`_renderDepAccrualsList`, monthly only) — past accruals editable (`setDepAccrual`), override replaces the computed interest and subsequent periods compound from the corrected body; ↻ reverts to computed. `_depAccrualRows(d, upto, rate)` is the single engine ({rows, value}) used by both valuation and the UI list.
+- `finalAmount` mode («Сумма в конце» toggle, `_depMode`): user enters the closing sum, annual rate is derived by `_calcDepRate(amount, final, open, end, cap, contribs, accruals)` — closed form for `'end'` without contributions, **bisection** otherwise (monthly has no closed form in the discrete model). Rate re-derives on contribution/accrual add/delete (`_reDeriveDepRate`).
 - Top-ups: «+ Пополнить» on open deposit cards → `openDepContribution`/`saveDepContribution` (validated within `[openDate, endDate]`, sorted, stamps `updatedAt`); edit modal lists contributions with immediate delete. `_depContribsSum(d, date)` = contributions dated ≤ date.
 - **Bank↔deposit transfers**: `_bankAdjust(bankName, date, delta)` edits/creates the bank's asset record on that date (base = `_lastKnownAmount`). Used by deposit close (`confirmCloseDeposit`, +value, soft-deletes the deposit) and by optional «Списать из банка» selects in new-deposit and contribution modals (−amount). Keeps period reconciliation clean — always prefer it over hand-written record math.
 - Matured deposits show «↳ Перенести в банк»; open ones «+ Пополнить».
