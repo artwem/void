@@ -800,6 +800,11 @@ if ('serviceWorker' in navigator) {
       <label class="flbl">Пополнения</label>
       <div id="dep-contribs-list" style="font-size:13px"></div>
     </div>
+    <div class="fgrp" id="dep-accruals-grp" style="display:none">
+      <label class="flbl">График начислений</label>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Расчётные проценты. Впиши фактическое начисление из банка — дальше посчитается от него.</div>
+      <div id="dep-accruals-list" style="font-size:13px;max-height:220px;overflow-y:auto"></div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn danger" id="deposit-delete-btn" onclick="deleteDeposit()" style="display:none">Удалить</button>
       <button class="btn primary" onclick="saveDeposit()" style="flex:1">Сохранить</button>
@@ -1043,7 +1048,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.28.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.29.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3902,8 +3907,54 @@ function _depContribsSum(d, dateStr){
   return (d.contributions||[]).filter(c=>c.date<=dateStr).reduce((s,c)=>s+c.amount,0);
 }
 
+// Даты начисления при ежемесячной капитализации: день открытия каждый месяц
+// (31-е → последний день короткого месяца), последняя — endDate (остаток дней)
+function _depAccrualDates(d){
+  const dates = [];
+  const [y0, m0, day0] = d.openDate.split('-').map(Number);
+  let y = y0, m = m0;
+  for(;;){
+    m++; if(m > 12){ m = 1; y++; }
+    const last = new Date(y, m, 0).getDate();
+    const ds = y+'-'+String(m).padStart(2,'0')+'-'+String(Math.min(day0, last)).padStart(2,'0');
+    if(ds >= d.endDate) break;
+    dates.push(ds);
+  }
+  dates.push(d.endDate);
+  return dates;
+}
+
+// Дискретные начисления до uptoStr: {rows:[{date, interest, override}], value}.
+// Процент за период = тело × ставка × факт.дни/365, капитализируется в тело;
+// пополнение входит в тело со своей даты (внутри периода — пропорционально дням).
+// d.accruals[date] — ручная правка суммы начисления, дальше компаундится от неё.
+function _depAccrualRows(d, uptoStr, rate){
+  const r = (rate||0)/100;
+  const stop = uptoStr < d.endDate ? uptoStr : d.endDate;
+  const cs = (d.contributions||[]).filter(c=>c.date<=stop);
+  const rows = [];
+  let body = d.amount, prev = d.openDate, ci = 0;
+  for(const ad of _depAccrualDates(d)){
+    if(ad > stop) break;
+    let interest = 0, segStart = prev, curBody = body;
+    while(ci < cs.length && cs[ci].date <= ad){
+      interest += curBody * r * _depDays(segStart, cs[ci].date)/365;
+      curBody += cs[ci].amount; segStart = cs[ci].date; ci++;
+    }
+    interest += curBody * r * _depDays(segStart, ad)/365;
+    const ov = d.accruals ? d.accruals[ad] : undefined;
+    if(ov != null) interest = ov;
+    rows.push({date:ad, interest, override:ov != null});
+    body = curBody + interest;
+    prev = ad;
+  }
+  while(ci < cs.length){ body += cs[ci].amount; ci++; }  // пополнения после последнего начисления
+  return {rows, value:body};
+}
+
 // Стоимость вклада на дату при заданной ставке (finalAmount не учитывается).
 // Тело растёт с openDate, каждое пополнение — со своей даты.
+// monthly — дискретно по датам начисления (между датами плоско), 'end' — тело до конца срока.
 function _depValueWithRate(d, dateStr, rate){
   const stop = dateStr < d.endDate ? dateStr : d.endDate;
   const r = (rate||0)/100;
@@ -3913,8 +3964,7 @@ function _depValueWithRate(d, dateStr, rate){
     return d.amount * (1 + r*_depDays(d.openDate, d.endDate)/365)
          + cs.reduce((s,c)=>s + c.amount * (1 + r*_depDays(c.date, d.endDate)/365), 0);
   }
-  const grow = from => Math.pow(1 + r/12, _depDays(from, stop)/30.4375);
-  return d.amount * grow(d.openDate) + cs.reduce((s,c)=>s + c.amount * grow(c.date), 0);
+  return _depAccrualRows(d, dateStr, rate).value;
 }
 
 function depositValueAt(d, dateStr){
@@ -3964,20 +4014,18 @@ function _buildAssetSeries(){
 
 // Годовая ставка (%) из известной суммы на закрытие.
 // С пополнениями закрытой формулы нет — бисекция по ставке.
-function _calcDepRate(amount, final, openDate, endDate, cap, contribs){
+function _calcDepRate(amount, final, openDate, endDate, cap, contribs, accruals){
   const days = Math.round((new Date(endDate) - new Date(openDate))/86400000);
   if(!amount || amount<=0 || !final || final<=0 || days<=0) return null;
   const cs = (contribs||[]).filter(c=>c.date<=endDate);
-  if(!cs.length){
-    const ratio = final/amount;
-    const r = cap === 'end'
-      ? (ratio - 1) * 365 / days                          // простые проценты
-      : 12 * (Math.pow(ratio, 30.4375/days) - 1);         // ежемесячная капитализация
+  if(cap === 'end' && !cs.length){
+    const r = (final/amount - 1) * 365 / days;            // простые проценты
     return Math.round(r * 10000) / 100; // % с двумя знаками
   }
   const invested = amount + cs.reduce((s,c)=>s+c.amount,0);
   if(final <= invested) return null;
-  const dd = {amount, openDate, endDate, capitalization:cap, contributions:cs};
+  // monthly — дискретная модель, закрытой формы нет: бисекция по _depValueWithRate
+  const dd = {amount, openDate, endDate, capitalization:cap, contributions:cs, accruals};
   let lo = 0, hi = 300;
   for(let i=0;i<60;i++){
     const mid = (lo+hi)/2;
@@ -4191,6 +4239,7 @@ function deleteDepContribution(depId, cid){
   d.updatedAt = Date.now();
   saveDB();
   _renderDepContribsList(d);
+  _renderDepAccrualsList(d);
   renderDeposits();
   toast('Пополнение удалено');
 }
@@ -4198,7 +4247,7 @@ function deleteDepContribution(depId, cid){
 // finalAmount задан → ставка производная, пересчитать под новый набор пополнений
 function _reDeriveDepRate(d){
   if(!d.finalAmount) return;
-  const r = _calcDepRate(d.amount, d.finalAmount, d.openDate, d.endDate, d.capitalization, d.contributions);
+  const r = _calcDepRate(d.amount, d.finalAmount, d.openDate, d.endDate, d.capitalization, d.contributions, d.accruals);
   if(r !== null) d.rate = r;
 }
 
@@ -4213,6 +4262,54 @@ function _renderDepContribsList(d){
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
     <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution('${esc(d.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
   </div>`).join('');
+}
+
+// График начислений в модалке редактирования: прошедшие — редактируемые
+// (факт из банка → d.accruals), будущие — просто расчёт
+function _renderDepAccrualsList(d){
+  const grp = document.getElementById('dep-accruals-grp');
+  const list = document.getElementById('dep-accruals-list');
+  if(!grp || !list) return;
+  if(!d || d.capitalization !== 'monthly'){ grp.style.display='none'; list.innerHTML=''; return; }
+  const {rows} = _depAccrualRows(d, d.endDate, d.rate);
+  if(!rows.length){ grp.style.display='none'; list.innerHTML=''; return; }
+  grp.style.display = '';
+  const t = today();
+  list.innerHTML = rows.map(r=>{
+    const past = r.date <= t;
+    const val = Math.round(r.interest*100)/100;
+    if(!past) return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;color:var(--hint)">
+      <span>${_fmtDateRu(r.date)}</span><span>≈ ${fmtH(Math.round(val))}</span>
+    </div>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0">
+      <span style="color:var(--muted);flex-shrink:0">${_fmtDateRu(r.date)}</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <input type="text" inputmode="decimal" value="${val}" onchange="setDepAccrual('${esc(d.id)}','${r.date}',this.value)"
+          style="width:90px;text-align:right;padding:4px 6px;font-size:13px;border:1px solid ${r.override?'var(--accent)':'var(--border)'};border-radius:6px;background:var(--card);color:var(--text)">
+        ${r.override?`<span onclick="setDepAccrual('${esc(d.id)}','${r.date}','')" title="Вернуть расчётное" style="cursor:pointer;color:var(--muted);padding:0 2px">↻</span>`:'<span style="width:16px"></span>'}
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function setDepAccrual(depId, date, val){
+  const d = (DB.deposits||[]).find(x=>x.id===depId);
+  if(!d) return;
+  if(!d.accruals) d.accruals = {};
+  const s = String(val).trim();
+  if(s === ''){ delete d.accruals[date]; }
+  else {
+    const amount = parseMoney(s);
+    if(amount < 0){ toast('Сумма не может быть отрицательной'); _renderDepAccrualsList(d); return; }
+    d.accruals[date] = amount;
+  }
+  if(!Object.keys(d.accruals).length) delete d.accruals;
+  _reDeriveDepRate(d);
+  d.updatedAt = Date.now();
+  saveDB();
+  _renderDepAccrualsList(d);
+  renderDeposits();
+  if(typeof renderAssets==='function') renderAssets();
 }
 
 // Режим доходности: 'rate' — ввод ставки, 'final' — ввод суммы на закрытие
@@ -4242,7 +4339,8 @@ function _depRateFromFinal(){
     document.getElementById('deposit-open').value,
     document.getElementById('deposit-end').value,
     document.getElementById('deposit-cap').value,
-    _ed ? _ed.contributions : null
+    _ed ? _ed.contributions : null,
+    _ed ? _ed.accruals : null
   );
   hint.textContent = rate !== null ? '≈ '+rate+'% годовых' : '';
 }
@@ -4264,6 +4362,7 @@ function openDepositModal(id){
   document.getElementById('deposit-src-grp').style.display = d ? 'none' : '';
   if(!d) _fillSrcBankSelect('deposit-src-bank');
   _renderDepContribsList(d);
+  _renderDepAccrualsList(d);
   setDepMode(d && d.finalAmount ? 'final' : 'rate');
   _depDaysFromDates();
   openModal('modal-deposit');
@@ -4302,7 +4401,7 @@ function saveDeposit(){
     if(!finalAmount || finalAmount<=0){ toast('Введите сумму на закрытие'); return; }
     const invested = amount + (_contribs||[]).reduce((s,c)=>s+c.amount,0);
     if(finalAmount < invested){ toast('Сумма на закрытие меньше тела с пополнениями'); return; }
-    rate = _calcDepRate(amount, finalAmount, openDate, endDate, capitalization, _contribs) || 0;
+    rate = _calcDepRate(amount, finalAmount, openDate, endDate, capitalization, _contribs, _prev ? _prev.accruals : null) || 0;
   } else {
     rate = parseFloat(document.getElementById('deposit-rate').value);
     if(!rate || rate<=0){ toast('Введите ставку'); return; }
