@@ -624,8 +624,7 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Тип</label>
       <div class="spec-seg" id="exp-spec-seg">
         <span data-v="" onclick="setExpSpecial('')">Обычный</span>
-        <span data-v="oneoff" onclick="setExpSpecial('oneoff')">Разовое</span>
-        <span data-v="recurring" onclick="setExpSpecial('recurring')">Регулярное</span>
+        <span data-v="1" onclick="setExpSpecial('1')">Особое</span>
       </div>
     </div>
     <div class="btn-row">
@@ -649,8 +648,7 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Тип</label>
       <div class="spec-seg" id="tmpl-spec-seg">
         <span data-v="" onclick="setTmplSpecial('')">Обычный</span>
-        <span data-v="oneoff" onclick="setTmplSpecial('oneoff')">Разовое</span>
-        <span data-v="recurring" onclick="setTmplSpecial('recurring')">Регулярное</span>
+        <span data-v="1" onclick="setTmplSpecial('1')">Особое</span>
       </div>
     </div>
     <div class="btn-row">
@@ -1143,8 +1141,10 @@ let currentMonth = {y:0,m:0};
 let currentDay = '';
 let editingExpenseId = null;
 let _selectedExpSpecial = '';
-const SPEC_BADGE = {oneoff:'•', recurring:'↻'};
-const SPEC_LABEL = {oneoff:'разовое', recurring:'регулярное'};
+// Тег особого расхода булев. Старые значения 'oneoff'/'recurring' остаются
+// в базе и читаются как truthy — миграция не нужна.
+const SPEC_BADGE = '✦';
+const SPEC_LABEL = 'особое';
 function setExpSpecial(v){
   _selectedExpSpecial = v||'';
   document.querySelectorAll('#exp-spec-seg span').forEach(s=>{
@@ -1745,7 +1745,7 @@ function editExpense(id, e){
   setMoneyInput('exp-amount', exp.amount);
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
-  setExpSpecial(exp.special||'');
+  setExpSpecial(exp.special ? '1' : '');
   openModal('modal-expense');
 }
 
@@ -1755,7 +1755,7 @@ function saveExpense(){
   const cat  = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value || today(); // пустая дата = запись-невидимка
   const comment = document.getElementById('exp-comment').value;
-  const special = _selectedExpSpecial || null;
+  const special = _selectedExpSpecial ? true : null;
 
   const catId = (DB.catIds||[])[cat];
   if(editingExpenseId){
@@ -1820,7 +1820,7 @@ function renderCatExpensesList(catIdx, y, m) {
     return `<div class="exp-list-item">
       <div class="exp-list-date">${dy}.${mo}</div>
       <div class="exp-list-body">
-        <div class="exp-list-amount">${fmtH(e.amount)}${e.special?`<span class="spec-badge">${SPEC_BADGE[e.special]||''} ${SPEC_LABEL[e.special]||''}</span>`:''}</div>
+        <div class="exp-list-amount">${fmtH(e.amount)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
         ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
       <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
@@ -2064,7 +2064,7 @@ function renderDay(){
       row.innerHTML = `
         <div class="entry-dot" style="background:${color}"></div>
         <div class="entry-info">
-          <div class="entry-cat">${esc(catName)}<span class="spec-badge">${SPEC_BADGE[e.special]||''} ${SPEC_LABEL[e.special]||''}</span></div>
+          <div class="entry-cat">${esc(catName)}<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span></div>
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
@@ -2124,7 +2124,7 @@ function renderExpenseSearch(query){
     row.innerHTML = `
       <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
       <div class="entry-info">
-        <div class="entry-cat">${esc(catName)}${e.special?`<span class="spec-badge">${SPEC_BADGE[e.special]||''} ${SPEC_LABEL[e.special]||''}</span>`:''}</div>
+        <div class="entry-cat">${esc(catName)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmtH(e.amount)}</div>
@@ -2153,7 +2153,7 @@ function renderTemplateChips(){
     const color = t.color || getCatColor(t.cat);
     return `<button onclick="addFromTemplate('${t.id}',this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${t.special?' '+(SPEC_BADGE[t.special]||''):''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${t.special?' '+SPEC_BADGE:''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
     </button>`;
   }).join('');
 }
@@ -2186,7 +2186,7 @@ function openTemplateModal(id){
     document.getElementById('tmpl-comment').value = t.comment||'';
     document.getElementById('tmpl-delete-btn').style.display='block';
     _selectedTemplateColor = t.color || TEMPLATE_COLORS[0];
-    setTmplSpecial(t.special||'');
+    setTmplSpecial(t.special ? '1' : '');
   } else {
     document.getElementById('template-modal-title').textContent='Новый шаблон';
     document.getElementById('tmpl-name').value='';
@@ -2207,7 +2207,7 @@ function saveTemplate(){
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat = parseInt(document.getElementById('tmpl-cat').value);
   const comment = document.getElementById('tmpl-comment').value.trim();
-  const special = _selectedTmplSpecial || null;
+  const special = _selectedTmplSpecial ? true : null;
   if(!DB.templates) DB.templates=[];
   const catId = (DB.catIds||[])[cat];
   if(_editingTemplateId){
