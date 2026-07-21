@@ -2203,7 +2203,7 @@ function addFromTemplate(id,btn){
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
   const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
-  DB.expenses.push({id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, special:t.special||null, updatedAt:Date.now()});
+  DB.expenses.push({id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, special:t.special?true:null, updatedAt:Date.now()});
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
   toast(t.name+' добавлено');
