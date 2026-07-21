@@ -71,7 +71,8 @@ if ('serviceWorker' in navigator) {
     <div class="s-card"><div class="s-lbl">Лимит</div><div class="s-val" id="sum-limit">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
-  <div id="budget-days-row" style="display:none;padding:4px 16px 8px;font-size:12px;color:var(--muted);gap:12px;flex-wrap:wrap"></div>
+  <div id="budget-days-row" style="display:none;padding:4px 16px 4px;font-size:12px;color:var(--muted);gap:12px;flex-wrap:wrap"></div>
+  <div id="budget-obl-row" style="display:none;padding:0 16px 8px;font-size:11px;color:var(--hint);gap:10px;flex-wrap:wrap"></div>
   <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
     <span class="sec-title">Категории</span>
@@ -1649,8 +1650,10 @@ function renderBudget(){
   leftEl.innerHTML = fmtH(Math.abs(left));
   leftEl.className = 's-val '+(left<0?'over':'ok');
 
-  // Days remaining row — current month only
+  // Days remaining row — current month only. Считается по переменным
+  // расходам: особые вынуты в резерв (см. _budgetFree).
   const daysRow = document.getElementById('budget-days-row');
+  const oblRow  = document.getElementById('budget-obl-row');
   if(daysRow){
     const now = new Date();
     const isCurrentMonth = (y === now.getFullYear() && m === now.getMonth());
@@ -1659,9 +1662,10 @@ function renderBudget(){
       const today = now.getDate();
       const daysLeft = daysInMonth - today + 1; // include today
       const daysGone = today - 1;
-      const dailyAllowance = daysLeft > 0 ? Math.round(left / daysLeft) : 0;
-      const dailySpent = daysGone > 0 ? Math.round(totalSpent / daysGone) : 0;
-      const ok = left >= 0 && dailyAllowance >= 0;
+      const f = _budgetFree(y, m, totalSpent, totalLimit);
+      const dailyAllowance = (daysLeft > 0 && f.varLimit > 0) ? Math.round(f.varLeft / daysLeft) : 0;
+      const dailySpent = daysGone > 0 ? Math.round(f.varSpent / daysGone) : 0;
+      const ok = f.varLimit > 0 && f.varLeft >= 0;
       const parts = [
         '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
         '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' +
@@ -1670,14 +1674,24 @@ function renderBudget(){
       ];
       if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
       if(daysGone > 0 && daysLeft > 0){
-        const projected = Math.round(totalSpent + dailySpent * daysLeft);
+        // К прогнозу добавляем ещё не оплаченную часть резерва
+        const unpaid = Math.max(0, f.specPlan - f.specSpent);
+        const projected = Math.round(totalSpent + unpaid + dailySpent * daysLeft);
         const projColor = projected > totalLimit && totalLimit > 0 ? 'var(--red)' : 'var(--muted)';
         parts.push('<span style="color:'+projColor+'">прогноз ' + fmtH(projected) + '</span>');
       }
       daysRow.style.display = 'flex';
       daysRow.innerHTML = parts.join('');
+      if(oblRow){
+        if(f.reserve > 0){
+          oblRow.style.display = 'flex';
+          oblRow.innerHTML = '<span>особые ' + fmtH(f.reserve) + '</span>' +
+            '<span>' + (f.specSpent >= f.specPlan ? 'факт' : 'резерв') + '</span>';
+        } else oblRow.style.display = 'none';
+      }
     } else {
       daysRow.style.display = 'none';
+      if(oblRow) oblRow.style.display = 'none';
     }
   }
   const progressBar = document.getElementById('budget-progress-bar');
