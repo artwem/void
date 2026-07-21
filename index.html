@@ -1539,6 +1539,30 @@ function changeDay(d){
 // ═══ budget.js ═══
 
 // ─── RENDER: BUDGET ─────────────────────────────────────────────────
+// Особые расходы (expense.special) вынимаются из расчёта «в день»: резерв
+// берётся по прогнозу, пока факт месяца его не превысит — цифра не прыгает
+// в день оплаты аренды. Прогноз — МИНИМУМ особых за 3 прошлых месяца, а не
+// среднее: минимум приближает повторяющуюся часть (аренда, ЖКУ, подписки)
+// и отсекает разовые всплески — холодильник попадёт лишь в один месяц из трёх.
+function _budgetFree(y, m, totalSpent, totalLimit){
+  let specSpent = 0;
+  getMonthExpenses(y,m).forEach(e => { if(e.special) specSpent += e.amount; });
+  // Пустые месяцы пропускаем — иначе новый пользователь получит нулевой прогноз
+  let specPlan = null;
+  for(let k = 1; k <= 3; k++){
+    const d = new Date(y, m - k, 1);
+    const exps = getMonthExpenses(d.getFullYear(), d.getMonth());
+    if(!exps.length) continue;
+    let sum = 0;
+    exps.forEach(e => { if(e.special) sum += e.amount; });
+    if(specPlan === null || sum < specPlan) specPlan = sum;
+  }
+  if(specPlan === null) specPlan = 0;
+  const reserve  = Math.max(specSpent, specPlan);
+  const varSpent = totalSpent - specSpent;
+  const varLimit = totalLimit - reserve;
+  return {specSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
+}
 function renderBudget(){
   const {y,m} = currentMonth;
   document.getElementById('month-label').textContent = MONTHS_RU[m]+' '+y;
