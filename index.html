@@ -850,6 +850,7 @@ if ('serviceWorker' in navigator) {
     <h2>Закрыть вклад</h2>
     <p id="close-dep-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp"><label class="flbl">Зачислить в банк</label><select id="close-dep-bank" class="finp"></select></div>
+    <div class="fgrp" id="close-dep-tag-grp"><label class="flbl">Тег дохода (проценты)</label><select id="close-dep-tag" class="finp"></select></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-close-deposit')">Отмена</button>
       <button class="btn primary" onclick="confirmCloseDeposit()">Закрыть вклад</button>
@@ -1047,7 +1048,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.31.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.31.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4188,6 +4189,17 @@ function openCloseDeposit(id){
     `${esc(d.name)}: ${fmtH(val)} (тело + проценты) добавится к балансу выбранного банка записью за сегодня. Проценты попадут в доходы отдельной записью. Вклад исчезнет из списка.`;
   const sel = document.getElementById('close-dep-bank');
   sel.innerHTML = banks.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
+  // тег для записи дохода: по умолчанию — тег с «процент» в названии
+  const interest = val - d.amount - _depContribsSum(d, today());
+  const tagGrp = document.getElementById('close-dep-tag-grp');
+  tagGrp.style.display = interest > 0 ? '' : 'none';
+  if(interest > 0){
+    const tags = DB.incomeTags||[];
+    const def = tags.find(t=>/процент/i.test(t)) || '';
+    document.getElementById('close-dep-tag').innerHTML =
+      '<option value=""'+(def?'':' selected')+'>— без тега</option>' +
+      tags.map(t=>`<option value="${esc(t)}"${t===def?' selected':''}>${esc(t)}</option>`).join('');
+  }
   openModal('modal-close-deposit');
 }
 
@@ -4202,7 +4214,7 @@ function confirmCloseDeposit(){
   const interest = val - d.amount - _depContribsSum(d, today());
   if(interest > 0){
     if(!DB.incomes) DB.incomes = [];
-    const tag = (DB.incomeTags||[]).find(t=>/процент/i.test(t)) || '';
+    const tag = document.getElementById('close-dep-tag').value || '';
     DB.incomes.push({id:uid(), source:'Проценты по вкладу '+d.name, amount:interest, date:today(), comment:'', tag, _deleted:false, updatedAt:Date.now()});
   }
   d._deleted = true;
