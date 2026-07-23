@@ -1047,7 +1047,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.30.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.31.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4185,7 +4185,7 @@ function openCloseDeposit(id){
   _closingDepositId = id;
   const val = depositValueAt(d, today());
   document.getElementById('close-dep-info').innerHTML =
-    `${esc(d.name)}: ${fmtH(val)} (тело + проценты) добавится к балансу выбранного банка записью за сегодня. Вклад исчезнет из списка.`;
+    `${esc(d.name)}: ${fmtH(val)} (тело + проценты) добавится к балансу выбранного банка записью за сегодня. Проценты попадут в доходы отдельной записью. Вклад исчезнет из списка.`;
   const sel = document.getElementById('close-dep-bank');
   sel.innerHTML = banks.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
   openModal('modal-close-deposit');
@@ -4198,13 +4198,20 @@ function confirmCloseDeposit(){
   if(!bank){ toast('Выберите банк'); return; }
   const val = depositValueAt(d, today());
   _bankAdjust(bank, today(), val);
+  // проценты (стоимость − тело − пополнения) — отдельной записью в доходы
+  const interest = val - d.amount - _depContribsSum(d, today());
+  if(interest > 0){
+    if(!DB.incomes) DB.incomes = [];
+    const tag = (DB.incomeTags||[]).find(t=>/процент/i.test(t)) || '';
+    DB.incomes.push({id:uid(), source:'Проценты по вкладу '+d.name, amount:interest, date:today(), comment:'', tag, _deleted:false, updatedAt:Date.now()});
+  }
   d._deleted = true;
   d.updatedAt = Date.now();
   saveDB();
   closeModal('modal-close-deposit');
   _closingDepositId = null;
   renderDeposits();
-  toast('✓ '+fmt(val)+' → '+bank);
+  toast('✓ '+fmt(val)+' → '+bank+(interest>0?', проценты '+fmt(interest)+' → в доходы':''));
 }
 
 // ── Корректировка баланса банка записью на дату (перевод банк↔вклад) ──
