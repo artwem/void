@@ -259,7 +259,7 @@ if ('serviceWorker' in navigator) {
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="chart-title">Рост накоплений</div>
         <div id="assets-chart-deps-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады</span>
+          <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады·инвест</span>
         </div>
       </div>
       <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
@@ -3640,15 +3640,18 @@ function renderAssetsHistory(rows, showAll){
   const hasMore = rows.length > LIMIT;
 
   tbl.innerHTML = '';
-  // Колонки «Счета/Вклады» — только если в истории вообще есть вклады
+  // Колонки «Счета/Вклады/Инвест» — только если в истории они вообще есть
   const hasDeps = rows.some(r => r.deps);
+  const hasInv  = rows.some(r => r.inv);
 
   // Header
   const hdr = tbl.insertRow();
   hdr.style.background = 'var(--bg)';
-  const cols = hasDeps
-    ? [{t:'Дата',a:'left'},{t:'Счета',a:'right'},{t:'Вклады',a:'right'},{t:'Всего',a:'right'},{t:'Δ',a:'right'},{t:'',a:'center'}]
-    : [{t:'Дата',a:'left'},{t:'Всего',a:'right'},{t:'Δ',a:'right'},{t:'',a:'center'}];
+  const cols = [{t:'Дата',a:'left'}];
+  if(hasDeps || hasInv) cols.push({t:'Счета',a:'right'});
+  if(hasDeps) cols.push({t:'Вклады',a:'right'});
+  if(hasInv)  cols.push({t:'Инвест',a:'right'});
+  cols.push({t:'Всего',a:'right'},{t:'Δ',a:'right'},{t:'',a:'center'});
   cols.forEach(({t,a}) => {
     const th = document.createElement('th');
     th.textContent = t;
@@ -3670,13 +3673,20 @@ function renderAssetsHistory(rows, showAll){
     td1.style.cssText = 'padding:12px 4px 12px 8px;font-size:12px;color:var(--muted)';
     td1.textContent = r.date;
 
-    if(hasDeps){
+    if(hasDeps || hasInv){
       const tdB = tr.insertCell();
       tdB.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--text)';
       tdB.innerHTML = '<span class="prv">'+fmtShort(r.banks)+'₽</span>';
+    }
+    if(hasDeps){
       const tdD = tr.insertCell();
       tdD.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--muted)';
       tdD.innerHTML = r.deps ? '<span class="prv">'+fmtShort(r.deps)+'₽</span>' : '—';
+    }
+    if(hasInv){
+      const tdI = tr.insertCell();
+      tdI.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--muted)';
+      tdI.innerHTML = r.inv ? '<span class="prv">'+fmtShort(r.inv)+'₽</span>' : '—';
     }
 
     const td2 = tr.insertCell();
@@ -3748,13 +3758,19 @@ function renderAssets(){
   // колонке «Всего» истории — шапка должна сходиться с ними)
   {
     const liveDeps = (DB.deposits||[]).filter(d=>!d._deleted);
-    const depSumNow = liveDeps.reduce((s,d)=>s+depositValueAt(d,today()),0);
-    document.getElementById('total-val').innerHTML = fmtH(total + depSumNow);
+    const liveInvs = (DB.investments||[]).filter(v=>!v._deleted);
+    const tdN = today();
+    const depSumNow = liveDeps.reduce((s,d)=>s+depositValueAt(d,tdN),0);
+    const invSumNow = liveInvs.reduce((s,v)=>s+invValueAt(v,tdN),0);
+    document.getElementById('total-val').innerHTML = fmtH(total + depSumNow + invSumNow);
     const wdEl = document.getElementById('total-with-deps');
     if(wdEl){
-      if(liveDeps.length){
+      if(liveDeps.length || liveInvs.length){
         document.getElementById('total-banks-val').innerHTML = fmtH(total);
         document.getElementById('total-deps-val').innerHTML = fmtH(depSumNow);
+        document.getElementById('total-inv-val').innerHTML = fmtH(invSumNow);
+        document.getElementById('total-deps-wrap').style.display = liveDeps.length ? '' : 'none';
+        document.getElementById('total-inv-wrap').style.display = liveInvs.length ? '' : 'none';
         wdEl.style.display = 'block';
       } else wdEl.style.display = 'none';
     }
@@ -3762,6 +3778,9 @@ function renderAssets(){
   const depCnt = (DB.deposits||[]).filter(d=>!d._deleted).length;
   const depBtn = document.getElementById('deposits-btn-count');
   if(depBtn) depBtn.textContent = depCnt ? ' · '+depCnt : '';
+  const invCnt = (DB.investments||[]).filter(v=>!v._deleted).length;
+  const invBtn = document.getElementById('invest-btn-count');
+  if(invBtn) invBtn.textContent = invCnt ? ' · '+invCnt : '';
   const list=document.getElementById('assets-list');
   list.innerHTML='';
   // All registered banks — regular first, credit last; both groups sorted by balance desc
@@ -3833,6 +3852,32 @@ function renderAssets(){
       list.appendChild(row);
     });
   }
+  // Инвестиции — read-only строки с бейджем; клик ведёт на страницу
+  {
+    const listInvs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const tdInv = today();
+    listInvs.forEach(v => {
+      const val = invValueAt(v, tdInv);
+      const invested = invInvested(v, tdInv);
+      const profit = val - invested;
+      const row = document.createElement('div');
+      row.className = 'asset-row';
+      row.style.cssText = 'gap:8px;cursor:pointer';
+      row.addEventListener('click', ()=>showPage('investments'));
+      const namePart = document.createElement('div');
+      namePart.style.cssText = 'flex:1;min-width:0';
+      const invBadge = ' <span style="font-size:10px;background:rgba(155,89,182,0.15);color:#9b59b6;padding:1px 5px;border-radius:4px;margin-left:4px">инвестиции</span>';
+      const pcol = profit >= 0 ? 'var(--green)' : 'var(--red)';
+      const subLine = `<div style="font-size:11px;color:${pcol};margin-top:2px">${profit>=0?'+':'−'} ${fmt(Math.abs(profit))}</div>`;
+      namePart.innerHTML = `<div class="asset-name">${esc(v.name)}${invBadge}</div>` + subLine;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'asset-amount';
+      amtSpan.innerHTML = fmtH(val);
+      row.appendChild(namePart);
+      row.appendChild(amtSpan);
+      list.appendChild(row);
+    });
+  }
   // Нулевые счета — после вкладов, по кнопке
   if(zeroBanks.length){
     if(_showZeroBanks) zeroBanks.forEach(name => list.appendChild(_buildBankRow(name)));
@@ -3843,10 +3888,10 @@ function renderAssets(){
     list.appendChild(tglRow);
   }
   // Chart — общие серии (carry-forward, вклады до дня закрытия)
-  const {dates: allDates, bankSeries, depSeries} = _buildAssetSeries();
+  const {dates: allDates, bankSeries, depSeries, invSeries} = _buildAssetSeries();
   const labels = allDates.map(d=>d.slice(5));
-  // Тумблер «банки / +вклады»: добавить к каждой точке стоимость вкладов на эту дату
-  const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length;
+  // Тумблер «банки / +вклады·инвест»: добавить к каждой точке вклады и инвестиции на эту дату
+  const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length + (DB.investments||[]).filter(x=>!x._deleted).length;
   const depsOn = localStorage.getItem('assetsChartDeps') === '1' && liveDepsCnt > 0;
   {
     const tgl = document.getElementById('assets-chart-deps-toggle');
@@ -3858,7 +3903,7 @@ function renderAssets(){
       if(onEl)  onEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(depsOn?aOn:aOff);
     }
   }
-  const data = bankSeries.map((v,i)=> v + (depsOn ? depSeries[i] : 0));
+  const data = bankSeries.map((v,i)=> v + (depsOn ? depSeries[i] + invSeries[i] : 0));
   try{
     if(charts.assets) charts.assets.destroy();
     if(labels.length>0){
@@ -3877,7 +3922,7 @@ function renderAssets(){
   if(wrap && tbl && allDates.length > 0){
     wrap.style.display = 'block';
     // История всегда с разбивкой «счета | вклады | всего», независимо от тумблера графика
-    const rows = allDates.map((date, idx) => ({date, banks: bankSeries[idx], deps: depSeries[idx], total: bankSeries[idx] + depSeries[idx]}))
+    const rows = allDates.map((date, idx) => ({date, banks: bankSeries[idx], deps: depSeries[idx], inv: invSeries[idx], total: bankSeries[idx] + depSeries[idx] + invSeries[idx]}))
                          .sort((a,b) => b.date.localeCompare(a.date));
     _assetsHistoryRows = rows;
     renderAssetsHistory(rows, false);
@@ -4151,12 +4196,19 @@ function _buildAssetSeries(){
     if(!byDate[a.date]) byDate[a.date] = {};
     byDate[a.date][key] = a.amount;
   });
-  const dates = Object.keys(byDate).sort();
-  const lastVal = {};
-  const bankSeries = [], depSeries = [];
   const histDeps = (DB.deposits||[]).filter(d=>d.openDate);
+  const histInvs = (DB.investments||[]).filter(v=>v.snapshots && Object.keys(v.snapshots).length);
+  // Сетка дат: снимки банков + снимки инвестиций (вклады свои даты не добавляют — растут непрерывно)
+  const dateSet = new Set(Object.keys(byDate));
+  histInvs.forEach(v=>{
+    const delDay = _depDelDay(v);
+    _invSnapDates(v).forEach(ds=>{ if(!(v._deleted && delDay && ds >= delDay)) dateSet.add(ds); });
+  });
+  const dates = [...dateSet].sort();
+  const lastVal = {};
+  const bankSeries = [], depSeries = [], invSeries = [];
   dates.forEach(date=>{
-    Object.entries(byDate[date]).forEach(([b,amt])=>{ lastVal[b]=amt; });
+    Object.entries(byDate[date]||{}).forEach(([b,amt])=>{ lastVal[b]=amt; });
     let total = 0;
     Object.entries(lastVal).forEach(([bname,amt])=>{
       total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
@@ -4168,8 +4220,13 @@ function _buildAssetSeries(){
       if(d._deleted && (!delDay || date >= delDay)) return s;
       return s + depositValueAt(d, date);
     },0)));
+    invSeries.push(Math.round(histInvs.reduce((s,v)=>{
+      const delDay = _depDelDay(v);
+      if(v._deleted && (!delDay || date >= delDay)) return s;
+      return s + invValueAt(v, date);
+    },0)));
   });
-  return {dates, bankSeries, depSeries};
+  return {dates, bankSeries, depSeries, invSeries};
 }
 
 // Годовая ставка (%) из известной суммы на закрытие.
@@ -5787,7 +5844,7 @@ function renderDataAudit(){
   // проблема — когда «накопл.» уходит и не возвращается.
   const series = _buildAssetSeries();
   if(series.dates.length >= 2){
-    const totals = series.dates.map((d,i)=>({date:d, total: series.bankSeries[i]+series.depSeries[i]}));
+    const totals = series.dates.map((d,i)=>({date:d, total: series.bankSeries[i]+series.depSeries[i]+series.invSeries[i]}));
     const exps = (DB.expenses||[]).filter(x=>!x._deleted);
     const incs = (DB.incomes||[]).filter(x=>!x._deleted);
     const depEvents = [];
@@ -5797,6 +5854,10 @@ function renderDataAudit(){
       (d.contributions||[]).forEach(c=>depEvents.push({date:c.date, txt:'пополнен «'+d.name+'» +'+fmtShort(c.amount)+'₽'}));
       const dd = _depDelDay(d);
       if(dd) depEvents.push({date:dd, txt:'закрыт «'+d.name+'»'});
+    });
+    (DB.investments||[]).forEach(v=>{
+      (v.contributions||[]).forEach(c=>depEvents.push({date:c.date, txt:(c.amount<0?'выведено из «':'пополнен «')+v.name+'» '+(c.amount<0?'−':'+')+fmtShort(Math.abs(c.amount))+'₽'}));
+      _invSnapDates(v).forEach(ds=>depEvents.push({date:ds, txt:'снимок «'+v.name+'» '+fmtShort(v.snapshots[ds])+'₽'}));
     });
     let cum = 0, rowsH = '';
     for(let i=1;i<totals.length;i++){
