@@ -253,7 +253,7 @@ if ('serviceWorker' in navigator) {
 <div id="page-assets" class="page">
   <div class="hdr"><h1>Накопления</h1></div>
   <div class="total-bar"><span class="total-lbl">Всего активов</span><span class="total-val" id="total-val">0 ₽</span></div>
-  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span> · вклады <span id="total-deps-val"></span></div>
+  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div class="chart-wrap">
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -286,10 +286,14 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
-  <div style="padding:8px 16px 0">
+  <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
     <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('deposits')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
+    </button>
+    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('investments')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M3 18L8 12l3 3 7-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Мои инвестиции<span id="invest-btn-count" style="color:var(--muted);font-weight:400"></span>
     </button>
   </div>
   <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
@@ -406,6 +410,18 @@ if ('serviceWorker' in navigator) {
       <div id="dep-forecast-result"></div>
     </div>
   </div>
+  <div class="page-end"></div>
+</div>
+
+<!-- PAGE: INVESTMENTS -->
+<div id="page-investments" class="page">
+  <div class="hdr" style="display:flex;align-items:center;gap:10px">
+    <button onclick="showPage('assets',document.getElementById('nav-assets'))" aria-label="Назад к активам" style="background:none;border:none;color:var(--text);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px 4px 0;font-family:inherit">‹</button>
+    <div><h1>Инвестиции</h1><div class="hdr-sub">Брокер и ИИС</div></div>
+  </div>
+  <div class="total-bar"><span class="total-lbl">Стоимость сейчас</span><span class="total-val" id="investments-total-now">0 ₽</span></div>
+  <div class="sec-hdr"><span class="sec-title">Счета</span><span class="sec-action" onclick="openInvestModal()">+ Добавить</span></div>
+  <div id="investments-list" style="padding:0 16px 8px"></div>
   <div class="page-end"></div>
 </div>
 
@@ -832,6 +848,89 @@ if ('serviceWorker' in navigator) {
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-dep-contrib')">Отмена</button>
       <button class="btn primary" onclick="saveDepContribution()">Пополнить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-investment">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-investment')">✕</button>
+    <h2 id="invest-modal-title" style="margin-bottom:16px">Новый счёт</h2>
+    <div class="fgrp">
+      <label class="flbl">Название</label>
+      <input type="text" id="invest-name" class="finp" placeholder="Т-Инвестиции, ИИС ВТБ…">
+    </div>
+    <div id="invest-create-grp">
+      <div class="fgrp">
+        <label class="flbl">Дата</label>
+        <input type="date" id="invest-date" class="finp">
+      </div>
+      <div class="fgrp">
+        <label class="flbl">Вложено всего, ₽</label>
+        <input type="text" id="invest-invested" class="finp" inputmode="decimal" placeholder="500 000" oninput="formatMoneyInput(this)">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Сколько денег ты занёс за всё время — от этого считается прибыль</div>
+      </div>
+      <div class="fgrp">
+        <label class="flbl">Стоимость сейчас, ₽</label>
+        <input type="text" id="invest-value" class="finp" inputmode="decimal" placeholder="560 000" oninput="formatMoneyInput(this)">
+      </div>
+    </div>
+    <div class="fgrp" id="inv-snaps-grp" style="display:none">
+      <label class="flbl">Снимки стоимости</label>
+      <div id="inv-snaps-list" style="font-size:13px;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div class="fgrp" id="inv-contribs-grp" style="display:none">
+      <label class="flbl">Пополнения и выводы</label>
+      <div id="inv-contribs-list" style="font-size:13px;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn danger" id="invest-delete-btn" onclick="deleteInvestment()" style="display:none">Удалить</button>
+      <button class="btn primary" onclick="saveInvestment()" style="flex:1">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-inv-snap">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-inv-snap')">✕</button>
+    <h2>Обновить стоимость</h2>
+    <p id="inv-snap-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
+    <div class="fgrp">
+      <label class="flbl">Дата</label>
+      <input type="date" id="inv-snap-date" class="finp">
+    </div>
+    <div class="fgrp">
+      <label class="flbl">Стоимость счёта, ₽</label>
+      <input type="text" id="inv-snap-value" class="finp" inputmode="decimal" placeholder="575 000" oninput="formatMoneyInput(this)">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal('modal-inv-snap')">Отмена</button>
+      <button class="btn primary" onclick="saveInvSnapshot()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-inv-contrib">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-inv-contrib')">✕</button>
+    <h2 id="inv-contrib-title">Пополнить счёт</h2>
+    <p id="inv-contrib-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
+    <div class="fgrp">
+      <label class="flbl">Дата</label>
+      <input type="date" id="inv-contrib-date" class="finp">
+    </div>
+    <div class="fgrp">
+      <label class="flbl">Сумма, ₽</label>
+      <input type="text" id="inv-contrib-amount" class="finp" inputmode="decimal" placeholder="50 000" oninput="formatMoneyInput(this)">
+    </div>
+    <div class="fgrp">
+      <label class="flbl" id="inv-contrib-bank-lbl">Списать из банка</label>
+      <select id="inv-contrib-bank" class="finp"></select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="inv-contrib-bank-hint">Баланс банка уменьшится записью на эту дату</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal('modal-inv-contrib')">Отмена</button>
+      <button class="btn primary" id="inv-contrib-save" onclick="saveInvContribution()">Пополнить</button>
     </div>
   </div>
 </div>
@@ -1487,7 +1586,7 @@ function showPage(name,btn){
   document.getElementById('page-'+name).classList.add('active');
   if(btn) btn.classList.add('active');
   // Прогноз и Вклады открываются из Активов — вкладок в навбаре у них нет, подсвечиваем Активы
-  else if(name==='calc'||name==='deposits'){ const nb=document.getElementById('nav-assets'); if(nb) nb.classList.add('active'); }
+  else if(name==='calc'||name==='deposits'||name==='investments'){ const nb=document.getElementById('nav-assets'); if(nb) nb.classList.add('active'); }
   // Годовой отчёт открывается из Аналитики
   else if(name==='report'){ const nb=document.getElementById('nav-stats'); if(nb) nb.classList.add('active'); }
   currentPage = name;
@@ -1503,6 +1602,7 @@ function showPage(name,btn){
     setTimeout(calcUpdate, 50);
   }
   if(name==='deposits') renderDeposits();
+  if(name==='investments') renderInvestments();
   if(name==='report') renderReport();
   if(name==='income') renderIncome();
   if(name==='settings') renderSettings();
