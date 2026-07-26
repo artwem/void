@@ -1218,6 +1218,7 @@ function loadDB(){
   if(!DB.assets) DB.assets = [];
   if(!DB.templates) DB.templates = [];
   if(!DB.deposits) DB.deposits = [];
+  if(!DB.investments) DB.investments = [];
   if(!DB.listsMeta) DB.listsMeta = {};
   if(!DB._lastSyncedLimits) DB._lastSyncedLimits = {};
   // privacyMode — device-local, не синкается
@@ -1233,7 +1234,7 @@ function loadDB(){
   }
   // Purge tombstones older than 90 days — even slow devices have synced by then
   const _cut = Date.now() - 90*24*3600*1000;
-  ['expenses','incomes','assets','goals','templates','deposits'].forEach(k => {
+  ['expenses','incomes','assets','goals','templates','deposits','investments'].forEach(k => {
     if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && (it.updatedAt||0) < _cut));
   });
   _ensureCatIds(); // миграция: раздать id категориям и catId записям
@@ -4019,6 +4020,26 @@ function _depDelDay(d){
   return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
 }
 
+// ── Инвестиции: снимки стоимости + пополнения/выводы ────────────────
+// Стоимость на дату = последний снимок ≤ даты + пополнения ПОСЛЕ него.
+// Пополнение видно сразу без нового снимка; следующий снимок перебазирует.
+function _invSnapDates(inv){ return Object.keys(inv.snapshots||{}).sort(); }
+
+function invValueAt(inv, dateStr){
+  const past = _invSnapDates(inv).filter(ds=>ds<=dateStr);
+  if(!past.length) return 0;               // до первого снимка счёта нет
+  const base = past[past.length-1];
+  const later = (inv.contributions||[]).filter(c=>c.date>base && c.date<=dateStr)
+    .reduce((s,c)=>s+c.amount,0);
+  return Math.round((inv.snapshots[base]||0) + later);
+}
+
+// Вложено = Σ пополнений − выводы (amount<0) на дату
+function invInvested(inv, dateStr){
+  const cut = dateStr || today();
+  return (inv.contributions||[]).filter(c=>c.date<=cut).reduce((s,c)=>s+c.amount,0);
+}
+
 // Серии «счета / вклады» по датам снимков. Carry-forward: банк без записи
 // на дату берётся по последней известной. Вклады — с openDate, закрытые
 // учитываются до дня закрытия. Одна логика для графика, истории и аудита.
@@ -6735,7 +6756,7 @@ function mergePullData(d){
 
   // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
   // Pull идёт до push, поэтому при равенстве побеждает локальное (строгое >).
-  ['expenses','incomes','assets','goals','templates','deposits'].forEach(key => {
+  ['expenses','incomes','assets','goals','templates','deposits','investments'].forEach(key => {
     if(!d[key]) return;
     const map = new Map();
     (DB[key]||[]).forEach(it => { if(it && it.id != null) map.set(it.id, it); });
