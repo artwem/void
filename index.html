@@ -1153,7 +1153,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4204,8 +4204,15 @@ function _buildAssetSeries(){
   });
   const histDeps = (DB.deposits||[]).filter(d=>d.openDate);
   const histInvs = (DB.investments||[]).filter(v=>v.snapshots && Object.keys(v.snapshots).length);
-  // Сетка дат: снимки банков + снимки инвестиций (вклады свои даты не добавляют — растут непрерывно)
+  // Сетка дат: снимки банков + снимки инвестиций + даты открытия вкладов —
+  // вклад виден на графике со дня открытия, не дожидаясь снимка счетов
+  // (шапка «Всего активов» считает его сразу — график не должен отставать)
   const dateSet = new Set(Object.keys(byDate));
+  const _tdSer = today();
+  histDeps.forEach(d=>{
+    const delDay = _depDelDay(d);
+    if(d.openDate <= _tdSer && !(d._deleted && delDay && d.openDate >= delDay)) dateSet.add(d.openDate);
+  });
   histInvs.forEach(v=>{
     const delDay = _depDelDay(v);
     _invSnapDates(v).forEach(ds=>{ if(!(v._deleted && delDay && ds >= delDay)) dateSet.add(ds); });
@@ -5793,9 +5800,7 @@ function renderDataAudit(){
     Object.entries(c).filter(([,k])=>k>1).forEach(([d,k])=>dups.push({bank:n,date:d,count:k}));
   });
   // вклады vs даты снимков счетов
-  const lastSnap = live.reduce((m,a)=> a.date>m ? a.date : m, '');
   const liveDeps = (DB.deposits||[]).filter(d=>!d._deleted);
-  const unseenDeps = liveDeps.filter(d=>d.openDate > lastSnap);
   const lostDeps = (DB.deposits||[]).filter(d=>d._deleted && !d.updatedAt);
 
   let h = `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
@@ -5829,11 +5834,8 @@ function renderDataAudit(){
       <button class="btn small" style="margin-top:6px" onclick="auditFixDups()">Исправить — оставить последнюю по updatedAt</button>`;
   }
 
-  if(unseenDeps.length || lostDeps.length || liveDeps.length){
+  if(lostDeps.length || liveDeps.length){
     h += `<div class="s-lbl" style="margin:10px 0 6px">Вклады и даты</div>`;
-    if(unseenDeps.length){
-      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${unseenDeps.map(d=>esc(d.name)).join(', ')}: вклад открыт позже последнего снимка счетов (${lastSnap||'—'}). В истории он не появится, пока не внесёте снимок счетов свежей датой — при этом в «с вкладами» на сегодня он уже учтён.</p>`;
-    }
     if(lostDeps.length){
       h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${lostDeps.length} удалённых вкладов без даты удаления — в истории не учитываются.</p>`;
     }
@@ -5856,7 +5858,7 @@ function renderDataAudit(){
     }
   }
 
-  if(!ghosts.length && !dups.length && !unseenDeps.length && !lostDeps.length){
+  if(!ghosts.length && !dups.length && !lostDeps.length){
     h += `<div style="color:var(--green);font-weight:600;margin-top:4px">✓ Аномалий в записях не найдено</div>`;
   }
 
