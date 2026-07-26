@@ -287,11 +287,11 @@ if ('serviceWorker' in navigator) {
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
   <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
-    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('deposits')">
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('deposits')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
     </button>
-    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('investments')">
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('investments')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M3 18L8 12l3 3 7-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Мои инвестиции<span id="invest-btn-count" style="color:var(--muted);font-weight:400"></span>
     </button>
@@ -1147,7 +1147,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
