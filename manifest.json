@@ -1,17 +1,32 @@
 {
   "name": "V.O.I.D.",
   "short_name": "V.O.I.D.",
-  "description": "Visual Overview of Income & Debt",
+  "description": "Личный финансовый трекер: бюджет, расходы, доходы, активы, вклады и инвестиции",
+  "lang": "ru",
+  "categories": ["finance", "productivity"],
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f7f6f1",
-  "theme_color": "#1a1a18",
+  "theme_color": "#f7f6f1",
   "orientation": "portrait",
   "icons": [
     {
       "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%231a1a18'/><text x='96' y='130' font-size='100' text-anchor='middle' fill='white'>₽</text></svg>",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='106' fill='%231a1a18'/><text x='256' y='346' font-size='266' text-anchor='middle' fill='white'>₽</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%231a1a18'/><text x='256' y='320' font-size='190' text-anchor='middle' fill='white'>₽</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ],
   "scope": "./"
