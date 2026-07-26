@@ -1147,7 +1147,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.31.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5834,6 +5834,22 @@ function renderDataAudit(){
     h += `<p style="color:var(--muted);font-size:12px;margin:0">Норма: история оценивает вклад на дату строки, а «с вкладами» под итогом — на сегодня, поэтому между снимками цифры расходятся на набежавшие проценты. Если при открытии вклада вы не уменьшили остаток банка снимком на ту же дату, «Всего» задвоит эти деньги до следующего снимка.</p>`;
   }
 
+  // Инвестиции: снимок стоимости устарел
+  {
+    const staleInvs = (DB.investments||[]).filter(v=>!v._deleted).map(v=>{
+      const snaps = _invSnapDates(v);
+      if(!snaps.length) return null;
+      const age = Math.floor((new Date(today()+'T12:00:00') - new Date(snaps[snaps.length-1]+'T12:00:00'))/86400000);
+      return age > 60 ? {name:v.name, age} : null;
+    }).filter(Boolean);
+    if(staleInvs.length){
+      h += `<div class="s-lbl" style="margin:10px 0 6px">Инвестиции</div>`;
+      staleInvs.forEach(s=>{
+        h += `<p style="color:#c98a1b;font-size:12px;margin:0 0 6px">⚠ «${esc(s.name)}»: снимок стоимости устарел (${s.age} дн.) — прибыль и график считаются по старой цифре.</p>`;
+      });
+    }
+  }
+
   if(!ghosts.length && !dups.length && !unseenDeps.length && !lostDeps.length){
     h += `<div style="color:var(--green);font-weight:600;margin-top:4px">✓ Аномалий в записях не найдено</div>`;
   }
@@ -6234,6 +6250,27 @@ function exportExcel(){
       depositValueAt(d, d.endDate)
     ]);
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([dHdr,...dRows]), 'Вклады');
+  }
+
+  // ── Инвестиции ───────────────────────────────────────────────────────
+  const xInvs = (DB.investments||[]).filter(v=>!v._deleted);
+  if(xInvs.length){
+    const tdI = today();
+    const iHdr = ['Название','Вложено','Стоимость','Прибыль','Прибыль %','Последний снимок'];
+    const iRows = xInvs.map(v=>{
+      const val = invValueAt(v, tdI);
+      const invested = invInvested(v, tdI);
+      const snaps = _invSnapDates(v);
+      return [
+        v.name,
+        invested,
+        val,
+        val - invested,
+        invested > 0 ? Math.round((val-invested)/invested*1000)/10 : '',
+        snaps.length ? snaps[snaps.length-1] : ''
+      ];
+    });
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([iHdr,...iRows]), 'Инвестиции');
   }
 
   X.writeFile(wb, 'budget_'+today()+'.xlsx');

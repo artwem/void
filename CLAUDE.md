@@ -68,6 +68,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
   deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений
+  investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод; invValueAt = последний снимок ≤ даты + пополнения после него
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
   listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
