@@ -4216,6 +4216,250 @@ function avgMonthlySavings(){
   return Math.round(vals.reduce((s,v)=>s+v,0)/vals.length);
 }
 
+// ── Инвестиции: страница ────────────────────────────────────────────
+function renderInvestments(){
+  const list = document.getElementById('investments-list');
+  if(!list) return;
+  const invs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const td = today();
+  document.getElementById('investments-total-now').innerHTML = fmtH(invs.reduce((s,v)=>s+invValueAt(v,td),0));
+  if(!invs.length){
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет счетов — нажмите + чтобы добавить</p>';
+    return;
+  }
+  list.innerHTML = invs.map(v=>{
+    const val = invValueAt(v, td);
+    const invested = invInvested(v, td);
+    const profit = val - invested;
+    const pct = invested > 0 ? Math.round(profit/invested*1000)/10 : null;
+    const pcol = profit >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = profit >= 0 ? '+' : '−';
+    const snaps = _invSnapDates(v);
+    const lastSnap = snaps.length ? snaps[snaps.length-1] : null;
+    let snapLine = '';
+    if(lastSnap){
+      const age = Math.floor((new Date(td+'T12:00:00') - new Date(lastSnap+'T12:00:00'))/86400000);
+      snapLine = age > 30
+        ? `<div style="font-size:11px;color:#c98a1b;margin-top:2px">снимок ${_fmtDateRu(lastSnap)} · обновите стоимость</div>`
+        : `<div style="font-size:11px;color:var(--muted);margin-top:2px">снимок ${_fmtDateRu(lastSnap)}</div>`;
+    }
+    return `<div class="chart-card" style="margin:0 0 10px;padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="openInvestModal('${esc(v.id)}')">
+        <div style="min-width:0">
+          <div style="font-weight:600">${esc(v.name)}</div>
+          ${snapLine}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px">
+          <div style="font-weight:600">${fmtH(val)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">вложено ${fmtH(invested)}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot('${esc(v.id)}')">↻ Обновить</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',1)">+ Пополнить</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',-1)">− Вывести</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let _editInvId = null;
+
+function openInvestModal(id){
+  _editInvId = id || null;
+  const v = id ? (DB.investments||[]).find(x=>x.id===id && !x._deleted) : null;
+  document.getElementById('invest-modal-title').textContent = v ? 'Счёт' : 'Новый счёт';
+  document.getElementById('invest-name').value = v ? v.name : '';
+  document.getElementById('invest-create-grp').style.display = v ? 'none' : '';
+  document.getElementById('invest-delete-btn').style.display = v ? '' : 'none';
+  if(!v){
+    document.getElementById('invest-date').value = today();
+    setMoneyInput('invest-invested','');
+    setMoneyInput('invest-value','');
+    document.getElementById('inv-snaps-grp').style.display='none';
+    document.getElementById('inv-contribs-grp').style.display='none';
+  } else {
+    _renderInvSnapsList(v);
+    _renderInvContribsList(v);
+  }
+  openModal('modal-investment');
+}
+
+function saveInvestment(){
+  const name = document.getElementById('invest-name').value.trim();
+  if(!name){ toast('Введите название'); return; }
+  if(_editInvId){
+    const v = (DB.investments||[]).find(x=>x.id===_editInvId);
+    if(!v) return;
+    v.name = name;
+    v.updatedAt = Date.now();
+  } else {
+    const date = document.getElementById('invest-date').value;
+    const invested = parseMoney(document.getElementById('invest-invested').value);
+    const value = parseMoney(document.getElementById('invest-value').value);
+    if(!date){ toast('Укажите дату'); return; }
+    if(date > today()){ toast('Дата в будущем'); return; }
+    if(!value || value<=0){ toast('Введите стоимость'); return; }
+    if(!invested || invested<=0){ toast('Введите вложенную сумму'); return; }
+    if(!DB.investments) DB.investments = [];
+    DB.investments.push({
+      id: uid(), name,
+      snapshots: {[date]: value},
+      contributions: [{id: uid(), date, amount: invested, updatedAt: Date.now()}],
+      updatedAt: Date.now()
+    });
+  }
+  saveDB();
+  closeModal('modal-investment');
+  _editInvId = null;
+  renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
+  toast('✓ Сохранено');
+}
+
+function deleteInvestment(){
+  const v = (DB.investments||[]).find(x=>x.id===_editInvId);
+  if(!v) return;
+  v._deleted = true;
+  v.updatedAt = Date.now();
+  saveDB();
+  closeModal('modal-investment');
+  _editInvId = null;
+  renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
+  toastUndo('Счёт удалён', ()=>{
+    delete v._deleted;
+    v.updatedAt = Date.now();
+    saveDB(); renderInvestments();
+    if(typeof renderAssets==='function') renderAssets();
+  });
+}
+
+function _renderInvSnapsList(v){
+  const grp = document.getElementById('inv-snaps-grp');
+  const list = document.getElementById('inv-snaps-list');
+  const snaps = _invSnapDates(v);
+  grp.style.display = snaps.length ? '' : 'none';
+  list.innerHTML = snaps.slice().reverse().map(ds=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+    <span style="color:var(--muted)">${_fmtDateRu(ds)}</span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot('${esc(v.id)}','${ds}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+  </div>`).join('');
+}
+
+function deleteInvSnapshot(invId, date){
+  const v = (DB.investments||[]).find(x=>x.id===invId);
+  if(!v || !v.snapshots) return;
+  if(_invSnapDates(v).length <= 1){ toast('Нельзя удалить последний снимок'); return; }
+  delete v.snapshots[date];
+  v.updatedAt = Date.now();
+  saveDB();
+  _renderInvSnapsList(v);
+  renderInvestments();
+  toast('Снимок удалён');
+}
+
+function _renderInvContribsList(v){
+  const grp = document.getElementById('inv-contribs-grp');
+  const list = document.getElementById('inv-contribs-list');
+  const cs = (v.contributions||[]);
+  grp.style.display = cs.length ? '' : 'none';
+  list.innerHTML = cs.slice().reverse().map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+    <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
+    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution('${esc(v.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+  </div>`).join('');
+}
+
+function deleteInvContribution(invId, cid){
+  const v = (DB.investments||[]).find(x=>x.id===invId);
+  if(!v || !v.contributions) return;
+  v.contributions = v.contributions.filter(c=>c.id!==cid);
+  v.updatedAt = Date.now();
+  saveDB();
+  _renderInvContribsList(v);
+  renderInvestments();
+  toast('Запись удалена');
+}
+
+let _invSnapId = null;
+
+function openInvSnapshot(id){
+  const v = (DB.investments||[]).find(x=>x.id===id && !x._deleted);
+  if(!v) return;
+  _invSnapId = id;
+  document.getElementById('inv-snap-info').textContent = v.name+': впиши текущую стоимость из приложения брокера.';
+  document.getElementById('inv-snap-date').value = today();
+  setMoneyInput('inv-snap-value','');
+  openModal('modal-inv-snap');
+}
+
+function saveInvSnapshot(){
+  const v = (DB.investments||[]).find(x=>x.id===_invSnapId && !x._deleted);
+  if(!v) return;
+  const date = document.getElementById('inv-snap-date').value;
+  const value = parseMoney(document.getElementById('inv-snap-value').value);
+  if(!date){ toast('Укажите дату'); return; }
+  if(date > today()){ toast('Дата в будущем'); return; }
+  if(!value || value<0){ toast('Введите стоимость'); return; }
+  if(!v.snapshots) v.snapshots = {};
+  v.snapshots[date] = value;
+  v.updatedAt = Date.now();
+  saveDB();
+  closeModal('modal-inv-snap');
+  _invSnapId = null;
+  renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
+  toast('✓ Стоимость обновлена');
+}
+
+let _invContribId = null, _invContribDir = 1;
+
+function _fillInvBankSelect(dir){
+  const sel = document.getElementById('inv-contrib-bank');
+  sel.innerHTML = '<option value="">— '+(dir>0?'не списывать':'не зачислять')+'</option>' +
+    (DB.banks||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
+}
+
+function openInvContribution(id, dir){
+  const v = (DB.investments||[]).find(x=>x.id===id && !x._deleted);
+  if(!v) return;
+  _invContribId = id; _invContribDir = dir;
+  document.getElementById('inv-contrib-title').textContent = dir>0 ? 'Пополнить счёт' : 'Вывести со счёта';
+  document.getElementById('inv-contrib-info').textContent = v.name;
+  document.getElementById('inv-contrib-bank-lbl').textContent = dir>0 ? 'Списать из банка' : 'Зачислить в банк';
+  document.getElementById('inv-contrib-bank-hint').textContent = dir>0
+    ? 'Баланс банка уменьшится записью на эту дату'
+    : 'Баланс банка увеличится записью на эту дату';
+  document.getElementById('inv-contrib-save').textContent = dir>0 ? 'Пополнить' : 'Вывести';
+  document.getElementById('inv-contrib-date').value = today();
+  setMoneyInput('inv-contrib-amount','');
+  _fillInvBankSelect(dir);
+  openModal('modal-inv-contrib');
+}
+
+function saveInvContribution(){
+  const v = (DB.investments||[]).find(x=>x.id===_invContribId && !x._deleted);
+  if(!v) return;
+  const date = document.getElementById('inv-contrib-date').value;
+  const amount = parseMoney(document.getElementById('inv-contrib-amount').value);
+  if(!date){ toast('Укажите дату'); return; }
+  if(date > today()){ toast('Дата в будущем'); return; }
+  if(!amount || amount<=0){ toast('Введите сумму'); return; }
+  const signed = _invContribDir > 0 ? amount : -amount;
+  if(!v.contributions) v.contributions = [];
+  v.contributions.push({id:uid(), date, amount: signed, updatedAt: Date.now()});
+  v.contributions.sort((a,b)=>a.date.localeCompare(b.date));
+  v.updatedAt = Date.now();
+  const bank = document.getElementById('inv-contrib-bank').value;
+  if(bank) _bankAdjust(bank, date, -signed);
+  saveDB();
+  closeModal('modal-inv-contrib');
+  _invContribId = null;
+  renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
+  toast('✓ '+(signed>0?'Пополнение ':'Вывод ')+fmt(amount)+(bank?' · '+bank:''));
+}
+
 function renderDeposits(){
   const list = document.getElementById('deposits-list');
   if(!list) return;
