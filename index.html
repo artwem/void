@@ -350,7 +350,7 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="s-card" id="calc-duration-card">
+      <div class="s-card" id="calc-duration-card" style="grid-column:1/-1">
         <div class="s-lbl">Срок</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
           <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:20px;font-weight:700;background:transparent;width:52px;flex-shrink:0;letter-spacing:-0.5px;color:var(--text)" oninput="calcUpdate()"/>
@@ -371,6 +371,10 @@ if ('serviceWorker' in navigator) {
           <option value="none">Без капитализации</option>
         </select>
       </div>
+      <div class="s-card">
+        <div class="s-lbl">Инфляция, % год</div>
+        <input type="number" id="calc-infl" value="0" inputmode="decimal" min="0" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
+      </div>
     </div>
     <div class="chart-card" style="margin-top:2px">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:10px"><span id="calc-result-prefix">Итого через</span> <span id="calc-period-lbl">24 мес</span></div>
@@ -380,6 +384,7 @@ if ('serviceWorker' in navigator) {
         <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Проценты</div><div style="font-size:17px;font-weight:600;color:var(--green)" id="calc-profit">0 ₽</div></div>
         <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Доход в год</div><div style="font-size:15px;font-weight:500;color:var(--text)" id="calc-yearly">0 ₽</div></div>
         <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Эффект. ставка</div><div style="font-size:15px;font-weight:500;color:var(--text)" id="calc-eff-rate">0%</div></div>
+        <div style="grid-column:1/-1;display:none" id="calc-real-row"><div style="font-size:11px;color:var(--muted);margin-bottom:3px">В сегодняшних деньгах</div><div style="font-size:15px;font-weight:500;color:var(--green)" id="calc-real">0 ₽</div></div>
       </div>
     </div>
     <div class="chart-card">
@@ -388,6 +393,7 @@ if ('serviceWorker' in navigator) {
         <div style="display:flex;gap:10px;font-size:11px">
           <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#185fa5;border-radius:2px;display:inline-block"></span>Итого</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:rgba(128,128,128,.6);border-radius:2px;display:inline-block"></span>Вложено</span>
+          <span style="display:none;align-items:center;gap:4px" id="calc-legend-real"><span style="width:10px;height:3px;background:var(--green);border-radius:2px;display:inline-block"></span>Сегодняшние ₽</span>
         </div>
       </div>
       <div style="position:relative;height:200px"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
@@ -1160,7 +1166,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.33.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.34.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6924,8 +6930,14 @@ function calcUpdate(){
   const cap      = document.getElementById('calc-cap').value;
   const mode     = document.getElementById('calc-mode').value;
   const freq     = document.getElementById('calc-contrib-freq').value;
+  const infl     = parseFloat(document.getElementById('calc-infl').value) || 0;
 
-  const r = rate / 100;
+  const r  = rate / 100;
+  const iR = Math.max(0, infl) / 100;
+  const _hideReal = () => {
+    document.getElementById('calc-real-row').style.display    = 'none';
+    document.getElementById('calc-legend-real').style.display = 'none';
+  };
 
   // Determine months
   let months, totalDays;
@@ -6940,6 +6952,7 @@ function calcUpdate(){
       document.getElementById('calc-profit').textContent   = fmtCalc(0);
       document.getElementById('calc-yearly').textContent   = fmtCalc(0);
       document.getElementById('calc-eff-rate').textContent = '0%';
+      _hideReal();
       if(chartCalc){ chartCalc.destroy(); chartCalc=null; }
       document.getElementById('calc-table').innerHTML = '';
       return;
@@ -6952,6 +6965,7 @@ function calcUpdate(){
       document.getElementById('calc-profit').textContent   = '—';
       document.getElementById('calc-yearly').textContent   = '—';
       document.getElementById('calc-eff-rate').textContent = '—';
+      _hideReal();
       if(chartCalc){ chartCalc.destroy(); chartCalc=null; }
       document.getElementById('calc-table').innerHTML = '';
       return;
@@ -6977,6 +6991,7 @@ function calcUpdate(){
   // Build month-by-month schedule
   const balances  = [];  // total balance each month
   const invested  = [];  // cumulative invested each month
+  const reals     = [];  // balance deflated to today's money (only used if infl > 0)
 
   // Режим «дни»: последний месяц — дробный, проценты только за реальные дни
   // (раньше 10 дней округлялись до целого месяца процентов)
@@ -6990,6 +7005,7 @@ function calcUpdate(){
   let balance = start;
   let totalInvested = start;
   let body = start, yearAccr = 0;  // для годовой капитализации
+  let elapsed = 0;                 // фактически прошло месяцев (последний может быть дробным)
 
   for(let mo=1; mo<=months; mo++){
     // Add contribution at start of month (yearly: at start of each new year)
@@ -7013,8 +7029,10 @@ function calcUpdate(){
       balance = body + yearAccr;
     }
 
+    elapsed += frac;
     balances.push(Math.round(balance));
     invested.push(Math.round(totalInvested));
+    reals.push(Math.round(balance / Math.pow(1 + iR, elapsed / 12)));
   }
 
   const finalBalance  = balances[months-1] || 0;
@@ -7022,16 +7040,19 @@ function calcUpdate(){
   const profit        = finalBalance - finalInvested;
   const yearlyIncome  = profit * 12 / months;
 
-  // Effective annual rate
-  const effRate = finalInvested>0
-    ? (Math.pow(finalBalance/finalInvested, 12/months) - 1)*100
-    : 0;
+  // Effective annual rate — money-weighted (XIRR): каждый взнос работает
+  // только со своего месяца, поэтому простая (итог/вложено)^(12/мес)
+  // занижала ставку при пополнениях
+  const effRate = _calcEffRate(start, monthly, freq, months, lastFrac, finalBalance);
 
   document.getElementById('calc-total').textContent     = fmtCalc(finalBalance);
   document.getElementById('calc-invested').textContent  = fmtCalc(finalInvested);
   document.getElementById('calc-profit').textContent    = fmtCalc(profit);
   document.getElementById('calc-yearly').textContent    = fmtCalc(Math.round(yearlyIncome));
   document.getElementById('calc-eff-rate').textContent  = effRate.toFixed(2)+'%';
+  document.getElementById('calc-real-row').style.display    = iR>0 ? '' : 'none';
+  document.getElementById('calc-legend-real').style.display = iR>0 ? 'flex' : 'none';
+  if(iR>0) document.getElementById('calc-real').textContent = fmtCalc(reals[months-1] || 0);
   {
     let lbl;
     if(unit==='days' && mode!=='target'){
@@ -7046,17 +7067,19 @@ function calcUpdate(){
 
   // Chart — sample at most 60 points for performance
   const step = Math.max(1, Math.ceil(months/60));
-  const labels=[], dataTotal=[], dataInvested=[];
+  const labels=[], dataTotal=[], dataInvested=[], dataReal=[];
   for(let i=0;i<months;i+=step){
     labels.push(i+1);
     dataTotal.push(balances[i]);
     dataInvested.push(invested[i]);
+    dataReal.push(reals[i]);
   }
   // Always include last point
   if((months-1)%step!==0){
     labels.push(months);
     dataTotal.push(balances[months-1]);
     dataInvested.push(invested[months-1]);
+    dataReal.push(reals[months-1]);
   }
 
   if(chartCalc) chartCalc.destroy();
@@ -7068,7 +7091,8 @@ function calcUpdate(){
         labels,
         datasets:[
           {label:'Итого',data:dataTotal,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,tension:0.3,pointRadius:0,borderWidth:2},
-          {label:'Вложено',data:dataInvested,borderColor:_cc.mutedMid,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]}
+          {label:'Вложено',data:dataInvested,borderColor:_cc.mutedMid,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]},
+          ...(iR>0 ? [{label:'Сегодняшние ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
         ]
       },
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
@@ -7078,6 +7102,32 @@ function calcUpdate(){
   // Store data for table toggle
   window._calcData = {balances, invested, months};
   renderCalcTable();
+}
+
+// Money-weighted годовая ставка (XIRR): ищем x, при котором старт и каждый
+// взнос, наращенные по (1+x) за своё фактическое время, дают итоговый баланс.
+// Бисекция — потоки все положительные, FV(x) монотонно растёт.
+function _calcEffRate(start, monthly, freq, months, lastFrac, finalBalance){
+  const T = (months - 1 + lastFrac) / 12;  // лет всего
+  if(T <= 0 || finalBalance <= 0 || (start <= 0 && monthly <= 0)) return 0;
+  const fv = x => {
+    let v = start * Math.pow(1 + x, T);
+    if(monthly > 0){
+      for(let mo = 2; mo <= months; mo++){
+        if(freq === 'yearly' && (mo - 1) % 12 !== 0) continue;
+        v += monthly * Math.pow(1 + x, Math.max(0, (months - mo + lastFrac) / 12));
+      }
+    }
+    return v;
+  };
+  if(Math.abs(fv(0) - finalBalance) < 1) return 0;
+  let lo = -0.9999, hi = 10;
+  while(fv(hi) < finalBalance && hi < 1e6) hi *= 2;
+  for(let i = 0; i < 80; i++){
+    const mid = (lo + hi) / 2;
+    if(fv(mid) < finalBalance) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2 * 100;
 }
 
 // 1 год / 2 года / 5 лет; дробные (1.5) — «года»
