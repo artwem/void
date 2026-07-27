@@ -335,7 +335,13 @@ if ('serviceWorker' in navigator) {
         <input type="text" id="calc-target" value="1 000 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
       <div class="s-card">
-        <div class="s-lbl">Пополнение/мес, ₽</div>
+        <div class="s-lbl" style="display:flex;align-items:center;justify-content:space-between;gap:6px">Пополнение, ₽
+          <span style="display:flex;gap:3px" id="calc-contrib-btns">
+            <button class="cu-btn active" style="padding:2px 7px;font-size:10px" data-val="monthly" onclick="setCalcContribFreq('monthly',this)">/мес</button>
+            <button class="cu-btn" style="padding:2px 7px;font-size:10px" data-val="yearly" onclick="setCalcContribFreq('yearly',this)">/год</button>
+          </span>
+        </div>
+        <input type="hidden" id="calc-contrib-freq" value="monthly"/>
         <input type="text" id="calc-monthly" value="10 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
       <div class="s-card">
@@ -361,6 +367,7 @@ if ('serviceWorker' in navigator) {
         <select id="calc-cap" style="margin-top:4px;border:none;padding:0;font-size:14px;font-weight:500;background:transparent;width:100%;-webkit-appearance:none" onchange="calcUpdate()">
           <option value="daily">Ежедневная</option>
           <option value="monthly" selected>Ежемесячная</option>
+          <option value="yearly">Ежегодная</option>
           <option value="none">Без капитализации</option>
         </select>
       </div>
@@ -1153,7 +1160,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.32.5</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.33.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6874,15 +6881,21 @@ function setCalcMode(mode){
   calcUpdate();
 }
 
-function _calcMonthsToTarget(start, monthly, r, cap, target){
+function _calcMonthsToTarget(start, monthly, r, cap, target, freq){
   if(start >= target) return 0;
   if(monthly <= 0 && r <= 0) return -1;
-  let balance = start, inv = start, mo = 0;
+  let balance = start, body = start, inv = start, accr = 0, mo = 0;
   while(balance < target && mo < 601){
     mo++;
-    if(mo > 1){ balance += monthly; inv += monthly; }
+    if(mo > 1 && (freq==='yearly' ? (mo-1)%12===0 : true)){ balance += monthly; body += monthly; inv += monthly; }
     if(cap==='none')       balance += inv * (r / 12);
     else if(cap==='daily') balance *= Math.pow(1 + r/365, 30.4375);
+    else if(cap==='yearly'){
+      // проценты копятся отдельно, в тело — раз в год
+      accr += body * (r / 12);
+      if(mo % 12 === 0){ body += accr; accr = 0; }
+      balance = body + accr;
+    }
     else                   balance *= (1 + r/12);
   }
   return mo >= 601 ? -1 : mo;
@@ -6895,6 +6908,13 @@ function setCalcUnit(val, btn){
   calcUpdate();
 }
 
+function setCalcContribFreq(val, btn){
+  document.getElementById('calc-contrib-freq').value = val;
+  document.querySelectorAll('#calc-contrib-btns .cu-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  calcUpdate();
+}
+
 function calcUpdate(){
   const start    = parseMoney(document.getElementById('calc-start').value);
   const monthly  = parseMoney(document.getElementById('calc-monthly').value);
@@ -6903,6 +6923,7 @@ function calcUpdate(){
   const unit     = document.getElementById('calc-unit').value;
   const cap      = document.getElementById('calc-cap').value;
   const mode     = document.getElementById('calc-mode').value;
+  const freq     = document.getElementById('calc-contrib-freq').value;
 
   const r = rate / 100;
 
@@ -6910,7 +6931,7 @@ function calcUpdate(){
   let months, totalDays;
   if(mode === 'target'){
     const target = parseMoney(document.getElementById('calc-target').value);
-    const res = _calcMonthsToTarget(start, monthly, r, cap, target);
+    const res = _calcMonthsToTarget(start, monthly, r, cap, target, freq);
     if(res === 0){
       document.getElementById('calc-result-prefix').textContent = 'Цель достигнута —';
       document.getElementById('calc-period-lbl').textContent = 'уже';
@@ -6945,7 +6966,7 @@ function calcUpdate(){
       months    = Math.max(1, Math.min(600, Math.round(duration * 12)));
       totalDays = Math.round(duration * 365);
     } else if(unit==='days'){
-      totalDays = Math.max(1, Math.round(duration));
+      totalDays = Math.max(1, Math.min(18262, Math.round(duration)));  // ≈600 мес — тот же потолок, что у мес/лет
       months    = Math.max(1, Math.round(totalDays / 30.4375));
     } else {
       months    = Math.max(1, Math.min(600, Math.round(duration)));
@@ -6968,10 +6989,13 @@ function calcUpdate(){
 
   let balance = start;
   let totalInvested = start;
+  let body = start, yearAccr = 0;  // для годовой капитализации
 
   for(let mo=1; mo<=months; mo++){
-    // Add monthly contribution at start of month
-    if(mo>1){ balance += monthly; totalInvested += monthly; }
+    // Add contribution at start of month (yearly: at start of each new year)
+    if(mo>1 && (freq==='yearly' ? (mo-1)%12===0 : true)){
+      balance += monthly; body += monthly; totalInvested += monthly;
+    }
 
     const frac = mo === months ? lastFrac : 1;
     // Apply interest for this month
@@ -6982,6 +7006,11 @@ function calcUpdate(){
       balance *= Math.pow(1 + r/365, 30.4375 * frac);
     } else if(cap==='monthly'){
       balance *= Math.pow(1 + r/12, frac);
+    } else if(cap==='yearly'){
+      // проценты внутри года не капитализируются; в тело — на границе года и при закрытии
+      yearAccr += body * (r / 12) * frac;
+      if(mo % 12 === 0 || mo === months){ body += yearAccr; yearAccr = 0; }
+      balance = body + yearAccr;
     }
 
     balances.push(Math.round(balance));
@@ -6991,7 +7020,7 @@ function calcUpdate(){
   const finalBalance  = balances[months-1] || 0;
   const finalInvested = invested[months-1]  || 0;
   const profit        = finalBalance - finalInvested;
-  const yearlyIncome  = months>=12 ? profit/(months/12) : profit*12/months;
+  const yearlyIncome  = profit * 12 / months;
 
   // Effective annual rate
   const effRate = finalInvested>0
