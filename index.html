@@ -305,7 +305,7 @@ if ('serviceWorker' in navigator) {
   <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
   <div id="goals-list" style="padding:0 16px 8px"></div>
   <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
-    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('calc')">
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('calc')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
       Прогноз накоплений
     </button>
@@ -334,23 +334,27 @@ if ('serviceWorker' in navigator) {
         <div class="s-lbl">Целевая сумма, ₽</div>
         <input type="text" id="calc-target" value="1 000 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
-      <div class="s-card">
+      <div class="s-card" style="grid-column:1/-1">
         <div class="s-lbl" style="display:flex;align-items:center;justify-content:space-between;gap:6px">Пополнение, ₽
-          <span style="display:flex;gap:3px" id="calc-contrib-btns">
-            <button class="cu-btn active" style="padding:2px 7px;font-size:10px" data-val="monthly" onclick="setCalcContribFreq('monthly',this)">/мес</button>
-            <button class="cu-btn" style="padding:2px 7px;font-size:10px" data-val="yearly" onclick="setCalcContribFreq('yearly',this)">/год</button>
+          <span style="display:flex;gap:4px" id="calc-contrib-btns">
+            <button class="cu-btn active" data-val="monthly" onclick="setCalcContribFreq('monthly',this)">в мес</button>
+            <button class="cu-btn" data-val="yearly" onclick="setCalcContribFreq('yearly',this)">в год</button>
           </span>
         </div>
         <input type="hidden" id="calc-contrib-freq" value="monthly"/>
-        <input type="text" id="calc-monthly" value="10 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
+        <input type="text" id="calc-monthly" value="10 000" inputmode="decimal" style="border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
       </div>
       <div class="s-card">
         <div class="s-lbl">Ставка, % год</div>
         <input type="number" id="calc-rate" value="12" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
       </div>
+      <div class="s-card">
+        <div class="s-lbl">Инфляция, % год</div>
+        <input type="number" id="calc-infl" value="0" inputmode="decimal" min="0" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="s-card" id="calc-duration-card" style="grid-column:1/-1">
+      <div class="s-card" id="calc-duration-card">
         <div class="s-lbl">Срок</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
           <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:20px;font-weight:700;background:transparent;width:52px;flex-shrink:0;letter-spacing:-0.5px;color:var(--text)" oninput="calcUpdate()"/>
@@ -362,7 +366,7 @@ if ('serviceWorker' in navigator) {
           <input type="hidden" id="calc-unit" value="months"/>
         </div>
       </div>
-      <div class="s-card">
+      <div class="s-card" id="calc-cap-card">
         <div class="s-lbl">Капитализация</div>
         <select id="calc-cap" style="margin-top:4px;border:none;padding:0;font-size:14px;font-weight:500;background:transparent;width:100%;-webkit-appearance:none" onchange="calcUpdate()">
           <option value="daily">Ежедневная</option>
@@ -370,10 +374,6 @@ if ('serviceWorker' in navigator) {
           <option value="yearly">Ежегодная</option>
           <option value="none">Без капитализации</option>
         </select>
-      </div>
-      <div class="s-card">
-        <div class="s-lbl">Инфляция, % год</div>
-        <input type="number" id="calc-infl" value="0" inputmode="decimal" min="0" style="margin-top:4px;border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
       </div>
     </div>
     <div class="chart-card" style="margin-top:2px">
@@ -393,7 +393,7 @@ if ('serviceWorker' in navigator) {
         <div style="display:flex;gap:10px;font-size:11px">
           <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:#185fa5;border-radius:2px;display:inline-block"></span>Итого</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:rgba(128,128,128,.6);border-radius:2px;display:inline-block"></span>Вложено</span>
-          <span style="display:none;align-items:center;gap:4px" id="calc-legend-real"><span style="width:10px;height:3px;background:var(--green);border-radius:2px;display:inline-block"></span>Сегодняшние ₽</span>
+          <span style="display:none;align-items:center;gap:4px" id="calc-legend-real"><span style="width:10px;height:3px;background:var(--green);border-radius:2px;display:inline-block"></span>Реальные ₽</span>
         </div>
       </div>
       <div style="position:relative;height:200px"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
@@ -1166,7 +1166,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.34.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.34.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6884,6 +6884,8 @@ function setCalcMode(mode){
   document.getElementById('calc-mode-target').classList.toggle('active', mode==='target');
   document.getElementById('calc-target-card').style.display   = mode==='target' ? '' : 'none';
   document.getElementById('calc-duration-card').style.display = mode==='period' ? '' : 'none';
+  // в режиме «К сумме» срок скрыт — капитализация занимает весь ряд
+  document.getElementById('calc-cap-card').style.gridColumn   = mode==='target' ? '1/-1' : '';
   calcUpdate();
 }
 
@@ -7092,7 +7094,7 @@ function calcUpdate(){
         datasets:[
           {label:'Итого',data:dataTotal,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,tension:0.3,pointRadius:0,borderWidth:2},
           {label:'Вложено',data:dataInvested,borderColor:_cc.mutedMid,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]},
-          ...(iR>0 ? [{label:'Сегодняшние ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
+          ...(iR>0 ? [{label:'Реальные ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
         ]
       },
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
