@@ -258,8 +258,8 @@ if ('serviceWorker' in navigator) {
 <!-- PAGE: ASSETS -->
 <div id="page-assets" class="page">
   <div class="hdr"><h1>Накопления</h1></div>
-  <div class="total-bar"><span class="total-lbl">Всего активов</span><span class="total-val" id="total-val">0 ₽</span></div>
-  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-banks-date"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
+  <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
+  <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div class="chart-wrap">
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -328,7 +328,8 @@ if ('serviceWorker' in navigator) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="s-card" style="grid-column:1/-1">
         <div class="s-lbl">Стартовая сумма, ₽</div>
-        <input type="text" id="calc-start" value="100 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);calcUpdate()"/>
+        <input type="text" id="calc-start" value="100 000" inputmode="decimal" style="margin-top:4px;border:none;padding:0;font-size:22px;font-weight:700;letter-spacing:-0.5px;background:transparent;width:100%;color:var(--text)" oninput="formatMoneyInput(this);_calcChipsManual();calcUpdate()"/>
+        <div id="calc-start-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
       </div>
       <div class="s-card" id="calc-target-card" style="grid-column:1/-1;display:none">
         <div class="s-lbl">Целевая сумма, ₽</div>
@@ -1166,7 +1167,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.34.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.35.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1616,8 +1617,11 @@ function showPage(name,btn){
   if(name==='stats') renderStats();
   if(name==='assets') renderAssets();
   if(name==='calc'){
-    const total = _getCurrentAssetsTotal();
+    const parts = _assetsParts().filter(p=>p.val>0);
+    _calcStartOn = new Set(parts.map(p=>p.key));
+    const total = parts.reduce((s,p)=>s+p.val,0);
     if(total > 0) setMoneyInput('calc-start', total);
+    _renderCalcStartChips();
     setTimeout(calcUpdate, 50);
   }
   if(name==='deposits') renderDeposits();
@@ -3786,12 +3790,12 @@ function renderAssets(){
     const depSumNow = liveDeps.reduce((s,d)=>s + (d.openDate && d.openDate > snapD ? 0 : depositValueAt(d,snapD)),0);
     const invSumNow = liveInvs.reduce((s,v)=>s+invValueAt(v,snapD),0);
     document.getElementById('total-val').innerHTML = fmtH(total + depSumNow + invSumNow);
+    document.getElementById('total-date').textContent =
+      lastSnapDate ? ' на '+lastSnapDate.slice(8,10)+'.'+lastSnapDate.slice(5,7) : '';
     const wdEl = document.getElementById('total-with-deps');
     if(wdEl){
       if(liveDeps.length || liveInvs.length || lastSnapDate){
         document.getElementById('total-banks-val').innerHTML = fmtH(total);
-        document.getElementById('total-banks-date').textContent =
-          lastSnapDate ? ' ('+lastSnapDate.slice(8,10)+'.'+lastSnapDate.slice(5,7)+')' : '';
         document.getElementById('total-deps-val').innerHTML = fmtH(depSumNow);
         document.getElementById('total-inv-val').innerHTML = fmtH(invSumNow);
         document.getElementById('total-deps-wrap').style.display = liveDeps.length ? '' : 'none';
@@ -4056,6 +4060,22 @@ function _getCurrentAssetsTotal(){
     total += (DB.creditBanks||[]).includes(name) ? -a.amount : a.amount;
   });
   return Math.max(0, Math.round(total));
+}
+
+// Части «Всего активов» на дату последнего снимка счетов — чипы
+// стартовой суммы прогноза. Новый тип актива — добавить строку сюда.
+function _assetsParts(){
+  const lastSnapDate = (DB.assets||[]).filter(a=>!a._deleted).reduce((m,a)=>a.date>m?a.date:m,'');
+  const snapD = lastSnapDate || today();
+  const deps = (DB.deposits||[]).filter(d=>!d._deleted)
+    .reduce((s,d)=>s + (d.openDate && d.openDate > snapD ? 0 : depositValueAt(d,snapD)),0);
+  const invs = (DB.investments||[]).filter(v=>!v._deleted)
+    .reduce((s,v)=>s+invValueAt(v,snapD),0);
+  return [
+    {key:'banks', label:'счета',      val:_getCurrentAssetsTotal()},
+    {key:'deps',  label:'вклады',     val:Math.round(deps)},
+    {key:'invs',  label:'инвестиции', val:Math.round(invs)}
+  ];
 }
 
 function openGoalModal(id){
@@ -6878,6 +6898,34 @@ function renderReport(){
 
 // ─── CALCULATOR ─────────────────────────────────────────────────────
 let chartCalc = null;
+
+// Чипы стартовой суммы: счета / вклады / инвестиции. Активные суммируются
+// в поле; ручной ввод сбрасывает выбор (значение остаётся ручным).
+let _calcStartOn = null; // Set активных ключей _assetsParts()
+
+function _renderCalcStartChips(){
+  const box = document.getElementById('calc-start-chips');
+  if(!box) return;
+  const parts = _assetsParts().filter(p=>p.val>0);
+  if(!parts.length){ box.style.display='none'; return; }
+  box.style.display = 'flex';
+  box.innerHTML = parts.map(p=>
+    `<button class="cu-btn${_calcStartOn && _calcStartOn.has(p.key) ? ' active' : ''}" style="flex:0 1 auto" onclick="_calcChipToggle('${p.key}')">${p.label} <span class="prv">${fmtShort(p.val)}</span></button>`
+  ).join('');
+}
+
+function _calcChipToggle(key){
+  if(!_calcStartOn) _calcStartOn = new Set();
+  if(_calcStartOn.has(key)) _calcStartOn.delete(key); else _calcStartOn.add(key);
+  const sum = _assetsParts().filter(p=>_calcStartOn.has(p.key)).reduce((s,p)=>s+p.val,0);
+  setMoneyInput('calc-start', sum);
+  _renderCalcStartChips();
+  calcUpdate();
+}
+
+function _calcChipsManual(){
+  if(_calcStartOn && _calcStartOn.size){ _calcStartOn = new Set(); _renderCalcStartChips(); }
+}
 
 
 function setCalcMode(mode){
