@@ -1214,7 +1214,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.37.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.37.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3888,13 +3888,13 @@ function closeSplit(){
 }
 
 let _editGraceId = null;
-function openGraceModal(id){
+function openGraceModal(id, presetBank){
   const banks = DB.creditBanks || [];
   if(!banks.length){ toast('Нет кредитных счетов — добавьте в «Управлять»', 'err'); return; }
   _editGraceId = id || null;
   const g = id ? (DB.credits||[]).find(c=>c.id===id && !c._deleted) : null;
   const sel = document.getElementById('grace-bank');
-  sel.innerHTML = banks.map(b=>`<option value="${esc(b)}"${g && g.bank===b?' selected':''}>${esc(b)}</option>`).join('');
+  sel.innerHTML = banks.map(b=>`<option value="${esc(b)}"${(g ? g.bank===b : presetBank===b)?' selected':''}>${esc(b)}</option>`).join('');
   document.getElementById('grace-end').value = g ? g.graceEnd : '';
   const amtEl = document.getElementById('grace-amount');
   if(g){
@@ -5538,6 +5538,23 @@ function openEditAssetDate(date, carryForward){
     lbl.innerHTML = '<div style="font-size:13px;color:'+(credit?'var(--red)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(bankName)+'</div>'
       + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">↻ перенесено — проверьте</div>' : '');
 
+    // Кредитная строка: памятка «это грейс или сплит?» — чисто информационно,
+    // открывает существующую модалку создания, в подсчёт сумм не входит
+    if(credit){
+      const tagRow = document.createElement('div');
+      tagRow.style.cssText = 'font-size:10px;color:var(--muted);margin-top:1px';
+      const graceLink = document.createElement('span');
+      graceLink.textContent = '🏷 грейс';
+      graceLink.style.cssText = 'cursor:pointer;text-decoration:underline;text-underline-offset:2px';
+      graceLink.addEventListener('click', ()=>_tagCreditSnapshot(bankName, 'grace'));
+      const splitLink = document.createElement('span');
+      splitLink.textContent = 'сплит';
+      splitLink.style.cssText = 'cursor:pointer;text-decoration:underline;text-underline-offset:2px;margin-left:6px';
+      splitLink.addEventListener('click', ()=>_tagCreditSnapshot(bankName, 'split'));
+      tagRow.append('отметить: ', graceLink, ' · ', splitLink);
+      lbl.appendChild(tagRow);
+    }
+
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.inputMode = 'decimal';
@@ -5620,7 +5637,9 @@ function openEditAssetDate(date, carryForward){
   openModal('modal-asset-edit');
 }
 
-function saveAssetEdit(){
+// Общая логика сохранения формы снимка — без closeModal/toast, чтобы
+// _tagCreditSnapshot могла сохранить и сразу перейти в грейс/сплит-модалку
+function _saveAssetEditRows(){
   if(!_editingAssetDate) return;
   const allBanks = getAllBanks();
   const date = _editingAssetDate;
@@ -5639,9 +5658,26 @@ function saveAssetEdit(){
   });
 
   saveDB();
+}
+
+function saveAssetEdit(){
+  if(!_editingAssetDate) return;
+  const date = _editingAssetDate;
+  _saveAssetEditRows();
   closeModal('modal-asset-edit');
   renderAssets();
   toast('Сохранено за ' + date);
+}
+
+// Тег «грейс / сплит» на кредитной строке снимка: сохраняет форму как есть
+// и открывает уже существующую модалку создания — само отслеживание
+// кредита/сплита не входит в подсчёт сумм, это чисто памятка «когда закрыть»
+function _tagCreditSnapshot(bankName, kind){
+  _saveAssetEditRows();
+  closeModal('modal-asset-edit');
+  renderAssets();
+  if(kind === 'grace') openGraceModal(null, bankName);
+  else openSplitModal();
 }
 
 function deleteAssetDateConfirm(){
