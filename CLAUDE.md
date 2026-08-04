@@ -68,6 +68,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
   deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений
   investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод; invValueAt = последний снимок ≤ даты + пополнения после него
+  credits:         [{id, kind:'grace', bank, payoffAmount, graceEnd, _deleted?} | {id, kind:'split', name, payments:[{date,amount,paid}], _deleted?}, ...],  // грейс кредиток + BNPL-сплиты; информационные, в итоги активов не входят
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
   listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
@@ -115,7 +116,8 @@ Each tab has a `render*()` function called after any data change:
 - **`_buildAssetSeries()`** is the single source for chart, history table and audit: per-snapshot-date `bankSeries` (carry-forward — a bank without a record on a date uses its last known record) and `depSeries` (deposits from `openDate`, soft-deleted ones counted until their local deletion day `_depDelDay(d)` — closing a deposit doesn't retroactively dent history). The «банки / +вклады» chart toggle (`setAssetsChartDeps`, device-local `localStorage.assetsChartDeps`) adds `depSeries` to the line; the history table ignores the toggle and always shows Дата | Счета | Вклады | Всего | Δ.
 - **Snapshot modal semantics** (`openAssetSnapshot` → `openEditAssetDate(date, carryForward)`): editable «Дата снимка» field (max today) allows backdated snapshots; pre-fills carry-forward values flagged «↻ перенесено». **Empty input = no record** (carry-forward continues; amber «∅ записи не будет…» tag), **explicit 0 = real zero record** (green «✕ обнулён этой датой» tag, only when the last record before the date was non-zero); per-row round «0» button. On save, all previous records for the date are tombstoned and non-empty inputs re-added.
 - Data audit (Settings → «Проверка данных», `openDataAudit`): ghost bank records (merge/delete), duplicate bank+date records (keep max `updatedAt`), deposit/snapshot date warnings, and **period reconciliation** — per snapshot period, asset delta vs (incomes − expenses) with running cumulative; mirrored ±X pairs in adjacent periods mean a date shift (harmless), a persistent cumulative shift means unaccounted money.
-- Notifications: `checkBudgetNotifications` (limit threshold, call after saving an expense), `checkAssetNotification` (1st/16th + stale snapshot >14 days, re-fires every 3 days), `checkDepositNotifications` (closes in ≤3 days or matured; 3-day per-deposit stamp). All gated by `DB.notifsEnabled` + granted permission.
+- **Кредиты (грейс + сплиты)** — `DB.credits`, информационный блок: грейс-бейдж на строке кредитного банка (тап → `openGraceModal`), секция «Кредиты» со сплитами (`renderCredits`, `openSplitView`, ручные галки оплаты). График платежей сплита генерится в модалке (`_splitRegen`, чипы неделя/2 недели/месяц, тумблер «первая сразу»), строки редактируются до сохранения. `checkCreditNotifications` — грейс ≤3 дн, платёж сплита завтра/просрочен.
+- Notifications: `checkBudgetNotifications` (limit threshold, call after saving an expense), `checkAssetNotification` (1st/16th + stale snapshot >14 days, re-fires every 3 days), `checkDepositNotifications` (closes in ≤3 days or matured; 3-day per-deposit stamp), `checkCreditNotifications` (grace ≤3 days or split payment due tomorrow/overdue, 3-day per-record stamp). All gated by `DB.notifsEnabled` + granted permission.
 
 ### Sync — `═══ sync.js ═══` + `apps-script/Code.gs`
 
@@ -125,7 +127,7 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, plus `listsMeta` (LWW timestamps).
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, plus `listsMeta` (LWW timestamps).
 
 **What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty`.
 

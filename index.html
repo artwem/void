@@ -1214,7 +1214,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.36.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.37.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6467,6 +6467,36 @@ function checkDepositNotifications(){
   });
 }
 
+function checkCreditNotifications(){
+  if(!DB.notifsEnabled || Notification.permission !== 'granted') return;
+  const td = today();
+  (DB.credits||[]).filter(c=>!c._deleted).forEach(c=>{
+    let title = null, body = null;
+    if(c.kind === 'grace'){
+      const dl = _graceDaysLeft(c);
+      if(dl > 3) return;
+      title = 'Кредитка: ' + c.bank;
+      body = dl >= 0
+        ? 'Грейс кончается ' + (dl === 0 ? 'сегодня' : 'через ' + dl + ' дн. (' + _fmtDateRu(c.graceEnd) + ')') + ' — погасить ' + fmt(c.payoffAmount)
+        : 'Грейс просрочен с ' + _fmtDateRu(c.graceEnd) + ' — ' + fmt(c.payoffAmount);
+    } else {
+      const p = _splitNextPayment(c);
+      if(!p) return;
+      const dl = Math.ceil((new Date(p.date) - new Date(td))/86400000);
+      if(dl > 1) return;
+      title = 'Сплит: ' + c.name;
+      body = dl >= 0
+        ? 'Платёж ' + fmt(p.amount) + (dl === 0 ? ' сегодня' : ' завтра')
+        : 'Платёж ' + fmt(p.amount) + ' просрочен (' + _fmtDateRu(p.date) + ')';
+    }
+    const stampKey = 'notif_credit_' + c.id;
+    const stamp = localStorage.getItem(stampKey);
+    if(stamp && (Date.now() - parseInt(stamp)) < 3*86400000) return;
+    localStorage.setItem(stampKey, String(Date.now()));
+    new Notification(title, {body, icon: './apple-touch-icon.png'});
+  });
+}
+
 function exportExcel(){
   if(!window.XLSX){ toast('Библиотека XLSX не загружена'); return; }
   const X = window.XLSX;
@@ -7563,6 +7593,7 @@ function init(){
   renderBudget();
   checkAssetNotification();
   checkDepositNotifications();
+  checkCreditNotifications();
   // Auto-sync on start if URL configured
   initSyncWidget();
   if(DB.syncUrl){ syncCycle(); startAutoSync(); }
