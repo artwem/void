@@ -3742,6 +3742,11 @@ function saveGrace(){
   let g = _editGraceId
     ? (DB.credits||[]).find(c=>c.id===_editGraceId)
     : (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank);
+  if(_editGraceId && g){
+    // при редактировании смена банка не должна создавать дубликат активного грейса на целевом банке
+    const collision = (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank && c.id!==g.id);
+    if(collision){ toast('У этого банка уже есть грейс', 'err'); return; }
+  }
   if(g){
     g.bank = bank; g.payoffAmount = amount; g.graceEnd = end; g.updatedAt = Date.now();
     delete g._deleted;
