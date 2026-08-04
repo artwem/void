@@ -293,7 +293,7 @@ if ('serviceWorker' in navigator) {
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
   <div class="sec-hdr" id="credits-sec-hdr" style="margin-top:8px"><span class="sec-title">Кредиты</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openGraceModal()">+ Грейс</span><span class="sec-action" onclick="openSplitModal()">+ Сплит</span></span></div>
-  <div id="credits-list" style="padding:0 16px 8px"></div>
+  <div id="credits-list" style="padding:0 16px 8px;display:flex;flex-direction:column;gap:5px"></div>
   <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
     <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('deposits')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -3839,7 +3839,7 @@ function openSplitView(id){
 
 function _renderSplitView(c){
   document.getElementById('split-view-title').textContent = c.name;
-  const paidCnt = c.payments.filter(p=>p.paid).length;
+  const paidCnt = (c.payments||[]).filter(p=>p.paid).length;
   document.getElementById('split-view-sub').innerHTML =
     `оплачено ${paidCnt}/${c.payments.length} · осталось ${fmtH(_splitRemains(c))}`;
   const td = today();
@@ -3892,10 +3892,13 @@ function saveGrace(){
   if(!end){ toast('Укажите дату конца грейса', 'err'); return; }
   if(amount <= 0){ toast('Укажите сумму', 'err'); return; }
   // одна активная запись на банк: редактируем существующую, если есть
-  let g = _editGraceId
-    ? (DB.credits||[]).find(c=>c.id===_editGraceId)
-    : (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank);
-  if(_editGraceId && g){
+  let g = _editGraceId ? (DB.credits||[]).find(c=>c.id===_editGraceId) : null;
+  if(!g){
+    // нет записи по id (новый грейс, либо запись удалена удалённо во время редактирования) —
+    // ищем активную по банку, чтобы не создать дубликат
+    g = (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank);
+  }
+  if(_editGraceId && g && g.id===_editGraceId){
     // при редактировании смена банка не должна создавать дубликат активного грейса на целевом банке
     const collision = (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank && c.id!==g.id);
     if(collision){ toast('У этого банка уже есть грейс', 'err'); return; }
@@ -3919,23 +3922,36 @@ function renderCredits(){
   const wrap = document.getElementById('credits-list');
   if(!wrap) return;
   wrap.innerHTML = '';
+  const graces = (DB.credits||[]).filter(c=>!c._deleted && c.kind==='grace')
+    .sort((a,b)=>(a.graceEnd||'').localeCompare(b.graceEnd||''));
   const splits = (DB.credits||[]).filter(c=>!c._deleted && c.kind==='split')
     .sort((a,b)=>{ const pa=_splitNextPayment(a), pb=_splitNextPayment(b); return (pa?pa.date:'9999').localeCompare(pb?pb.date:'9999'); });
-  if(!splits.length){
-    wrap.innerHTML = '<div style="font-size:12px;color:var(--hint);padding:4px 0">Нет активных сплитов</div>';
+  if(!graces.length && !splits.length){
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--hint);padding:4px 0">Нет активных кредитов</div>';
     return;
   }
   const td = today();
+  graces.forEach(g => {
+    const dl = _graceDaysLeft(g);
+    const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? '#c98a1b' : 'var(--muted)';
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    row.style.cssText = 'gap:8px;cursor:pointer';
+    row.addEventListener('click', () => openGraceModal(g.id));
+    const sub = `<div style="font-size:11px;color:${col};margin-top:2px">до ${_fmtDateRu(g.graceEnd)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(g.bank)}<span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">грейс</span></div>${sub}</div><span class="asset-amount">${fmtH(g.payoffAmount)}</span>`;
+    wrap.appendChild(row);
+  });
   splits.forEach(c => {
     const next = _splitNextPayment(c);
-    const paidCnt = c.payments.filter(p=>p.paid).length;
+    const paidCnt = (c.payments||[]).filter(p=>p.paid).length;
     const overdue = next && next.date < td;
     const row = document.createElement('div');
     row.className = 'asset-row';
     row.style.cssText = 'gap:8px;cursor:pointer';
     row.addEventListener('click', () => openSplitView(c.id));
     const sub = next
-      ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">осталось ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
+      ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">оплачено ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
       : `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ всё оплачено — можно закрыть</div>`;
     row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span style="font-size:10px;background:rgba(128,128,128,0.12);color:var(--muted);padding:1px 5px;border-radius:4px;margin-left:4px">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
     wrap.appendChild(row);
@@ -5353,6 +5369,7 @@ function saveBankName(type, i){
   // Update bankName in all assets (+ штамп, чтобы rename пережил LWW-merge)
   const now = Date.now();
   DB.assets.forEach(a => { if(a.bankName === oldName){ a.bankName = newName; a.updatedAt = now; } });
+  (DB.credits||[]).forEach(c => { if(c.kind==='grace' && c.bank===oldName){ c.bank=newName; c.updatedAt=Date.now(); } });
   saveDB();
   renderBankManager();
   renderAssets();
@@ -5413,6 +5430,8 @@ function removeBank(type, i){
   if(hasHistory){ toast('Нельзя удалить: у банка есть история данных'); return; }
   // Legacy-записи хранят индекс в getAllBanks() — материализуем имена до сдвига массива
   (DB.assets||[]).forEach(a => { if(!a.bankName && a.bank != null) a.bankName = allBanks[a.bank] || String(a.bank); });
+  // Живой грейс на удаляемом банке становится недостижимым — гасим его вместе с банком
+  (DB.credits||[]).forEach(c => { if(c.kind==='grace' && !c._deleted && c.bank===bankName){ c._deleted=true; c.payoffAmount=0; c.updatedAt=Date.now(); } });
   arr.splice(i, 1);
   touchList(type === 'credit' ? 'creditBanks' : 'banks');
   saveDB();
