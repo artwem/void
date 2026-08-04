@@ -1167,7 +1167,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.35.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.36.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3278,6 +3278,17 @@ function renderStats(){
     );
     const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
 
+    // Прогноз до конца месяца: линейно от сегодняшней точки при текущем темпе.
+    // Только текущий месяц + режим «весь месяц» — иначе будущих дней на оси нет.
+    let projLine = null, projTotal = null;
+    if (isCurrentMonth && showFull && (selCum[cD - 1] || 0) > 0 && cD < daysInSel) {
+      const pace = selCum[cD - 1] / cD;
+      projLine = Array.from({length: displayDays}, (_, i) =>
+        i < cD - 1 ? null : Math.round(pace * (i + 1)));
+      projLine[cD - 1] = selCum[cD - 1]; // старт из фактической точки
+      projTotal = projLine[displayDays - 1];
+    }
+
     const avgIdx = Math.min(maxDaySel, displayDays) - 1;
     const selTotal = selCum[avgIdx] || 0;
     const prevTotal = prevCum[Math.min(avgIdx, daysInPrev - 1)] || 0;
@@ -3349,7 +3360,19 @@ function renderStats(){
             cubicInterpolationMode: 'monotone',
             spanGaps: false,
             fill: true
-          }
+          },
+          ...(projLine ? [{
+            label: 'Прогноз',
+            data: projLine,
+            borderColor: _chartColors().blue,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [5, 4],
+            pointRadius: 0,
+            cubicInterpolationMode: 'monotone',
+            spanGaps: false,
+            fill: false
+          }] : [])
         ]
       },
       options: {
@@ -3386,6 +3409,18 @@ function renderStats(){
       html += `Среднее за ${histMonthCount} мес.: <b style="color:var(--text)">${fmtH(avgHist)}</b> — `;
       html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmtH(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
       html += `</div>`;
+    }
+    if (projTotal !== null) {
+      const budget = (getLimits(selY, selM) || []).reduce((s, v) => s + (v || 0), 0);
+      let projHtml = `Прогноз на конец месяца: <b style="color:var(--text)">${fmtH(projTotal)}</b>`;
+      if (budget > 0) {
+        const over = projTotal - budget;
+        const bCol = over > 0 ? '#d85a30' : '#1d9e75';
+        projHtml += over > 0
+          ? ` — <span style="color:${bCol};font-weight:600">+${fmtH(over)} к бюджету</span>`
+          : ` — <span style="color:${bCol};font-weight:600">в рамках бюджета ${fmtH(budget)}</span>`;
+      }
+      html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">${projHtml}</div>`;
     }
     sumEl.innerHTML = html;
   }
