@@ -1338,6 +1338,7 @@ function loadDB(){
   if(!DB.templates) DB.templates = [];
   if(!DB.deposits) DB.deposits = [];
   if(!DB.investments) DB.investments = [];
+  if(!DB.credits) DB.credits = [];
   if(!DB.listsMeta) DB.listsMeta = {};
   if(!DB._lastSyncedLimits) DB._lastSyncedLimits = {};
   // privacyMode — device-local, не синкается
@@ -1353,7 +1354,7 @@ function loadDB(){
   }
   // Purge tombstones older than 90 days — even slow devices have synced by then
   const _cut = Date.now() - 90*24*3600*1000;
-  ['expenses','incomes','assets','goals','templates','deposits','investments'].forEach(k => {
+  ['expenses','incomes','assets','goals','templates','deposits','investments','credits'].forEach(k => {
     if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && (it.updatedAt||0) < _cut));
   });
   _ensureCatIds(); // миграция: раздать id категориям и catId записям
@@ -3688,6 +3689,17 @@ function getAllBanks(){ return [...(DB.banks||[]), ...(DB.creditBanks||[])]; }
 
 function isCredit(bankName){
   return (DB.creditBanks||[]).includes(bankName);
+}
+
+// ─── Кредиты: грейс-периоды и сплиты ─────────────────────────────────
+function _splitNextPayment(c){
+  return (c.payments||[]).filter(p=>!p.paid).sort((a,b)=>a.date.localeCompare(b.date))[0] || null;
+}
+function _splitRemains(c){
+  return (c.payments||[]).filter(p=>!p.paid).reduce((s,p)=>s+p.amount,0);
+}
+function _graceDaysLeft(c){
+  return Math.ceil((new Date(c.graceEnd) - new Date(today()))/86400000);
 }
 
 function renderAssetsHistory(rows, showAll){
@@ -6053,7 +6065,7 @@ function _applyRestoredData(d, makeAuthoritative){
   DB.theme = curTheme; DB.privacyMode = curPrivacy;
   if(makeAuthoritative){
     const now = Date.now();
-    ['expenses','incomes','assets','goals','templates','deposits'].forEach(k => {
+    ['expenses','incomes','assets','goals','templates','deposits','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
     ['categories','banks','creditBanks','incomeTags'].forEach(l => touchList(l));
@@ -6508,6 +6520,7 @@ function doClearData(){
   DB.catColors   = {...DEFAULT_COLORS};
   DB.banks       = [];
   DB.creditBanks = [];
+  DB.credits     = [];
   DB.syncUrl     = '';
   saveSyncUrlEverywhere('');
   DB.syncToken   = '';
@@ -7377,7 +7390,7 @@ function mergePullData(d){
 
   // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
   // Pull идёт до push, поэтому при равенстве побеждает локальное (строгое >).
-  ['expenses','incomes','assets','goals','templates','deposits','investments'].forEach(key => {
+  ['expenses','incomes','assets','goals','templates','deposits','investments','credits'].forEach(key => {
     if(!d[key]) return;
     const map = new Map();
     (DB[key]||[]).forEach(it => { if(it && it.id != null) map.set(it.id, it); });
