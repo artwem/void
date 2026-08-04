@@ -1171,6 +1171,38 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- MODAL: SPLIT (создание) -->
+<div class="overlay" id="modal-split">
+  <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
+    <button class="close-btn" onclick="closeModal('modal-split')">✕</button>
+    <h2 style="margin-bottom:16px">Новый сплит</h2>
+    <div class="fgrp"><label class="flbl">Название</label><input type="text" id="split-name" class="finp" placeholder="Яндекс Сплит — куртка"></div>
+    <div class="fgrp"><label class="flbl">Общая сумма, ₽</label><input type="text" id="split-total" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this);_splitRegen()"></div>
+    <div class="fgrp"><label class="flbl">Частей</label><input type="number" id="split-parts" class="finp" value="4" min="1" max="24" oninput="_splitRegen()"></div>
+    <div class="fgrp"><label class="flbl">Интервал</label>
+      <div style="display:flex;gap:0;font-size:12px;border:1px solid var(--border);border-radius:6px;width:fit-content;user-select:none">
+        <span id="siv-week" onclick="setSplitInterval('week')" style="padding:4px 10px;cursor:pointer;border-radius:5px 0 0 5px">неделя</span><span id="siv-biweek" onclick="setSplitInterval('biweek')" style="padding:4px 10px;cursor:pointer;border-left:1px solid var(--border)">2 недели</span><span id="siv-month" onclick="setSplitInterval('month')" style="padding:4px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 5px 5px 0">месяц</span>
+      </div>
+    </div>
+    <div class="fgrp"><label class="flbl">Дата покупки</label><input type="date" id="split-buy-date" class="finp" onchange="_splitRegen()"></div>
+    <div class="fgrp" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="split-first-now" checked onchange="_splitRegen()" style="width:auto"><label for="split-first-now" style="font-size:13px;color:var(--text)">Первая оплата сразу</label></div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 6px">График платежей — можно править</div>
+    <div id="split-gen-list"></div>
+    <button class="btn primary" onclick="saveSplit()" style="width:100%;margin-top:8px">Сохранить</button>
+  </div>
+</div>
+
+<!-- MODAL: SPLIT (просмотр/оплата) -->
+<div class="overlay" id="modal-split-view">
+  <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
+    <button class="close-btn" onclick="closeModal('modal-split-view')">✕</button>
+    <h2 id="split-view-title" style="margin-bottom:4px">Сплит</h2>
+    <div id="split-view-sub" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+    <div id="split-view-list"></div>
+    <button class="btn" onclick="closeSplit()" style="width:100%;margin-top:12px;color:var(--red)">Закрыть сплит</button>
+  </div>
+</div>
+
 <!-- MODAL: ABOUT -->
 <div class="overlay" id="modal-about">
   <div class="sheet" style="position:relative">
@@ -3717,6 +3749,127 @@ function _graceDaysLeft(c){
   return Math.ceil((new Date(c.graceEnd) - new Date(today()))/86400000);
 }
 
+// ─── Сплиты ──────────────────────────────────────────────────────────
+let _splitGenPayments = [];
+let _splitInterval = 'biweek';   // 'week' | 'biweek' | 'month'
+let _viewSplitId = null;
+
+function setSplitInterval(iv){
+  _splitInterval = iv;
+  ['week','biweek','month'].forEach(k=>{
+    const el = document.getElementById('siv-'+k);
+    el.style.background = k===iv ? 'rgba(128,128,128,0.18)' : '';
+    el.style.color      = k===iv ? 'var(--text)' : '#888';
+  });
+  _splitRegen();
+}
+
+function _splitShiftDate(startStr, i){
+  const d = new Date(startStr + 'T12:00:00');
+  if(_splitInterval === 'month'){
+    const day = d.getDate();
+    const t = new Date(d.getFullYear(), d.getMonth() + i, 1);
+    const dim = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+    t.setDate(Math.min(day, dim)); // 31-е в коротких месяцах прижимается
+    return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  }
+  d.setDate(d.getDate() + (_splitInterval === 'week' ? 7 : 14) * i);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function _splitRegen(){
+  const total = parseMoney(document.getElementById('split-total').value) || 0;
+  const parts = parseInt(document.getElementById('split-parts').value) || 0;
+  const buy   = document.getElementById('split-buy-date').value || today();
+  const firstNow = document.getElementById('split-first-now').checked;
+  if(total <= 0 || parts < 1 || parts > 24){ _splitGenPayments = []; _splitRenderGenList(); return; }
+  const base = Math.floor(total / parts);
+  _splitGenPayments = Array.from({length: parts}, (_, i) => ({
+    date: _splitShiftDate(buy, firstNow ? i : i + 1),
+    amount: i === parts - 1 ? total - base * (parts - 1) : base,  // последний забирает округление
+    paid: false
+  }));
+  _splitRenderGenList();
+}
+
+function _splitRenderGenList(){
+  const el = document.getElementById('split-gen-list');
+  if(!_splitGenPayments.length){ el.innerHTML = '<div style="font-size:12px;color:var(--hint)">Заполните сумму и число частей</div>'; return; }
+  el.innerHTML = _splitGenPayments.map((p, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span style="font-size:12px;color:var(--muted);width:16px;flex-shrink:0">${i+1}</span>
+      <input type="date" value="${p.date}" class="finp" style="flex:1;margin:0" onchange="_splitGenPayments[${i}].date=this.value">
+      <input type="text" value="${fmt(p.amount).replace('₽','').trim()}" class="finp" inputmode="decimal" style="width:100px;margin:0;text-align:right" oninput="formatMoneyInput(this);_splitGenPayments[${i}].amount=parseMoney(this.value)||0;_splitGenTotal()">
+    </div>`).join('') + `<div id="split-gen-total" style="font-size:12px;color:var(--muted);text-align:right;padding:2px 0"></div>`;
+  _splitGenTotal();
+}
+
+function _splitGenTotal(){
+  const el = document.getElementById('split-gen-total');
+  if(el) el.textContent = 'Итого: ' + fmt(_splitGenPayments.reduce((s,p)=>s+p.amount,0));
+}
+
+function openSplitModal(){
+  document.getElementById('split-name').value = '';
+  document.getElementById('split-total').value = '';
+  document.getElementById('split-parts').value = '4';
+  document.getElementById('split-buy-date').value = today();
+  document.getElementById('split-first-now').checked = true;
+  _splitGenPayments = [];
+  setSplitInterval('biweek'); // подсветка чипа + regen (даст пустой список)
+  openModal('modal-split');
+}
+
+function saveSplit(){
+  const name = document.getElementById('split-name').value.trim();
+  if(!name){ toast('Введите название', 'err'); return; }
+  if(!_splitGenPayments.length){ toast('Заполните сумму и число частей', 'err'); return; }
+  if(_splitGenPayments.some(p => !p.date || !(p.amount > 0))){ toast('Проверьте график: даты и суммы', 'err'); return; }
+  DB.credits.push({id: uid(), kind: 'split', name, payments: _splitGenPayments.map(p => ({...p})), updatedAt: Date.now()});
+  saveDB(); closeModal('modal-split'); renderAssets(); toast('Сплит добавлен');
+}
+
+function openSplitView(id){
+  const c = (DB.credits||[]).find(x => x.id === id && !x._deleted);
+  if(!c) return;
+  _viewSplitId = id;
+  _renderSplitView(c);
+  openModal('modal-split-view');
+}
+
+function _renderSplitView(c){
+  document.getElementById('split-view-title').textContent = c.name;
+  const paidCnt = c.payments.filter(p=>p.paid).length;
+  document.getElementById('split-view-sub').innerHTML =
+    `оплачено ${paidCnt}/${c.payments.length} · осталось ${fmtH(_splitRemains(c))}`;
+  const td = today();
+  document.getElementById('split-view-list').innerHTML = c.payments.map((p, i) => {
+    const overdue = !p.paid && p.date < td;
+    const col = p.paid ? 'var(--muted)' : overdue ? 'var(--red)' : 'var(--text)';
+    return `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <input type="checkbox" ${p.paid?'checked':''} onchange="toggleSplitPaid('${c.id}',${i})" style="width:18px;height:18px;flex-shrink:0">
+      <span style="flex:1;font-size:13px;color:${col};${p.paid?'text-decoration:line-through':''}">${_fmtDateRu(p.date)}${overdue?' · просрочен':''}</span>
+      <span style="font-size:13px;font-weight:600;color:${col}">${fmtH(p.amount)}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleSplitPaid(id, idx){
+  const c = (DB.credits||[]).find(x => x.id === id);
+  if(!c || !c.payments[idx]) return;
+  c.payments[idx].paid = !c.payments[idx].paid;
+  c.updatedAt = Date.now();
+  saveDB(); _renderSplitView(c); renderCredits();
+}
+
+function closeSplit(){
+  const c = (DB.credits||[]).find(x => x.id === _viewSplitId);
+  if(!c) return;
+  c._deleted = true; c.updatedAt = Date.now();
+  saveDB(); closeModal('modal-split-view'); renderAssets();
+  toastUndo('Сплит закрыт', () => { delete c._deleted; c.updatedAt = Date.now(); saveDB(); renderAssets(); });
+}
+
 let _editGraceId = null;
 function openGraceModal(id){
   const banks = DB.creditBanks || [];
@@ -3772,7 +3925,21 @@ function renderCredits(){
     wrap.innerHTML = '<div style="font-size:12px;color:var(--hint);padding:4px 0">Нет активных сплитов</div>';
     return;
   }
-  // строки сплитов — Task 5
+  const td = today();
+  splits.forEach(c => {
+    const next = _splitNextPayment(c);
+    const paidCnt = c.payments.filter(p=>p.paid).length;
+    const overdue = next && next.date < td;
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    row.style.cssText = 'gap:8px;cursor:pointer';
+    row.addEventListener('click', () => openSplitView(c.id));
+    const sub = next
+      ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">осталось ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
+      : `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ всё оплачено — можно закрыть</div>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span style="font-size:10px;background:rgba(128,128,128,0.12);color:var(--muted);padding:1px 5px;border-radius:4px;margin-left:4px">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
+    wrap.appendChild(row);
+  });
 }
 
 function renderAssetsHistory(rows, showAll){
