@@ -19,17 +19,16 @@ python3 -m http.server 8080
 node -e "const html=require('fs').readFileSync('index.html','utf8');const re=/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g;let m,ok=true;while((m=re.exec(html))){try{new Function(m[1])}catch(e){ok=false;console.log('FAIL:',e.message)}};console.log(ok?'syntax OK':'ERRORS')"
 ```
 
-## Critical: index.html Is the Only Real Source
+## Critical: index.html Is the Only Source
 
-**`index.html` is the authoritative source.** The `js/*.js`, `nav.html`, `pages.html`, `modals.html` files exist only as inputs to `build.sh` (Netlify single-file bundle) and are **stale** — features since ~v1.16 (deposits, contributions, data audit, annual report…) exist only in `index.html`. Editing `js/*.js` has zero effect on dev or the GitHub Pages deploy. Do not run `./build.sh` expecting a current app until those files are re-synced from `index.html`.
-
-Each JS module is inlined in `index.html` with a section marker comment:
+**`index.html` is the authoritative and only JS source.** All modules are inlined with section marker comments:
 ```
 // ═══ db.js ═══      // ═══ nav.js ═══     // ═══ budget.js ═══
 // ═══ day.js ═══     // ═══ income.js ═══  // ═══ assets.js ═══
 // ═══ stats.js ═══   // ═══ calc.js ═══    // ═══ settings.js ═══
 // ═══ sync.js ═══    // ═══ init.js ═══
 ```
+(Historic `js/*.js` build inputs and `build.sh` were removed in Aug 2026.)
 
 **`css/app.css` is the exception** — loaded directly via `<link rel="stylesheet" href="css/app.css?v=X.Y.Z">` (~line 25 of `index.html`), so CSS edits go to `css/app.css` even in dev mode. Every CSS change must bump the `?v=` query string, otherwise iOS PWAs keep serving stale CSS.
 
