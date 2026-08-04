@@ -292,6 +292,8 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
   <div class="settings-list" id="assets-list"></div>
+  <div class="sec-hdr" id="credits-sec-hdr" style="margin-top:8px"><span class="sec-title">Кредиты</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openGraceModal()">+ Грейс</span><span class="sec-action" onclick="openSplitModal()">+ Сплит</span></span></div>
+  <div id="credits-list" style="padding:0 16px 8px"></div>
   <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
     <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('deposits')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1155,6 +1157,19 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: GRACE -->
+<div class="overlay" id="modal-grace">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-grace')">✕</button>
+    <h2 style="margin-bottom:16px">Грейс-период</h2>
+    <div class="fgrp"><label class="flbl">Кредитка</label><select id="grace-bank" class="finp"></select></div>
+    <div class="fgrp"><label class="flbl">Погасить до</label><input type="date" id="grace-end" class="finp"></div>
+    <div class="fgrp"><label class="flbl">Сумма к погашению, ₽</label><input type="text" id="grace-amount" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this)"></div>
+    <button class="btn primary" onclick="saveGrace()" style="width:100%;margin-top:8px">Сохранить</button>
+    <button class="btn" id="grace-payoff-btn" onclick="payoffGrace()" style="width:100%;margin-top:8px;display:none;color:var(--green)">✓ Погашено</button>
+  </div>
+</div>
 
 <!-- MODAL: ABOUT -->
 <div class="overlay" id="modal-about">
@@ -3702,6 +3717,59 @@ function _graceDaysLeft(c){
   return Math.ceil((new Date(c.graceEnd) - new Date(today()))/86400000);
 }
 
+let _editGraceId = null;
+function openGraceModal(id){
+  const banks = DB.creditBanks || [];
+  if(!banks.length){ toast('Нет кредитных счетов — добавьте в «Управлять»', 'err'); return; }
+  _editGraceId = id || null;
+  const g = id ? (DB.credits||[]).find(c=>c.id===id && !c._deleted) : null;
+  const sel = document.getElementById('grace-bank');
+  sel.innerHTML = banks.map(b=>`<option value="${esc(b)}"${g && g.bank===b?' selected':''}>${esc(b)}</option>`).join('');
+  document.getElementById('grace-end').value = g ? g.graceEnd : '';
+  const amtEl = document.getElementById('grace-amount');
+  amtEl.value = g ? String(g.payoffAmount) : '';
+  if(g) formatMoneyInput(amtEl);
+  document.getElementById('grace-payoff-btn').style.display = g ? '' : 'none';
+  openModal('modal-grace');
+}
+function saveGrace(){
+  const bank = document.getElementById('grace-bank').value;
+  const end = document.getElementById('grace-end').value;
+  const amount = parseMoney(document.getElementById('grace-amount').value) || 0;
+  if(!end){ toast('Укажите дату конца грейса', 'err'); return; }
+  if(amount <= 0){ toast('Укажите сумму', 'err'); return; }
+  // одна активная запись на банк: редактируем существующую, если есть
+  let g = _editGraceId
+    ? (DB.credits||[]).find(c=>c.id===_editGraceId)
+    : (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===bank);
+  if(g){
+    g.bank = bank; g.payoffAmount = amount; g.graceEnd = end; g.updatedAt = Date.now();
+    delete g._deleted;
+  } else {
+    DB.credits.push({id: uid(), kind:'grace', bank, payoffAmount: amount, graceEnd: end, updatedAt: Date.now()});
+  }
+  saveDB(); closeModal('modal-grace'); renderAssets(); toast('Грейс сохранён');
+}
+function payoffGrace(){
+  const g = (DB.credits||[]).find(c=>c.id===_editGraceId);
+  if(!g) return;
+  g._deleted = true; g.payoffAmount = 0; g.updatedAt = Date.now();
+  saveDB(); closeModal('modal-grace'); renderAssets(); toast('Грейс погашен ✓');
+}
+
+function renderCredits(){
+  const wrap = document.getElementById('credits-list');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  const splits = (DB.credits||[]).filter(c=>!c._deleted && c.kind==='split')
+    .sort((a,b)=>{ const pa=_splitNextPayment(a), pb=_splitNextPayment(b); return (pa?pa.date:'9999').localeCompare(pb?pb.date:'9999'); });
+  if(!splits.length){
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--hint);padding:4px 0">Нет активных сплитов</div>';
+    return;
+  }
+  // строки сплитов — Task 5
+}
+
 function renderAssetsHistory(rows, showAll){
   const tbl = document.getElementById('assets-history-table');
   if(!tbl) return;
@@ -3885,7 +3953,16 @@ function renderAssets(){
     } else {
       freshLine = `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`;
     }
-    namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine;
+    let graceLine = '';
+    if(credit){
+      const g = (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===name);
+      if(g){
+        const dl = _graceDaysLeft(g);
+        const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? '#c98a1b' : 'var(--muted)';
+        graceLine = `<div style="font-size:11px;color:${col};margin-top:2px" onclick="event.stopPropagation();openGraceModal('${g.id}')">грейс до ${_fmtDateRu(g.graceEnd)} · ${fmtH(g.payoffAmount)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
+      }
+    }
+    namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine + graceLine;
     const amtSpan = document.createElement('span');
     amtSpan.className = 'asset-amount';
     amtSpan.style.color = credit ? 'var(--red)' : '';
@@ -4007,6 +4084,7 @@ function renderAssets(){
   }
   renderSavingsCharts();
   renderGoals();
+  renderCredits();
 }
 
 // ─── GOALS ──────────────────────────────────────────────────────────
