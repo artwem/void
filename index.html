@@ -1214,7 +1214,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3426,21 +3426,26 @@ function renderStats(){
 
     // Прогноз до конца месяца: линейный темп по НЕособым тратам от сегодняшней
     // точки + прогноз особых по категориям (угаданная дата или размазка остатка
-    // резерва по оставшимся дням). Следует тумблеру dayInclSpecial — выключен →
-    // особые в прогнозе не участвуют. Только текущий месяц + режим «весь месяц».
+    // резерва по оставшимся дням). Особые учитываются в прогнозе ВСЕГДА — тумблер
+    // dayInclSpecial влияет только на факт/среднее (что показывать на графике),
+    // а не на то, сколько реально будет потрачено. Поэтому якорь прогноза — это
+    // факт БЕЗ фильтра тумблера (factCumAll), а не selCum: иначе при выключенном
+    // тумблере уже оплаченная в этом месяце особая трата пропала бы из суммы
+    // насовсем (не в факте — скрыта тумблером, не в прогнозе — уже оплачена).
+    // Только текущий месяц + режим «весь месяц».
     let projLine = null, projTotal = null;
-    if (isCurrentMonth && showFull && (selCum[cD - 1] || 0) > 0 && cD < daysInSel) {
+    if (isCurrentMonth && showFull && cD < daysInSel) {
       const curMonthExps = getMonthExpenses(selY, selM);
-      const regularCum = _regularCumByDay(curMonthExps, selY, selM, cD, displayDays);
-      let regularPace = (regularCum[cD - 1] || 0) / cD;
-      if (regularCum[cD - 1] === 0 && avgCumLine[cD - 1] != null) {
-        // Нет фактических неособых трат пока — темп 0 давал бы ложную плоскую
-        // линию (без прогноза). Подставляем средний исторический темп на эту дату.
-        regularPace = avgCumLine[cD - 1] / cD;
-      }
+      const factCumAll = cumByDay(curMonthExps, selY, selM, cD, displayDays);
+      if ((factCumAll[cD - 1] || 0) > 0) {
+        const regularCum = _regularCumByDay(curMonthExps, selY, selM, cD, displayDays);
+        let regularPace = (regularCum[cD - 1] || 0) / cD;
+        if (regularCum[cD - 1] === 0 && avgCumLine[cD - 1] != null) {
+          // Нет фактических неособых трат пока — темп 0 давал бы ложную плоскую
+          // линию (без прогноза). Подставляем средний исторический темп на эту дату.
+          regularPace = avgCumLine[cD - 1] / cD;
+        }
 
-      let specialCumLine = null;
-      if (dayInclSpecial) {
         const histMonthsExps = [];
         for (let k = 1; k <= 3; k++) {
           let hm = selM - k, hy = selY;
@@ -3448,16 +3453,15 @@ function renderStats(){
           histMonthsExps.push({ exps: getMonthExpenses(hy, hm) });
         }
         const forecast = _specialForecastByCat(curMonthExps, histMonthsExps);
-        specialCumLine = _specialForecastCumLine(forecast, cD, daysInSel, displayDays);
-      }
+        const specialCumLine = _specialForecastCumLine(forecast, cD, daysInSel, displayDays);
 
-      projLine = Array.from({length: displayDays}, (_, i) => {
-        if (i < cD - 1) return null;
-        const spec = specialCumLine ? specialCumLine[i] : 0;
-        return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + spec);
-      });
-      projLine[cD - 1] = selCum[cD - 1]; // старт из фактической точки
-      projTotal = projLine[displayDays - 1];
+        projLine = Array.from({length: displayDays}, (_, i) => {
+          if (i < cD - 1) return null;
+          return Math.round(factCumAll[cD - 1] + regularPace * (i - (cD - 1)) + specialCumLine[i]);
+        });
+        projLine[cD - 1] = factCumAll[cD - 1]; // старт из фактической точки (всегда с особыми)
+        projTotal = projLine[displayDays - 1];
+      }
     }
 
     const avgIdx = Math.min(maxDaySel, displayDays) - 1;
