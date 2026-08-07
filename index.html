@@ -1214,7 +1214,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3459,17 +3459,26 @@ function renderStats(){
 
         // Скрытые тумблером особые (уже потрачены, но не видны в selCum) — тем же
         // приёмом, что и просроченный unpaid: шагом на первый прогнозный день.
+        // Нужны только для итоговой суммы (projTotal), не для самой линии.
         const toggleHidden = Math.max(0, (factCumAll[cD - 1] || 0) - (selCum[cD - 1] || 0));
+        const totalSpecialLine = toggleHidden > 0 ? specialCumLine.slice() : specialCumLine;
         if (toggleHidden > 0) {
-          for (let i = cD; i < specialCumLine.length; i++) specialCumLine[i] += toggleHidden;
+          for (let i = cD; i < totalSpecialLine.length; i++) totalSpecialLine[i] += toggleHidden;
         }
+
+        // Линия на графике следует тумблеру: выключен «особые» — рисуем чистый
+        // темп без скачков (как и факт-линия рядом с ней не показывает особые).
+        // Итоговая сумма ниже графика (projTotal) — ВСЕГДА полная, с особыми,
+        // независимо от тумблера: это реальные деньги, а не то, что нарисовано.
+        const lineSpecial = dayInclSpecial ? specialCumLine : null;
 
         projLine = Array.from({length: displayDays}, (_, i) => {
           if (i < cD - 1) return null;
-          return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + specialCumLine[i]);
+          const spec = lineSpecial ? lineSpecial[i] : 0;
+          return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + spec);
         });
         projLine[cD - 1] = selCum[cD - 1]; // старт из той же точки, где кончается факт-линия
-        projTotal = projLine[displayDays - 1];
+        projTotal = Math.round(selCum[cD - 1] + regularPace * (displayDays - cD) + totalSpecialLine[displayDays - 1]);
       }
     }
 
