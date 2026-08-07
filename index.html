@@ -3251,6 +3251,8 @@ function _guessSpecialDay(days){
 
 // Резерв особых по категориям: plan = минимум суммы категории за прошлые месяцы,
 // где категория встречалась; unpaid = max(0, plan − факт текущего месяца).
+// Категории с историей всего в 1 месяце из histMonthsExps исключаются — одна
+// точка недостаточна, чтобы считать особую трату повторяющейся закономерностью.
 // histMonthsExps — траты прошлых месяцев, от ближайшего к дальнему (обычно 3).
 function _specialForecastByCat(curExps, histMonthsExps){
   const curMap = _specialCatStats(curExps);
@@ -3267,6 +3269,7 @@ function _specialForecastByCat(curExps, histMonthsExps){
   Object.keys(histByCat).forEach(ciStr => {
     const ci = Number(ciStr);
     const hist = histByCat[ci];
+    if(hist.length < 2) return; // одна точка истории — не считаем закономерностью
     const plan = Math.min(...hist.map(h => h.sum));
     const spent = (curMap[ci] && curMap[ci].sum) || 0;
     const unpaid = Math.max(0, plan - spent);
@@ -3429,7 +3432,12 @@ function renderStats(){
     if (isCurrentMonth && showFull && (selCum[cD - 1] || 0) > 0 && cD < daysInSel) {
       const curMonthExps = getMonthExpenses(selY, selM);
       const regularCum = _regularCumByDay(curMonthExps, selY, selM, cD, displayDays);
-      const regularPace = (regularCum[cD - 1] || 0) / cD;
+      let regularPace = (regularCum[cD - 1] || 0) / cD;
+      if (regularCum[cD - 1] === 0 && avgCumLine[cD - 1] != null) {
+        // Нет фактических неособых трат пока — темп 0 давал бы ложную плоскую
+        // линию (без прогноза). Подставляем средний исторический темп на эту дату.
+        regularPace = avgCumLine[cD - 1] / cD;
+      }
 
       let specialCumLine = null;
       if (dayInclSpecial) {
