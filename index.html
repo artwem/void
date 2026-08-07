@@ -3421,13 +3421,33 @@ function renderStats(){
     );
     const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
 
-    // Прогноз до конца месяца: линейно от сегодняшней точки при текущем темпе.
-    // Только текущий месяц + режим «весь месяц» — иначе будущих дней на оси нет.
+    // Прогноз до конца месяца: линейный темп по НЕособым тратам от сегодняшней
+    // точки + прогноз особых по категориям (угаданная дата или размазка остатка
+    // резерва по оставшимся дням). Следует тумблеру dayInclSpecial — выключен →
+    // особые в прогнозе не участвуют. Только текущий месяц + режим «весь месяц».
     let projLine = null, projTotal = null;
     if (isCurrentMonth && showFull && (selCum[cD - 1] || 0) > 0 && cD < daysInSel) {
-      const pace = selCum[cD - 1] / cD;
-      projLine = Array.from({length: displayDays}, (_, i) =>
-        i < cD - 1 ? null : Math.round(pace * (i + 1)));
+      const curMonthExps = getMonthExpenses(selY, selM);
+      const regularCum = _regularCumByDay(curMonthExps, selY, selM, cD, displayDays);
+      const regularPace = (regularCum[cD - 1] || 0) / cD;
+
+      let specialCumLine = null;
+      if (dayInclSpecial) {
+        const histMonthsExps = [];
+        for (let k = 1; k <= 3; k++) {
+          let hm = selM - k, hy = selY;
+          if (hm < 0) { hm += 12; hy--; }
+          histMonthsExps.push({ exps: getMonthExpenses(hy, hm) });
+        }
+        const forecast = _specialForecastByCat(curMonthExps, histMonthsExps);
+        specialCumLine = _specialForecastCumLine(forecast, cD, daysInSel, displayDays);
+      }
+
+      projLine = Array.from({length: displayDays}, (_, i) => {
+        if (i < cD - 1) return null;
+        const spec = specialCumLine ? specialCumLine[i] : 0;
+        return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + spec);
+      });
       projLine[cD - 1] = selCum[cD - 1]; // старт из фактической точки
       projTotal = projLine[displayDays - 1];
     }
