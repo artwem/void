@@ -3220,6 +3220,101 @@ function renderSavingsCharts(){
   }
 }
 
+// ─── ПРОГНОЗ ОСОБЫХ ТРАТ (для линии «Прогноз» на «День за днём») ────
+// Группирует special-траты месяца по категории: cat idx → {sum, topDay, topAmt}.
+// topDay — день месяца самой крупной special-траты этой категории (представитель
+// месяца для угадывания повторяющейся даты, напр. аренда).
+function _specialCatStats(exps){
+  const map = {};
+  exps.forEach(e => {
+    if(!e.special) return;
+    if(!map[e.cat]) map[e.cat] = {sum:0, topDay:0, topAmt:-1};
+    map[e.cat].sum += e.amount;
+    if(e.amount > map[e.cat].topAmt){
+      map[e.cat].topAmt = e.amount;
+      map[e.cat].topDay = Number(e.date.slice(-2));
+    }
+  });
+  return map;
+}
+
+// Угадывает повторяющийся день месяца по истории: 1 точка — берём как есть,
+// ≥2 точки при разбросе ≤3 дня — медиана, иначе не доверяем (null).
+function _guessSpecialDay(days){
+  if(!days.length) return null;
+  if(days.length === 1) return days[0];
+  const sorted = [...days].sort((a,b)=>a-b);
+  if(sorted[sorted.length-1] - sorted[0] > 3) return null;
+  const mid = Math.floor(sorted.length/2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid-1]+sorted[mid])/2);
+}
+
+// Резерв особых по категориям: plan = минимум суммы категории за прошлые месяцы,
+// где категория встречалась; unpaid = max(0, plan − факт текущего месяца).
+// histMonthsExps — траты прошлых месяцев, от ближайшего к дальнему (обычно 3).
+function _specialForecastByCat(curExps, histMonthsExps){
+  const curMap = _specialCatStats(curExps);
+  const histByCat = {};
+  histMonthsExps.forEach(({exps}) => {
+    const hMap = _specialCatStats(exps);
+    Object.keys(hMap).forEach(ci => {
+      ci = Number(ci);
+      if(!histByCat[ci]) histByCat[ci] = [];
+      histByCat[ci].push(hMap[ci]);
+    });
+  });
+  const result = [];
+  Object.keys(histByCat).forEach(ciStr => {
+    const ci = Number(ciStr);
+    const hist = histByCat[ci];
+    const plan = Math.min(...hist.map(h => h.sum));
+    const spent = (curMap[ci] && curMap[ci].sum) || 0;
+    const unpaid = Math.max(0, plan - spent);
+    if(unpaid <= 0) return;
+    const guessDay = _guessSpecialDay(hist.map(h => h.topDay));
+    result.push({cat: ci, unpaid, guessDay});
+  });
+  return result;
+}
+
+// Строит кумулятивную добавку особых по дням месяца (0-indexed, длина displayDays).
+// Угаданная дата в будущем — кладём unpaid куском на неё. Угаданная дата сегодня
+// или в прошлом (просрочено) — куском на первый прогнозный день (cD+1). Угадать
+// не вышло — размазываем unpaid равными долями по дням cD+1..daysInMonth.
+function _specialForecastCumLine(forecast, cD, daysInMonth, displayDays){
+  const extra = Array.from({length: displayDays}, () => 0);
+  forecast.forEach(({unpaid, guessDay}) => {
+    if(guessDay != null && guessDay >= cD + 1){
+      const idx = Math.min(guessDay, displayDays) - 1;
+      if(idx >= 0) extra[idx] += unpaid;
+    } else if(guessDay != null){
+      const idx = Math.min(cD + 1, displayDays) - 1;
+      if(idx >= 0) extra[idx] += unpaid;
+    } else {
+      const remainDays = daysInMonth - cD;
+      if(remainDays > 0){
+        const per = unpaid / remainDays;
+        for(let d = cD + 1; d <= daysInMonth && d <= displayDays; d++) extra[d-1] += per;
+      }
+    }
+  });
+  let acc = 0;
+  return extra.map(v => { acc += v; return acc; });
+}
+
+// Кумулятивная сумма НЕ-special трат по дням месяца (аналог локального cumByDay
+// внутри renderStats, но с фильтром !e.special) — база для линейного темпа прогноза.
+function _regularCumByDay(exps, y, m, maxDay, totalDays){
+  const mk = monthKey(y, m);
+  let acc = 0;
+  return Array.from({length: totalDays}, (_, i) => {
+    if(i >= maxDay) return null;
+    const ds = mk + '-' + String(i+1).padStart(2, '0');
+    acc += exps.filter(e => !e.special && e.date === ds).reduce((s,e) => s + e.amount, 0);
+    return Math.round(acc);
+  });
+}
+
 function renderStats(){
   const now = new Date();
 
