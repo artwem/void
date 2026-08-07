@@ -1214,7 +1214,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3428,10 +3428,12 @@ function renderStats(){
     // точки + прогноз особых по категориям (угаданная дата или размазка остатка
     // резерва по оставшимся дням). Особые учитываются в прогнозе ВСЕГДА — тумблер
     // dayInclSpecial влияет только на факт/среднее (что показывать на графике),
-    // а не на то, сколько реально будет потрачено. Поэтому якорь прогноза — это
-    // факт БЕЗ фильтра тумблера (factCumAll), а не selCum: иначе при выключенном
-    // тумблере уже оплаченная в этом месяце особая трата пропала бы из суммы
-    // насовсем (не в факте — скрыта тумблером, не в прогнозе — уже оплачена).
+    // а не на то, сколько реально будет потрачено. НО якорь прогноза — это selCum
+    // (та же точка, где кончается видимая факт-линия), а не факт без фильтра —
+    // иначе при выключенном тумблере пунктирная линия скачком отрывалась бы от
+    // конца сплошной. Уже оплаченную в этом месяце, но скрытую тумблером особую
+    // трату (factCumAll − selCum) не теряем — кладём её шагом на первый прогнозный
+    // день (как «просроченный» unpaid), а не в сам якорь.
     // Только текущий месяц + режим «весь месяц».
     let projLine = null, projTotal = null;
     if (isCurrentMonth && showFull && cD < daysInSel) {
@@ -3455,11 +3457,18 @@ function renderStats(){
         const forecast = _specialForecastByCat(curMonthExps, histMonthsExps);
         const specialCumLine = _specialForecastCumLine(forecast, cD, daysInSel, displayDays);
 
+        // Скрытые тумблером особые (уже потрачены, но не видны в selCum) — тем же
+        // приёмом, что и просроченный unpaid: шагом на первый прогнозный день.
+        const toggleHidden = Math.max(0, (factCumAll[cD - 1] || 0) - (selCum[cD - 1] || 0));
+        if (toggleHidden > 0) {
+          for (let i = cD; i < specialCumLine.length; i++) specialCumLine[i] += toggleHidden;
+        }
+
         projLine = Array.from({length: displayDays}, (_, i) => {
           if (i < cD - 1) return null;
-          return Math.round(factCumAll[cD - 1] + regularPace * (i - (cD - 1)) + specialCumLine[i]);
+          return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + specialCumLine[i]);
         });
-        projLine[cD - 1] = factCumAll[cD - 1]; // старт из фактической точки (всегда с особыми)
+        projLine[cD - 1] = selCum[cD - 1]; // старт из той же точки, где кончается факт-линия
         projTotal = projLine[displayDays - 1];
       }
     }
