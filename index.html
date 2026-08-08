@@ -763,7 +763,7 @@ if ('serviceWorker' in navigator) {
       <label class="flbl">Сумма пополнения, ₽</label>
       <input type="text" id="goal-topup-amount" class="finp" inputmode="decimal" placeholder="10 000" oninput="formatMoneyInput(this)">
     </div>
-    <button class="btn primary" onclick="saveGoalTopup()" style="width:100%;margin-top:8px">Добавить</button>
+    <button class="btn primary" onclick="saveGoalTopup()" style="width:100%;margin-top:8px">Пополнить</button>
   </div>
 </div>
 
@@ -1606,6 +1606,21 @@ function toastUndo(msg, onUndo, ms=5000){
   });
 }
 
+// ─── SEGMENT TOGGLE HELPER ──────────────────────────────────────────
+// Единая подсветка активной опции сегмент-контрола (все span-тумблеры:
+// период Аналитики, режимы «День за днём», шкала графика активов и т.д.).
+// pairs: [[element|id, isActive], ...]. Базовые padding/border живут в
+// инлайн-стилях HTML — хелпер трогает только background/color/weight.
+function _segActive(pairs){
+  pairs.forEach(([el, on]) => {
+    if(typeof el === 'string') el = document.getElementById(el);
+    if(!el) return;
+    el.style.background = on ? 'rgba(128,128,128,0.18)' : '';
+    el.style.color      = on ? 'var(--text)' : '#888';
+    el.style.fontWeight = on ? '600' : '';
+  });
+}
+
 // ─── MODAL HELPERS ──────────────────────────────────────────────────
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
@@ -2060,12 +2075,7 @@ function loadLimitEditor(){
   const [y,m] = key.split('-').map(Number);
   const limits = getLimits(y,m-1);
   const avgMonths = parseInt(sessionStorage.getItem('limitAvgMonths')) || 3;
-  [3,6,12].forEach(n=>{
-    const s = document.getElementById('lam-'+n);
-    if(!s) return;
-    s.style.background = avgMonths===n ? 'rgba(128,128,128,0.18)' : '';
-    s.style.color      = avgMonths===n ? 'var(--text)' : '#888';
-  });
+  _segActive([3,6,12].map(n=>['lam-'+n, avgMonths===n]));
   // Средние траты категории за последние N месяцев с данными (до месяца
   // лимита, глубина поиска 2N) — тап по подсказке подставляет в поле.
   // Один скан трат на месяц (бакет по категориям) вместо категории×месяцы
@@ -3251,14 +3261,7 @@ function renderStats(){
   }
 
   // Update period selector active state
-  [6,12,24].forEach(n => {
-    const el = document.getElementById('sp-'+n);
-    if(!el) return;
-    const active = n === statsPeriod;
-    el.style.background = active ? 'rgba(128,128,128,0.18)' : '';
-    el.style.color = active ? 'var(--text)' : '#888';
-    el.style.fontWeight = active ? '600' : '';
-  });
+  _segActive([6,12,24].map(n=>['sp-'+n, n===statsPeriod]));
 
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
@@ -3411,23 +3414,12 @@ function renderStats(){
       isCurrentMonth && i === cD - 1 ? String(i + 1) + '✦' : String(i + 1)
     );
 
-    document.getElementById('dcm-full').style.background  = showFull  ? 'rgba(128,128,128,0.18)' : '';
-    document.getElementById('dcm-full').style.color       = showFull  ? 'var(--text)' : '#888';
-    document.getElementById('dcm-today').style.background = !showFull ? 'rgba(128,128,128,0.18)' : '';
-    document.getElementById('dcm-today').style.color      = !showFull ? 'var(--text)' : '#888';
-
     document.getElementById('day-special-mode').dataset.special = dayInclSpecial ? '1' : '0';
-    document.getElementById('dsm-on').style.background  = dayInclSpecial ? 'rgba(128,128,128,0.18)' : '';
-    document.getElementById('dsm-on').style.color       = dayInclSpecial ? 'var(--text)' : '#888';
-    document.getElementById('dsm-off').style.background = !dayInclSpecial ? 'rgba(128,128,128,0.18)' : '';
-    document.getElementById('dsm-off').style.color      = !dayInclSpecial ? 'var(--text)' : '#888';
-
-    [3,6,12].forEach(n=>{
-      const s = document.getElementById('dam-'+n);
-      if(!s) return;
-      s.style.background = avgMonths===n ? 'rgba(128,128,128,0.18)' : '';
-      s.style.color      = avgMonths===n ? 'var(--text)' : '#888';
-    });
+    _segActive([
+      ['dcm-full', showFull], ['dcm-today', !showFull],
+      ['dsm-on', dayInclSpecial], ['dsm-off', !dayInclSpecial],
+      ...[3,6,12].map(n=>['dam-'+n, avgMonths===n])
+    ]);
 
     if (charts.dayCompare) charts.dayCompare.destroy();
     const avgDataset = histMonthCount > 0 ? [{
@@ -3574,9 +3566,7 @@ function renderStats(){
   const pvmToggle = document.getElementById('pie-view-toggle');
   if(pvmToggle){
     pvmToggle.style.display = hasGroups ? 'flex' : 'none';
-    const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
-    document.getElementById('pvm-cats').style.cssText='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(!showGroups?aOn:aOff);
-    document.getElementById('pvm-groups').style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(showGroups?aOn:aOff);
+    _segActive([['pvm-cats', !showGroups], ['pvm-groups', showGroups]]);
   }
 
   // Элементы для отрисовки: либо категории, либо группы
@@ -3817,11 +3807,7 @@ let _viewSplitId = null;
 
 function setSplitInterval(iv){
   _splitInterval = iv;
-  ['week','biweek','month'].forEach(k=>{
-    const el = document.getElementById('siv-'+k);
-    el.style.background = k===iv ? 'rgba(128,128,128,0.18)' : '';
-    el.style.color      = k===iv ? 'var(--text)' : '#888';
-  });
+  _segActive(['week','biweek','month'].map(k=>['siv-'+k, k===iv]));
   _splitRegen();
 }
 
@@ -4032,7 +4018,7 @@ function renderCredits(){
     row.style.cssText = 'gap:8px;cursor:pointer';
     row.addEventListener('click', () => openGraceModal(g.id));
     const sub = `<div style="font-size:11px;color:${col};margin-top:2px">до ${_fmtDateRu(g.graceEnd)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
-    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(g.bank)}<span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">грейс</span></div>${sub}</div><span class="asset-amount">${fmtH(g.payoffAmount)}</span>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(g.bank)}<span class="tag tag-red">грейс</span></div>${sub}</div><span class="asset-amount">${fmtH(g.payoffAmount)}</span>`;
     wrap.appendChild(row);
   });
   splits.forEach(c => {
@@ -4046,7 +4032,7 @@ function renderCredits(){
     const sub = next
       ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">оплачено ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
       : `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ всё оплачено — можно закрыть</div>`;
-    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span style="font-size:10px;background:rgba(128,128,128,0.12);color:var(--muted);padding:1px 5px;border-radius:4px;margin-left:4px">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span class="tag tag-grey">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
     wrap.appendChild(row);
   });
 }
@@ -4248,7 +4234,7 @@ function renderAssets(){
     row.addEventListener('click', openAssetSnapshot);
     const namePart = document.createElement('div');
     namePart.style.cssText = 'flex:1;min-width:0';
-    const creditBadge = credit ? ' <span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:4px">кредит</span>' : '';
+    const creditBadge = credit ? ' <span class="tag tag-red">кредит</span>' : '';
     // Свежесть: >14 дней — янтарный, >30 — красный с призывом обновить
     let freshLine;
     if(hasData){
@@ -4298,7 +4284,7 @@ function renderAssets(){
       row.addEventListener('click', ()=>showPage('deposits'));
       const namePart = document.createElement('div');
       namePart.style.cssText = 'flex:1;min-width:0';
-      const depBadge = ' <span style="font-size:10px;background:var(--blue-bg);color:var(--blue);padding:1px 5px;border-radius:4px;margin-left:4px">вклад</span>';
+      const depBadge = ' <span class="tag tag-blue">вклад</span>';
       const subLine = closed
         ? `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ срок вышел ${_fmtDateRu(d.endDate)}</div>`
         : `<div style="font-size:11px;color:var(--muted);margin-top:2px">до ${_fmtDateRu(d.endDate)} · ${d.rate}%</div>`;
@@ -4325,7 +4311,7 @@ function renderAssets(){
       row.addEventListener('click', ()=>showPage('investments'));
       const namePart = document.createElement('div');
       namePart.style.cssText = 'flex:1;min-width:0';
-      const invBadge = ' <span style="font-size:10px;background:rgba(155,89,182,0.15);color:#9b59b6;padding:1px 5px;border-radius:4px;margin-left:4px">инвестиции</span>';
+      const invBadge = ' <span class="tag tag-purple">инвестиции</span>';
       const pcol = profit >= 0 ? 'var(--green)' : 'var(--red)';
       const subLine = `<div style="font-size:11px;color:${pcol};margin-top:2px">${profit>=0?'+':'−'} ${fmt(Math.abs(profit))}</div>`;
       namePart.innerHTML = `<div class="asset-name">${esc(v.name)}${invBadge}</div>` + subLine;
@@ -4363,11 +4349,7 @@ function renderAssets(){
     const stgl = document.getElementById('assets-chart-scale-toggle');
     if(stgl){
       stgl.style.display = allDates.length ? 'inline-flex' : 'none';
-      const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
-      const rawEl=document.getElementById('acs-raw'), monthEl=document.getElementById('acs-month'), yearEl=document.getElementById('acs-year');
-      if(rawEl)   rawEl.style.cssText  ='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(chartScale==='raw'?aOn:aOff);
-      if(monthEl) monthEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);'+(chartScale==='month'?aOn:aOff);
-      if(yearEl)  yearEl.style.cssText ='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(chartScale==='year'?aOn:aOff);
+      _segActive(['raw','month','year'].map(k=>['acs-'+k, chartScale===k]));
     }
   }
   // Тумблер «банки / +вклады·инвест»: добавить к каждой точке вклады и инвестиции на эту дату
@@ -4377,10 +4359,7 @@ function renderAssets(){
     const tgl = document.getElementById('assets-chart-deps-toggle');
     if(tgl){
       tgl.style.display = liveDepsCnt ? 'inline-flex' : 'none';
-      const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
-      const offEl=document.getElementById('acd-off'), onEl=document.getElementById('acd-on');
-      if(offEl) offEl.style.cssText='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(depsOn?aOff:aOn);
-      if(onEl)  onEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(depsOn?aOn:aOff);
+      _segActive([['acd-off', !depsOn], ['acd-on', depsOn]]);
     }
   }
   const data = bankSeries.map((v,i)=> v + (depsOn ? depSeries[i] + invSeries[i] : 0));
@@ -5319,11 +5298,7 @@ let _depMode = 'rate';
 
 function setDepMode(m){
   _depMode = m;
-  document.querySelectorAll('#dep-mode-seg span').forEach(s=>{
-    const on = (s.getAttribute('data-v')||'') === m;
-    s.style.background = on ? 'rgba(128,128,128,0.18)' : '';
-    s.style.fontWeight = on ? '600' : '';
-  });
+  _segActive([...document.querySelectorAll('#dep-mode-seg span')].map(s=>[s, (s.getAttribute('data-v')||'') === m]));
   document.getElementById('dep-rate-grp').style.display  = m==='rate'  ? '' : 'none';
   document.getElementById('dep-final-grp').style.display = m==='final' ? '' : 'none';
   _depRateFromFinal();
@@ -5449,7 +5424,7 @@ function renderBankManager(){
   function bankRow(b, type, i) {
     const isCredit = type === 'credit';
     const badge = isCredit
-      ? '<span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 5px;border-radius:4px;margin-left:6px">кредит</span>'
+      ? '<span class="tag tag-red" style="margin-left:6px">кредит</span>'
       : '';
     return '<div class="setting-row" style="cursor:default;gap:6px" id="bank-row-'+type+'-'+i+'">'
       + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditBank(&quot;'+type+'&quot;,'+i+')">'+esc(b)+badge+'</span>'
