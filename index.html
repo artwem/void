@@ -28,7 +28,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.28.1">
+<link rel="stylesheet" href="css/app.css?v=1.39.1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -984,20 +984,6 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-asset">
-  <div class="sheet" style="position:relative">
-    <button class="close-btn" onclick="closeModal('modal-asset')">✕</button>
-    <h2>Запись активов</h2>
-    <div class="fgrp"><label class="flbl">Банк / счёт</label><select id="asset-bank"></select></div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="asset-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
-    <div class="fgrp"><label class="flbl">Дата (рекомендуется 1 или 16)</label><input type="date" id="asset-date"/></div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal('modal-asset')">Отмена</button>
-      <button class="btn primary" onclick="saveAsset()">Сохранить</button>
-    </div>
-  </div>
-</div>
-
 <!-- MODAL: EDIT ASSET DATE -->
 <div class="overlay" id="modal-asset-edit">
   <div class="sheet" style="position:relative">
@@ -1219,7 +1205,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.39.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.39.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2527,13 +2513,13 @@ function denomClear(){
 
 function denomSave(){
   _denomAmount = parseMoney(document.getElementById('denom-total').value);
-  if(_denomAmount <= 0) return;
+  if(_denomAmount <= 0){ toast('Введите сумму'); return; }
   const catEl = document.getElementById('denom-cat');
   const cat = parseInt(catEl.value);
-  if(isNaN(cat)) return;
+  if(isNaN(cat)){ toast('Выберите категорию'); return; }
   const comment = (document.getElementById('denom-comment').value || '').trim();
   const date = currentDay;
-  DB.expenses.push({id: uid(), cat, amount: _denomAmount, date, comment, updatedAt:Date.now()});
+  DB.expenses.push({id: uid(), cat, catId: DB.catIds[cat], amount: _denomAmount, date, comment, updatedAt:Date.now()});
   saveDB();
   checkBudgetNotifications();
   toast(fmt(_denomAmount) + ' добавлено');
@@ -4253,31 +4239,21 @@ function setAssetsChartScale(scale){
   renderAssets();
 }
 
-// Огрубляет сетку дат графика активов до конца каждого месяца/года — только
-// для графика (см. setAssetsChartScale). Точка периода = последний снимок ≤
-// концу периода: диапазон — от месяца/года первого снимка до месяца/года
-// последнего, в будущее после последнего реального снимка не тянем (не гадаем).
+// Огрубляет сетку дат графика активов до одной точки на месяц/год — только
+// для графика (см. setAssetsChartScale). Точка периода = ПЕРВЫЙ реальный
+// снимок периода (ритуал снимков 1-го числа = чистое состояние на начало
+// месяца; «конец периода» пробовали в v1.39.0 — ловил снимки середины
+// месяца, когда деньги уже ушли во вклады, и линия превращалась в пилу).
+// Только реальные даты снимков, производных дат не выдумываем; периоды
+// без снимков пропускаются целиком.
 function _coarseAssetDates(scale, rawDates){
   if(!rawDates || !rawDates.length) return [];
-  const minDate = rawDates[0], maxDate = rawDates[rawDates.length - 1];
-  const pad2 = n => String(n).padStart(2, '0');
+  const seen = new Set();
   const dates = [];
-  if(scale === 'year'){
-    const minY = Number(minDate.slice(0, 4)), maxY = Number(maxDate.slice(0, 4));
-    for(let y = minY; y <= maxY; y++){
-      const periodEnd = y + '-12-31';
-      dates.push(periodEnd <= maxDate ? periodEnd : maxDate);
-    }
-  } else {
-    let y = Number(minDate.slice(0, 4)), m = Number(minDate.slice(5, 7)) - 1; // 0-indexed
-    const maxY = Number(maxDate.slice(0, 4)), maxM = Number(maxDate.slice(5, 7)) - 1;
-    while(y < maxY || (y === maxY && m <= maxM)){
-      const lastDay = new Date(y, m + 1, 0).getDate();
-      const periodEnd = y + '-' + pad2(m + 1) + '-' + pad2(lastDay);
-      dates.push(periodEnd <= maxDate ? periodEnd : maxDate);
-      m++; if(m > 11){ m = 0; y++; }
-    }
-  }
+  rawDates.forEach(d => {
+    const key = scale === 'year' ? d.slice(0, 4) : d.slice(0, 7);
+    if(!seen.has(key)){ seen.add(key); dates.push(d); }
+  });
   return dates;
 }
 
@@ -4867,7 +4843,9 @@ function _calcDepRate(amount, final, openDate, endDate, cap, contribs, accruals)
 }
 
 function _fmtDateRu(ds){
-  const d = new Date(ds);
+  // T12:00:00 — иначе 'YYYY-MM-DD' парсится как UTC-полночь и на западных
+  // таймзонах getDate() отдаёт предыдущий день (конвенция всего файла)
+  const d = new Date(ds + 'T12:00:00');
   return d.getDate()+' '+SHORT_MONTHS[d.getMonth()].toLowerCase()+' '+d.getFullYear();
 }
 
@@ -5525,36 +5503,6 @@ function deleteDeposit(){
 }
 
 // ─── ASSET CRUD ─────────────────────────────────────────────────────
-function openAssetModal(prefillBankName){
-  const allBanks = getAllBanks();
-  document.getElementById('asset-bank').innerHTML = allBanks.map((b,i)=>{
-    const credit = i >= (DB.banks||[]).length;
-    return `<option value="${i}">${esc(b)}${credit?' (кредит)':''}</option>`;
-  }).join('');
-  document.getElementById('asset-date').value = today();
-  setMoneyInput('asset-amount','');
-  if(prefillBankName !== undefined){
-    const idx = allBanks.indexOf(prefillBankName);
-    if(idx >= 0) document.getElementById('asset-bank').value = idx;
-  }
-  openModal('modal-asset');
-}
-
-function saveAsset(){
-  const amt = parseMoney(document.getElementById('asset-amount').value);
-  if(!amt||amt<0){toast('Введите сумму');return;}
-  const bankIdx = parseInt(document.getElementById('asset-bank').value);
-  const allBanks = getAllBanks();
-  const bankName = allBanks[bankIdx] || '';
-  if(!bankName){toast('Банк не найден'); return;}
-  // Store bankName as primary key — bank index can drift after sync
-  DB.assets.push({id:uid(), bank:bankIdx, bankName, amount:amt, date:document.getElementById('asset-date').value, updatedAt:Date.now()});
-  saveDB();
-  closeModal('modal-asset');
-  renderAssets();
-  toast('Добавлено');
-}
-
 // ─── BANK MANAGER ───────────────────────────────────────────────────
 function openBankManager(){
   renderBankManager();
@@ -5682,8 +5630,10 @@ function removeBank(type, i){
   const hasHistory = (DB.assets||[]).some(a =>
     !a._deleted && (a.bankName ? a.bankName === bankName : allBanks[a.bank] === bankName));
   if(hasHistory){ toast('Нельзя удалить: у банка есть история данных'); return; }
-  // Legacy-записи хранят индекс в getAllBanks() — материализуем имена до сдвига массива
-  (DB.assets||[]).forEach(a => { if(!a.bankName && a.bank != null) a.bankName = allBanks[a.bank] || String(a.bank); });
+  // Legacy-записи хранят индекс в getAllBanks() — материализуем имена до сдвига массива.
+  // Штамп updatedAt обязателен: без него LWW-мерж синка откатит bankName, если у
+  // другой копии записи (по id) updatedAt новее — останется индекс не в тот банк.
+  (DB.assets||[]).forEach(a => { if(!a.bankName && a.bank != null){ a.bankName = allBanks[a.bank] || String(a.bank); a.updatedAt = Date.now(); } });
   // Живой грейс на удаляемом банке становится недостижимым — гасим его вместе с банком
   (DB.credits||[]).forEach(c => { if(c.kind==='grace' && !c._deleted && c.bank===bankName){ c._deleted=true; c.payoffAmount=0; c.updatedAt=Date.now(); } });
   arr.splice(i, 1);
@@ -6040,6 +5990,7 @@ function setGroupColor(oldColor, newColor){
   DB.categories.forEach((_,i) => {
     if(getCatColor(i) === oldColor) DB.catColors[i] = newColor;
   });
+  touchList('categories'); // catColors мержится по listsMeta.categories — без метки синк откатит
   saveDB();
   renderCatManager();
 }
@@ -7943,9 +7894,14 @@ async function _syncCycleRun(opts){
       const pr = await syncRequest('push', buildPayload(), {force: !!opts.force});
       if(pr && pr.error) throw new Error(pr.error);
     }
-    // 3. Финализация: _dirty снимаем только если во время await не появились новые правки
-    if(_dirtyGen === genAtStart) DB._dirty = false;
-    DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits || {}));
+    // 3. Финализация: _dirty снимаем только если во время await не появились новые
+    // правки. Baseline лимитов — под тем же гардом: без него правка лимита во время
+    // in-flight push (payload уже сериализован без неё) штамповалась бы в baseline
+    // как «синхронизированная», и следующий 3-way merge затирал бы её удалённым.
+    if(_dirtyGen === genAtStart){
+      DB._dirty = false;
+      DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits || {}));
+    }
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
     const ts = new Date().toISOString();
     localStorage.setItem('lastSync', ts);
