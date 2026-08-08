@@ -2,14 +2,16 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-08-08 v1.40.1';
+const V = '2026-08-08 v1.40.2';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
 const PRECACHE = [
   './',
   './css/app.css',
-  './apps-script/Code.gs'
+  './apps-script/Code.gs',
+  './vendor/chart.umd.js',
+  './vendor/xlsx.full.min.js'
 ];
 
 // INSTALL: кешируем ресурсы и сразу переходим в активный режим (без ожидания)
@@ -56,12 +58,18 @@ self.addEventListener('fetch', e => {
           .then(r => r || caches.match('./')))
     );
   } else {
-    // Остальные ресурсы — кеш, если нет — сеть
+    // Остальные ресурсы — кеш, если нет — сеть.
+    // Второй match с ignoreSearch: app.css?v=X после деплоя должен находить
+    // precache-копию без query (до первого онлайн-фетча runtime-копии с query)
     e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        return res;
-      }))
+      caches.match(e.request).then(r =>
+        r || caches.match(e.request, { ignoreSearch: true }).then(r2 =>
+          r2 || fetch(e.request).then(res => {
+            if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+            return res;
+          })
+        )
+      )
     );
   }
 });
