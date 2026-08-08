@@ -1205,7 +1205,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.39.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.40.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2085,14 +2085,24 @@ function loadLimitEditor(){
     s.style.color      = avgMonths===n ? 'var(--text)' : '#888';
   });
   // Средние траты категории за последние N месяцев с данными (до месяца
-  // лимита, глубина поиска 2N) — тап по подсказке подставляет в поле
+  // лимита, глубина поиска 2N) — тап по подсказке подставляет в поле.
+  // Один скан трат на месяц (бакет по категориям) вместо категории×месяцы
+  // полных сканов — на годах истории открытие редактора фризило заметно.
+  const monthBuckets = []; // окно поиска: [{spent: number[catIdx]}|null, ...] по k=1..2N
+  for(let k=1; k<=avgMonths*2; k++){
+    let mm = (m-1)-k, yy = y;
+    while(mm<0){ mm+=12; yy--; }
+    const exps = getMonthExpenses(yy,mm);
+    if(!exps.length){ monthBuckets.push(null); continue; } // месяц без учёта пропускаем
+    const spent = DB.categories.map(()=>0);
+    exps.forEach(e => { if(e.cat>=0 && e.cat<spent.length) spent[e.cat]+=e.amount; });
+    monthBuckets.push(spent);
+  }
   const avgs = DB.categories.map((_,i)=>{
     const vals = [];
-    for(let k=1; k<=avgMonths*2 && vals.length<avgMonths; k++){
-      let mm = (m-1)-k, yy = y;
-      while(mm<0){ mm+=12; yy--; }
-      if(!getMonthExpenses(yy,mm).length) continue; // месяц без учёта пропускаем
-      vals.push(getCatSpent(i,yy,mm));
+    for(const b of monthBuckets){
+      if(vals.length >= avgMonths) break;
+      if(b) vals.push(b[i]);
     }
     return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
   });
@@ -6660,10 +6670,14 @@ function checkBudgetNotifications(){
   const threshold = (DB.notifThreshold || 90) / 100;
   const {y, m} = currentMonth;
   const lims = getLimits(y, m);
+  // Один проход по тратам месяца вместо getCatSpent (полный скан) на категорию —
+  // функция дёргается на каждом сохранении траты (паттерн spentArr из renderBudget)
+  const spentArr = DB.categories.map(()=>0);
+  getMonthExpenses(y,m).forEach(e => { if(e.cat>=0 && e.cat<spentArr.length) spentArr[e.cat]+=e.amount; });
   DB.categories.forEach((cat, i) => {
     const limit = lims[i] || 0;
     if(!limit) return;
-    const spent = getCatSpent(i, y, m);
+    const spent = spentArr[i];
     const ratio = spent / limit;
     if(ratio >= threshold){
       const key = 'notif_fired_' + monthKey(y,m) + '_' + i;
@@ -6812,9 +6826,17 @@ function exportExcel(){
   // ── Месячные листы с тратами ──────────────────────────────────────────
   // Месяцы = union(лимиты, месяцы с расходами) — иначе месяц без явных лимитов не попадёт в файл
   const monthSet = new Set(Object.keys(DB.limits||{}));
-  (DB.expenses||[]).filter(e => !e._deleted && e.date).forEach(e => {
+  // Один проход по расходам: бакет месяц→категория→сумма. Пофильтровый пересчёт
+  // на каждый (месяц × категорию) был O(месяцы × категории × все траты) — секунды
+  // фриза при годах истории.
+  const monthCatSpent = {}; // 'YYYY-MM' → number[catIdx]
+  (DB.expenses||[]).forEach(e => {
+    if(e._deleted || !e.date) return;
     const k = String(e.date).slice(0,7);
-    if(/^\d{4}-\d{2}$/.test(k)) monthSet.add(k);
+    if(!/^\d{4}-\d{2}$/.test(k)) return;
+    monthSet.add(k);
+    if(!monthCatSpent[k]) monthCatSpent[k] = cats.map(()=>0);
+    if(e.cat >= 0 && e.cat < cats.length) monthCatSpent[k][e.cat] += (e.amount||0);
   });
   [...monthSet].sort().map(key => {
     const [y2,m2] = key.split('-').map(Number);
@@ -6822,10 +6844,7 @@ function exportExcel(){
   }).forEach(([key,lim]) => {
     const [yr,mo] = key.split('-').map(Number);
 
-    const catSpent = cats.map((_,ci) =>
-      (DB.expenses||[]).filter(e => !e._deleted && e.cat===ci && String(e.date||'').startsWith(key))
-        .reduce((s,e) => s+(e.amount||0), 0)
-    );
+    const catSpent = monthCatSpent[key] || cats.map(()=>0);
     const totalSpent = catSpent.reduce((s,v) => s+v, 0);
     const totalLim   = (lim||[]).reduce((s,v) => s+(v||0), 0);
 
@@ -7486,6 +7505,7 @@ function renderReport(){
 
 // ─── CALCULATOR ─────────────────────────────────────────────────────
 let chartCalc = null;
+let _calcChartTimer = null; // debounce пересборки графика (calcUpdate на каждую клавишу)
 
 // Чипы стартовой суммы: счета / вклады / инвестиции. Активные суммируются
 // в поле; ручной ввод сбрасывает выбор (значение остаётся ручным).
@@ -7593,6 +7613,7 @@ function calcUpdate(){
       document.getElementById('calc-yearly').textContent   = fmtCalc(0);
       document.getElementById('calc-eff-rate').textContent = '0%';
       _hideReal();
+      clearTimeout(_calcChartTimer);
       if(chartCalc){ chartCalc.destroy(); chartCalc=null; }
       document.getElementById('calc-table').innerHTML = '';
       return;
@@ -7606,6 +7627,7 @@ function calcUpdate(){
       document.getElementById('calc-yearly').textContent   = '—';
       document.getElementById('calc-eff-rate').textContent = '—';
       _hideReal();
+      clearTimeout(_calcChartTimer);
       if(chartCalc){ chartCalc.destroy(); chartCalc=null; }
       document.getElementById('calc-table').innerHTML = '';
       return;
@@ -7722,8 +7744,12 @@ function calcUpdate(){
     dataReal.push(reals[months-1]);
   }
 
-  if(chartCalc) chartCalc.destroy();
-  {
+  // Пересборка Chart.js — тяжёлая DOM-операция (десятки мс на мобильном Safari),
+  // а calcUpdate дёргается на каждую клавишу. Debounce 150мс: цифры и таблица
+  // обновляются мгновенно, график — после паузы ввода.
+  clearTimeout(_calcChartTimer);
+  _calcChartTimer = setTimeout(() => {
+    if(chartCalc) chartCalc.destroy();
     const _cc=_chartColors();
     chartCalc = new Chart(document.getElementById('chartCalc'),{
       type:'line',
@@ -7737,7 +7763,7 @@ function calcUpdate(){
       },
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
     });
-  }
+  }, 150);
 
   // Store data for table toggle
   window._calcData = {balances, invested, months};
@@ -7879,15 +7905,14 @@ async function _syncCycleRun(opts){
   const genAtStart = _dirtyGen;
   setSyncStatus('syncing');
   try {
-    // 1. Pull + merge
+    // 1. Pull + merge (mergePullData сам сообщает, менялось ли что-то —
+    // раньше это детектилось двойным JSON.stringify всей БД, 2×15-40мс каждые 15с)
     let merged = false;
     const remote = await syncRequest('pull', null);
     if(remote && remote.error) throw new Error(remote.error);
     _lastPullTs = Date.now();
     if(remote && !remote.empty){
-      const before = JSON.stringify(buildPayload());
-      mergePullData(remote);
-      merged = JSON.stringify(buildPayload()) !== before;
+      merged = mergePullData(remote);
     }
     // 2. Push — если были локальные правки, merge что-то изменил или push запрошен явно
     if(DB._dirty || merged || opts.forcePush){
@@ -7931,8 +7956,11 @@ function buildPayload(){
   return payload;
 }
 
+// Возвращает true, если merge реально что-то поменял в DB — избавляет syncCycle
+// от двойного JSON.stringify всей БД (до/после) только ради детекции изменений.
 function mergePullData(d){
-  if(!d || d.empty) return;
+  if(!d || d.empty) return false;
+  let changed = false;
 
   // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
   // Pull идёт до push, поэтому при равенстве побеждает локальное (строгое >).
@@ -7943,8 +7971,8 @@ function mergePullData(d){
     (d[key]||[]).forEach(it => {
       if(!it || it.id == null) return;
       const cur = map.get(it.id);
-      if(!cur){ map.set(it.id, it); return; }
-      if((it.updatedAt||0) > (cur.updatedAt||0)) map.set(it.id, it); // строго свежее удалённое выигрывает
+      if(!cur){ map.set(it.id, it); changed = true; return; }
+      if((it.updatedAt||0) > (cur.updatedAt||0)){ map.set(it.id, it); changed = true; } // строго свежее удалённое выигрывает
     });
     DB[key] = [...map.values()];
   });
@@ -7953,9 +7981,11 @@ function mergePullData(d){
   // прежнее правило «длиннее выигрывает» (добавления с другого устройства)
   const catRemoteWon = _mergeList(d, 'categories', 'catColors');
   if(catRemoteWon && d.catIds) DB.catIds = d.catIds; // catIds следуют за categories
-  _mergeList(d, 'banks', null);
-  _mergeList(d, 'creditBanks', null);
-  _mergeList(d, 'incomeTags', 'incomeTagColors');
+  const listsChanged = catRemoteWon
+    | _mergeList(d, 'banks', null)
+    | _mergeList(d, 'creditBanks', null)
+    | _mergeList(d, 'incomeTags', 'incomeTagColors');
+  if(listsChanged) changed = true;
 
   // Limits: 3-way через _lastSyncedLimits — удалённое берём только для месяцев,
   // которые локально НЕ менялись с последнего синка (иначе своя правка гибнет)
@@ -7963,12 +7993,17 @@ function mergePullData(d){
     const base = DB._lastSyncedLimits || {};
     Object.keys(d.limits).forEach(k => {
       const localChanged = JSON.stringify(DB.limits[k] || null) !== JSON.stringify(base[k] || null);
-      if(!localChanged) DB.limits[k] = d.limits[k];
+      if(!localChanged && JSON.stringify(DB.limits[k] || null) !== JSON.stringify(d.limits[k] || null)){
+        DB.limits[k] = d.limits[k];
+        changed = true;
+      }
     });
   }
 
-  // Пришедшие записи могут нести catId из чужого списка — пересчитать индексы
-  _ensureCatIds();
+  // Пришедшие записи могут нести catId из чужого списка — пересчитать индексы.
+  // Только если merge что-то менял: _reindexCats внутри — indexOf на каждую запись.
+  if(changed) _ensureCatIds();
+  return changed;
 }
 
 function _mergeList(d, key, colorKey){
