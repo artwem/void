@@ -28,7 +28,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.39.1">
+<link rel="stylesheet" href="css/app.css?v=1.40.1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -107,7 +107,7 @@ if ('serviceWorker' in navigator) {
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
   <div id="denom-widget" style="padding:0 16px 12px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <select id="denom-cat" style="flex:1;padding:6px 8px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"></select>
+      <select id="denom-cat" style="flex:1;padding:6px 8px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"></select>
       <button onclick="denomClear()" class="btn small icon-btn" style="font-size:20px;color:var(--muted)">×</button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
@@ -120,13 +120,13 @@ if ('serviceWorker' in navigator) {
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <input type="text" id="denom-total" inputmode="decimal" placeholder="0" style="font-size:22px;font-weight:700;width:100px;flex-shrink:0;letter-spacing:-0.5px;border:none;border-bottom:1.5px solid var(--border2);background:transparent;color:var(--text);padding:2px 0;font-family:inherit" oninput="formatMoneyInput(this);_denomAmount=parseMoney(this.value)"/>
-      <input id="denom-comment" type="text" placeholder="Комментарий" style="flex:1;padding:6px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:inherit"/>
+      <input id="denom-comment" type="text" placeholder="Комментарий" style="flex:1;padding:6px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"/>
       <button onclick="denomSave()" class="btn primary small" style="flex:0;white-space:nowrap">Добавить</button>
     </div>
   </div>
   <div style="padding:0 16px 8px">
     <input id="expense-search" type="search" placeholder="🔍 Поиск по расходам..." autocomplete="off"
-      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"
       oninput="renderExpenseSearch(this.value)"/>
   </div>
   <div id="expense-cat-filter" style="padding:0 16px 8px;display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none"></div>
@@ -158,7 +158,7 @@ if ('serviceWorker' in navigator) {
   <div class="sec-hdr"><span class="sec-title">Источники дохода</span></div>
   <div style="padding:0 16px 8px">
     <input id="income-search" type="search" placeholder="🔍 Поиск по доходам..." autocomplete="off"
-      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"
       oninput="renderIncomeSearch(this.value)"/>
   </div>
   <div id="income-tag-filter" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -376,7 +376,7 @@ if ('serviceWorker' in navigator) {
       </div>
       <div class="s-card" id="calc-cap-card">
         <div class="s-lbl">Капитализация</div>
-        <select id="calc-cap" style="margin-top:4px;border:none;padding:0;font-size:14px;font-weight:500;background:transparent;width:100%;-webkit-appearance:none" onchange="calcUpdate()">
+        <select id="calc-cap" style="margin-top:4px;border:none;padding:0;font-size:16px;font-weight:500;background:transparent;width:100%;-webkit-appearance:none" onchange="calcUpdate()">
           <option value="daily">Ежедневная</option>
           <option value="monthly" selected>Ежемесячная</option>
           <option value="yearly">Ежегодная</option>
@@ -505,7 +505,7 @@ if ('serviceWorker' in navigator) {
       <span class="setting-label" style="color:var(--muted)">Авто-синхронизация</span>
       <div style="display:flex;align-items:center;gap:6px">
         <input type="number" id="sync-interval-input" min="5" max="3600" value="15"
-          style="width:58px;text-align:center;padding:4px 6px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)"
+          style="width:64px;text-align:center;padding:4px 6px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)"
           onchange="saveSyncInterval(this.value)"/>
         <span style="font-size:13px;color:var(--muted)">сек</span>
       </div>
@@ -573,7 +573,7 @@ if ('serviceWorker' in navigator) {
       <span class="setting-label" style="color:var(--muted)">Порог уведомления</span>
       <div style="display:flex;align-items:center;gap:6px">
         <input type="number" id="notif-threshold" min="50" max="100" value="90"
-          style="width:52px;text-align:center;padding:4px 6px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)"
+          style="width:58px;text-align:center;padding:4px 6px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text)"
           onchange="saveNotifThreshold(this.value)"/>
         <span style="font-size:13px;color:var(--muted)">%</span>
       </div>
@@ -1205,7 +1205,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.40.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.40.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2123,6 +2123,14 @@ function loadLimitEditor(){
 
 function saveLimits(){
   const key = document.getElementById('limit-month-sel').value;
+  // Непустое, но нечисловое поле — предупреждаем, а не молча превращаем в 0
+  for(let i=0;i<DB.categories.length;i++){
+    const raw = (document.getElementById('lim_'+i).value||'').trim();
+    if(raw !== '' && isNaN(parseFloat(raw))){
+      toast('Лимит «'+DB.categories[i]+'»: не число');
+      return;
+    }
+  }
   const newLimits = DB.categories.map((_,i)=>{
     return parseFloat(document.getElementById('lim_'+i).value)||0;
   });
@@ -4657,7 +4665,12 @@ function deleteGoal(){
   if(g){ g._deleted=true; g.updatedAt=Date.now(); }
   saveDB(); closeModal('modal-goal');
   renderGoals();
-  toast('Цель удалена');
+  if(g){
+    toastUndo('Цель удалена', ()=>{
+      delete g._deleted; g.updatedAt=Date.now();
+      saveDB(); renderGoals();
+    });
+  }
 }
 
 // ─── DEPOSITS (вклады под процент) ──────────────────────────────────
@@ -5509,7 +5522,13 @@ function deleteDeposit(){
   if(d){ d._deleted=true; d.updatedAt=Date.now(); }
   saveDB(); closeModal('modal-deposit');
   renderDeposits();
-  toast('Вклад удалён');
+  if(d){
+    toastUndo('Вклад удалён', ()=>{
+      delete d._deleted; d.updatedAt=Date.now();
+      saveDB(); renderDeposits();
+      if(typeof renderAssets==='function') renderAssets();
+    });
+  }
 }
 
 // ─── ASSET CRUD ─────────────────────────────────────────────────────
@@ -5548,7 +5567,7 @@ function startEditBank(type, i){
   inp.type = 'text';
   inp.id = 'bank-edit-'+type+'-'+i;
   inp.value = oldName;
-  inp.style.cssText = 'flex:1;padding:6px 8px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-family:inherit';
+  inp.style.cssText = 'flex:1;padding:6px 8px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-family:inherit';
   inp.addEventListener('keydown', function(e){
     if(e.key === 'Enter') saveBankName(type, i);
     if(e.key === 'Escape') renderBankManager();
@@ -5822,10 +5841,20 @@ function openEditAssetDate(date, carryForward){
 // Общая логика сохранения формы снимка — без closeModal/toast, чтобы
 // _tagCreditSnapshot могла сохранить и сразу перейти в грейс/сплит-модалку
 function _saveAssetEditRows(){
-  if(!_editingAssetDate) return;
+  if(!_editingAssetDate) return false;
   const allBanks = getAllBanks();
   const date = _editingAssetDate;
   const now = Date.now();
+
+  // Валидация ДО tombstone-прохода. parseMoney мусор превращает в 0 (||0),
+  // а явный 0 в снимке — это «обнулён этой датой», настоящая запись: мусор
+  // без цифр молча становился бы нулём счёта. Непустое поле обязано содержать
+  // цифру и парситься в число ≥ 0.
+  for(let idx = 0; idx < allBanks.length; idx++){
+    const inp = document.getElementById('asset-edit-inp-'+idx);
+    if(!inp || !inp.value.trim()) continue;
+    if(!/\d/.test(inp.value) || parseMoney(inp.value) < 0){ toast('«'+allBanks[idx]+'»: некорректная сумма'); return false; }
+  }
 
   // Старые записи за эту дату → tombstone (чтобы удаление доходило при синхр)
   DB.assets.forEach(a => { if(a.date === date && !a._deleted){ a._deleted = true; a.amount = 0; a.updatedAt = now; } });
@@ -5840,12 +5869,13 @@ function _saveAssetEditRows(){
   });
 
   saveDB();
+  return true;
 }
 
 function saveAssetEdit(){
   if(!_editingAssetDate) return;
   const date = _editingAssetDate;
-  _saveAssetEditRows();
+  if(!_saveAssetEditRows()) return; // валидация не прошла — модалку не закрываем
   closeModal('modal-asset-edit');
   renderAssets();
   toast('Сохранено за ' + date);
@@ -5855,7 +5885,7 @@ function saveAssetEdit(){
 // и открывает уже существующую модалку создания — само отслеживание
 // кредита/сплита не входит в подсчёт сумм, это чисто памятка «когда закрыть»
 function _tagCreditSnapshot(bankName, kind){
-  _saveAssetEditRows();
+  if(!_saveAssetEditRows()) return; // валидация не прошла — остаёмся в модалке
   closeModal('modal-asset-edit');
   renderAssets();
   if(kind === 'grace') openGraceModal(null, bankName);
@@ -5865,11 +5895,21 @@ function _tagCreditSnapshot(bankName, kind){
 function deleteAssetDateConfirm(){
   if(!_editingAssetDate) return;
   const now = Date.now();
-  DB.assets.forEach(a => { if(a.date === _editingAssetDate && !a._deleted){ a._deleted = true; a.amount = 0; a.updatedAt = now; } });
+  // Для undo запоминаем затронутые записи с их суммами (amount зануляется при tombstone)
+  const undone = [];
+  DB.assets.forEach(a => { if(a.date === _editingAssetDate && !a._deleted){ undone.push({rec:a, amount:a.amount}); a._deleted = true; a.amount = 0; a.updatedAt = now; } });
   saveDB();
   closeModal('modal-asset-edit');
   renderAssets();
-  toast('Записи за ' + _editingAssetDate + ' удалены');
+  if(undone.length){
+    toastUndo('Записи за ' + _editingAssetDate + ' удалены', ()=>{
+      const ts = Date.now();
+      undone.forEach(({rec, amount})=>{ delete rec._deleted; rec.amount = amount; rec.updatedAt = ts; });
+      saveDB(); renderAssets();
+    });
+  } else {
+    toast('Записи за ' + _editingAssetDate + ' удалены');
+  }
 }
 
 
@@ -6129,7 +6169,7 @@ function startEditCat(i){
   nameInp.type = 'text';
   nameInp.id = 'cat-edit-'+i;
   nameInp.value = oldName;
-  nameInp.style.cssText = 'flex:1;padding:6px 8px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-family:inherit;min-width:0';
+  nameInp.style.cssText = 'flex:1;padding:6px 8px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-family:inherit;min-width:0';
   nameInp.addEventListener('keydown', function(e){
     if(e.key==='Enter') saveCatName(i);
     if(e.key==='Escape') renderCatManager();
@@ -6295,7 +6335,7 @@ function startEditIncomeTag(i){
   const inp = document.createElement('input');
   inp.type = 'text';
   inp.value = tag;
-  inp.style.cssText = 'flex:1;font-size:14px;padding:4px 8px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--bg);color:var(--text)';
+  inp.style.cssText = 'flex:1;font-size:16px;padding:4px 8px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--bg);color:var(--text)';
   const btnSave = document.createElement('button');
   btnSave.className = 'btn primary small';
   btnSave.textContent = 'OK';
