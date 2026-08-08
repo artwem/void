@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.40.1">
+<link rel="stylesheet" href="css/app.css?v=1.41.0">
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
      script на мёртвой сети вешал парсер — белый экран у PWA без интернета -->
 <script src="vendor/chart.umd.js"></script>
@@ -239,7 +239,7 @@ if ('serviceWorker' in navigator) {
 
 <!-- PAGE: ASSETS -->
 <div id="page-assets" class="page">
-  <div class="hdr"><h1>Накопления</h1></div>
+  <div class="hdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit">⚠ <span id="assets-audit-badge-n"></span></button></div>
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div class="chart-wrap">
@@ -1148,7 +1148,7 @@ if ('serviceWorker' in navigator) {
 <div class="overlay" id="modal-split">
   <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
     <button class="close-btn" onclick="closeModal('modal-split')">✕</button>
-    <h2 style="margin-bottom:16px">Новый сплит</h2>
+    <h2 id="split-modal-title" style="margin-bottom:16px">Новый сплит</h2>
     <div class="fgrp"><label class="flbl">Название</label><input type="text" id="split-name" class="finp" placeholder="Яндекс Сплит — куртка"></div>
     <div class="fgrp"><label class="flbl">Общая сумма, ₽</label><input type="text" id="split-total" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this);_splitRegen()"></div>
     <div class="fgrp"><label class="flbl">Частей</label><input type="number" id="split-parts" class="finp" value="4" min="1" max="24" oninput="_splitRegen()"></div>
@@ -1172,7 +1172,8 @@ if ('serviceWorker' in navigator) {
     <h2 id="split-view-title" style="margin-bottom:4px">Сплит</h2>
     <div id="split-view-sub" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
     <div id="split-view-list"></div>
-    <button class="btn" onclick="closeSplit()" style="width:100%;margin-top:12px;color:var(--red)">Закрыть сплит</button>
+    <button class="btn" onclick="editSplit()" style="width:100%;margin-top:12px">Изменить график</button>
+    <button class="btn" onclick="closeSplit()" style="width:100%;margin-top:8px;color:var(--red)">Закрыть сплит</button>
   </div>
 </div>
 
@@ -1187,7 +1188,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.40.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1636,6 +1637,10 @@ function initOverlays(){
 
 // ─── NAV / PAGES ────────────────────────────────────────────────────
 let currentPage = 'budget';
+let _calcPrefill = null;
+// Deep-link в калькулятор: openInCalc({start, rate, months|target, cap})
+function openInCalc(p){ _calcPrefill = p || null; showPage('calc'); }
+
 function showPage(name,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
@@ -1653,12 +1658,30 @@ function showPage(name,btn){
   if(name==='stats') renderStats();
   if(name==='assets') renderAssets();
   if(name==='calc'){
-    const parts = _assetsParts().filter(p=>p.val>0);
-    _calcStartOn = new Set(parts.map(p=>p.key));
-    const total = parts.reduce((s,p)=>s+p.val,0);
-    if(total > 0) setMoneyInput('calc-start', total);
-    _renderCalcStartChips();
-    setTimeout(calcUpdate, 50);
+    if(_calcPrefill){
+      // Deep-link с карточки вклада/цели — реальные цифры вместо дефолтов
+      const p = _calcPrefill; _calcPrefill = null;
+      _calcStartOn = null;
+      if(p.start != null) setMoneyInput('calc-start', p.start);
+      if(p.rate  != null) document.getElementById('calc-rate').value = p.rate;
+      if(p.cap) document.getElementById('calc-cap').value = p.cap;
+      if(p.target != null){
+        setCalcMode('target');
+        setMoneyInput('calc-target', p.target);
+      } else {
+        setCalcMode('period');
+        if(p.months != null) document.getElementById('calc-duration').value = p.months;
+      }
+      _renderCalcStartChips();
+      setTimeout(calcUpdate, 50);
+    } else {
+      const parts = _assetsParts().filter(p=>p.val>0);
+      _calcStartOn = new Set(parts.map(p=>p.key));
+      const total = parts.reduce((s,p)=>s+p.val,0);
+      if(total > 0) setMoneyInput('calc-start', total);
+      _renderCalcStartChips();
+      setTimeout(calcUpdate, 50);
+    }
   }
   if(name==='deposits') renderDeposits();
   if(name==='investments') renderInvestments();
@@ -2358,7 +2381,13 @@ function renderTemplateChips(){
   const wrap = document.getElementById('template-chips');
   if(!wrap) return;
   const tmpls = (DB.templates||[]).filter(t=>!t._deleted);
-  if(!tmpls.length){ wrap.style.display='none'; return; }
+  if(!tmpls.length){
+    // Дискаверабилити: без шаблонов фича была невидима (пустой display:none),
+    // управление закопано в Настройках — даём ненавязчивый CTA прямо тут
+    wrap.style.display='flex';
+    wrap.innerHTML = `<button onclick="openTemplatesManager()" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px dashed var(--border2);background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">+ шаблоны быстрых трат</button>`;
+    return;
+  }
   wrap.style.display='flex';
   wrap.innerHTML = tmpls.map(t => {
     const color = t.color || getCatColor(t.cat);
@@ -2469,6 +2498,39 @@ function renderTemplateSettings(){
   }).join('');
 }
 
+
+// ═══ interactions.js ═══
+// (жили в секции denom.js — виджет удалён в дизайн-волне A, хелперы остались)
+
+function vibe(ms){ if(navigator.vibrate) navigator.vibrate(ms||25); }
+function flash(el){ if(!el) return; el.classList.remove('tap-flash'); void el.offsetWidth; el.classList.add('tap-flash'); el.addEventListener('animationend',()=>el.classList.remove('tap-flash'),{once:true}); }
+
+// Свайп влево по строке → удалить. Вертикальный скролл не блокируется.
+function _makeSwipeable(row, onDelete){
+  let x0=0,y0=0,dx=0,dragging=false,decided=false,horiz=false;
+  row.addEventListener('touchstart',e=>{ if(e.touches.length!==1)return; const t=e.touches[0]; x0=t.clientX;y0=t.clientY;dx=0;dragging=true;decided=false;horiz=false;row.style.transition='none'; },{passive:true});
+  row.addEventListener('touchmove',e=>{ if(!dragging)return; const t=e.touches[0],ddx=t.clientX-x0,ddy=t.clientY-y0;
+    if(!decided){ if(Math.abs(ddx)<6&&Math.abs(ddy)<6)return; decided=true; horiz=Math.abs(ddx)>Math.abs(ddy); if(!horiz){dragging=false;return;} }
+    dx=ddx; if(dx>0)dx=0; if(dx<-140)dx=-140; row.style.transform='translateX('+dx+'px)'; row.style.background = dx<-60?'var(--red-bg)':''; },{passive:true});
+  row.addEventListener('touchend',()=>{ if(!dragging)return; dragging=false; row.style.transition='transform .2s ease';
+    if(dx<-80){ vibe(40); row.style.transform='translateX(-110%)'; setTimeout(onDelete,160); }
+    else { row.style.transform='translateX(0)'; row.style.background=''; } });
+}
+
+function deleteExpenseById(id){
+  const e = DB.expenses.find(x=>x.id===id);
+  if(!e) return;
+  const snap = {amount:e.amount, comment:e.comment, _deleted:e._deleted};
+  e.amount=0; e.comment=''; e._deleted=true; e.updatedAt=Date.now();
+  saveDB();
+  const rerender=()=>{ if(currentPage==='day') renderDay(); else renderBudget(); };
+  rerender();
+  toastUndo('Удалено', ()=>{
+    e.amount=snap.amount; e.comment=snap.comment; e._deleted=snap._deleted; e.updatedAt=Date.now();
+    saveDB();
+    rerender();
+  });
+}
 
 // ═══ income.js ═══
 
@@ -3831,10 +3893,11 @@ function _splitRegen(){
   const firstNow = document.getElementById('split-first-now').checked;
   if(total <= 0 || parts < 1 || parts > 24){ _splitGenPayments = []; _splitRenderGenList(); return; }
   const base = Math.floor(total / parts);
+  const prevPaid = _splitGenPayments.map(p => !!p.paid); // при редактировании галки оплаты переживают перегенерацию
   _splitGenPayments = Array.from({length: parts}, (_, i) => ({
     date: _splitShiftDate(buy, firstNow ? i : i + 1),
     amount: i === parts - 1 ? total - base * (parts - 1) : base,  // последний забирает округление
-    paid: false
+    paid: prevPaid[i] || false
   }));
   _splitRenderGenList();
 }
@@ -3874,6 +3937,8 @@ function _splitShiftFrom(i, newDate){
 }
 
 function openSplitModal(){
+  _editSplitId = null;
+  document.getElementById('split-modal-title').textContent = 'Новый сплит';
   document.getElementById('split-name').value = '';
   document.getElementById('split-total').value = '';
   document.getElementById('split-parts').value = '4';
@@ -3884,13 +3949,64 @@ function openSplitModal(){
   openModal('modal-split');
 }
 
+// Deep-link'и в калькулятор с реальными параметрами (см. openInCalc)
+function _depToCalc(id){
+  const d = (DB.deposits||[]).find(x=>x.id===id && !x._deleted);
+  if(!d) return;
+  const days = Math.max(1, Math.round((new Date(d.endDate+'T12:00:00') - new Date(today()+'T12:00:00'))/86400000));
+  openInCalc({
+    start: depositValueAt(d, today()),
+    rate: d.rate,
+    months: Math.max(1, Math.round(days/30.4375)),
+    cap: d.capitalization === 'monthly' ? 'monthly' : 'none'
+  });
+}
+
+function _goalToCalc(id){
+  const g = (DB.goals||[]).find(x=>x.id===id && !x._deleted);
+  if(!g) return;
+  openInCalc({ start: g.saved || 0, target: g.target });
+}
+
+let _editSplitId = null;
+
 function saveSplit(){
   const name = document.getElementById('split-name').value.trim();
   if(!name){ toast('Введите название', 'err'); return; }
   if(!_splitGenPayments.length){ toast('Заполните сумму и число частей', 'err'); return; }
   if(_splitGenPayments.some(p => !p.date || !(p.amount > 0))){ toast('Проверьте график: даты и суммы', 'err'); return; }
+  if(_editSplitId){
+    const c = (DB.credits||[]).find(x => x.id === _editSplitId && !x._deleted);
+    if(c){
+      c.name = name;
+      c.payments = _splitGenPayments.map(p => ({...p}));
+      c.updatedAt = Date.now();
+      saveDB(); closeModal('modal-split'); renderAssets(); toast('Сплит обновлён');
+      return;
+    }
+  }
   DB.credits.push({id: uid(), kind: 'split', name, payments: _splitGenPayments.map(p => ({...p})), updatedAt: Date.now()});
   saveDB(); closeModal('modal-split'); renderAssets(); toast('Сплит добавлен');
+}
+
+// Редактирование сохранённого сплита: та же модалка-генератор. График загружается
+// как есть (с галками оплаты); правка строк — точечно, генераторные поля сверху
+// перегенерят график заново (галки переживают по индексу, см. _splitRegen)
+function editSplit(){
+  const c = (DB.credits||[]).find(x => x.id === _viewSplitId && !x._deleted);
+  if(!c) return;
+  _editSplitId = c.id;
+  document.getElementById('split-modal-title').textContent = 'Изменить сплит';
+  document.getElementById('split-name').value = c.name;
+  const total = (c.payments||[]).reduce((s,p)=>s+p.amount,0);
+  setMoneyInput('split-total', total);
+  document.getElementById('split-parts').value = c.payments.length;
+  document.getElementById('split-buy-date').value = c.payments[0] ? c.payments[0].date : today();
+  document.getElementById('split-first-now').checked = true;
+  _splitGenPayments = c.payments.map(p => ({...p}));
+  _splitRenderGenList();
+  closeModal('modal-split-view');
+  openModal('modal-split');
 }
 
 function openSplitView(id){
@@ -4391,6 +4507,16 @@ function renderAssets(){
   renderSavingsCharts();
   renderGoals();
   renderCredits();
+  // Бейдж проблем данных (призраки/дубли/невидимые вклады/старый снимок) — тап открывает аудит
+  {
+    const badge = document.getElementById('assets-audit-badge');
+    if(badge){
+      const n = _auditIssueCount();
+      badge.style.display = n ? 'inline-flex' : 'none';
+      const nEl = document.getElementById('assets-audit-badge-n');
+      if(nEl) nEl.textContent = String(n);
+    }
+  }
 }
 
 // ─── GOALS ──────────────────────────────────────────────────────────
@@ -4447,7 +4573,8 @@ function renderGoals(){
         </div>
         ${paceLine?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${paceLine}</div>`:''}
       </div>
-      ${done?'':`<button class="btn small" style="margin-top:8px" onclick="openGoalTopup('${esc(g.id)}',event)">+ Пополнить</button>`}
+      ${done?'':`<button class="btn small" style="margin-top:8px" onclick="openGoalTopup('${esc(g.id)}',event)">+ Пополнить</button>
+      <button class="btn small" style="margin-top:8px" onclick="event.stopPropagation();_goalToCalc('${esc(g.id)}')">→ в калькулятор</button>`}
     </div>`;
   }).join('');
 }
@@ -5058,7 +5185,8 @@ function renderDeposits(){
         : 'до '+_fmtDateRu(d.endDate)+' · осталось '+daysLeft+' дн · '+(d.capitalization==='end'?'% в конце':'капитализация')}</div>
       ${closed
         ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">↳ Перенести в банк</button>`
-        : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>`}
+        : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>
+           <button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">→ в калькулятор</button>`}
     </div>`;
   }).join('');
   // дефолт даты прогноза — самое позднее закрытие
@@ -6291,6 +6419,30 @@ function _auditBankName(a, known){
 }
 
 function openDataAudit(){ renderDataAudit(); openModal('modal-data-audit'); }
+
+// Лёгкий счётчик проблем для бейджа на табе Активов (та же логика, что в
+// renderDataAudit, но без DOM): призраки + дубли + невидимые вклады + старый снимок
+function _auditIssueCount(){
+  const known = getAllBanks();
+  const knownSet = new Set(known);
+  const live = (DB.assets||[]).filter(a=>!a._deleted);
+  if(!live.length) return 0;
+  const byName = {};
+  live.forEach(a=>{
+    const n = _auditBankName(a, known);
+    (byName[n] = byName[n]||[]).push(a);
+  });
+  let issues = Object.keys(byName).filter(n=>!knownSet.has(n)).length; // призраки
+  Object.values(byName).forEach(recs=>{
+    const c = {};
+    recs.forEach(r=>{ c[r.date]=(c[r.date]||0)+1; });
+    issues += Object.values(c).filter(k=>k>1).length; // дубли банк+дата
+  });
+  const lastSnap = live.reduce((m,a)=> a.date>m ? a.date : m, '');
+  issues += (DB.deposits||[]).filter(d=>!d._deleted && d.openDate > lastSnap).length; // вклад позже снимка
+  if(lastSnap && (Date.now() - new Date(lastSnap+'T12:00:00')) / 86400000 > 14) issues++; // снимок старше 14 дней
+  return issues;
+}
 
 function renderDataAudit(){
   const el = document.getElementById('data-audit-body');
