@@ -2,7 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Пинч-зум разрешён (a11y): случайный зум при вводе решён 16px-инпутами, не запретом -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#f7f6f1">
@@ -107,25 +108,6 @@ if ('serviceWorker' in navigator) {
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
-  <div id="denom-widget" style="padding:0 16px 12px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <select id="denom-cat" style="flex:1;padding:6px 8px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"></select>
-      <button onclick="denomClear()" class="btn small icon-btn" style="font-size:20px;color:var(--muted)">×</button>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
-      <button onclick="denomAdd(1000,this)" class="denom-btn">1000</button>
-      <button onclick="denomAdd(500,this)"  class="denom-btn">500</button>
-      <button onclick="denomAdd(100,this)"  class="denom-btn">100</button>
-      <button onclick="denomAdd(50,this)"   class="denom-btn">50</button>
-      <button onclick="denomAdd(10,this)"   class="denom-btn">10</button>
-      <button onclick="denomAdd(1,this)"    class="denom-btn">1</button>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <input type="text" id="denom-total" inputmode="decimal" placeholder="0" style="font-size:22px;font-weight:700;width:100px;flex-shrink:0;letter-spacing:-0.5px;border:none;border-bottom:1.5px solid var(--border2);background:transparent;color:var(--text);padding:2px 0;font-family:inherit" oninput="formatMoneyInput(this);_denomAmount=parseMoney(this.value)"/>
-      <input id="denom-comment" type="text" placeholder="Комментарий" style="flex:1;padding:6px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"/>
-      <button onclick="denomSave()" class="btn primary small" style="flex:0;white-space:nowrap">Добавить</button>
-    </div>
-  </div>
   <div style="padding:0 16px 8px">
     <input id="expense-search" type="search" placeholder="🔍 Поиск по расходам..." autocomplete="off"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"
@@ -174,12 +156,17 @@ if ('serviceWorker' in navigator) {
   <div class="spacer"></div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
         <span style="font-size:13px;font-weight:600">Период</span>
-        <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
-          <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
-          <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
+            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
+            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
+          </div>
+          <button onclick="showPage('report')" aria-label="Годовой отчёт" title="Годовой отчёт" style="display:flex;align-items:center;gap:5px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:3px 9px;cursor:pointer;font-family:inherit">
+            <svg width="14" height="14" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Отчёт
+          </button>
         </div>
       </div>
       <div id="stats-summary"></div>
@@ -190,8 +177,8 @@ if ('serviceWorker' in navigator) {
       <div class="chart-title">День за днём</div>
       <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px">
         <div id="day-compare-mode" data-mode="today" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="dcm-full" onclick="document.getElementById('day-compare-mode').dataset.mode='full';renderStats()" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px" title="Весь месяц">▦</span>
-          <span id="dcm-today" onclick="document.getElementById('day-compare-mode').dataset.mode='today';renderStats()" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0" title="До сегодня">◧</span>
+          <span id="dcm-full" onclick="document.getElementById('day-compare-mode').dataset.mode='full';renderStats()" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
+          <span id="dcm-today" onclick="document.getElementById('day-compare-mode').dataset.mode='today';renderStats()" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
         </div>
         <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Особые расходы">
           <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Особые</span>
@@ -236,13 +223,6 @@ if ('serviceWorker' in navigator) {
       <div style="position:relative;height:200px"><canvas id="chartIncomeTags"></canvas></div>
     </div>
   </div>
-  <div style="padding:4px 16px 0">
-    <button class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="showPage('report')">
-      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Годовой отчёт
-    </button>
-  </div>
-
   <div class="page-end"></div>
 </div>
 
@@ -2204,7 +2184,6 @@ function renderDay(){
   const srch = document.getElementById('expense-search');
   if(srch) srch.value = '';
   renderTemplateChips();
-  renderDenomWidget();
   const list = document.getElementById('entry-list');
   list.innerHTML='';
   if(!allEntries.length){
@@ -2480,80 +2459,6 @@ function renderTemplateSettings(){
   }).join('');
 }
 
-// ═══ denom.js ═══
-
-let _denomAmount = 0;
-
-function vibe(ms){ if(navigator.vibrate) navigator.vibrate(ms||25); }
-function flash(el){ if(!el) return; el.classList.remove('tap-flash'); void el.offsetWidth; el.classList.add('tap-flash'); el.addEventListener('animationend',()=>el.classList.remove('tap-flash'),{once:true}); }
-
-// Свайп влево по строке → удалить. Вертикальный скролл не блокируется.
-function _makeSwipeable(row, onDelete){
-  let x0=0,y0=0,dx=0,dragging=false,decided=false,horiz=false;
-  row.addEventListener('touchstart',e=>{ if(e.touches.length!==1)return; const t=e.touches[0]; x0=t.clientX;y0=t.clientY;dx=0;dragging=true;decided=false;horiz=false;row.style.transition='none'; },{passive:true});
-  row.addEventListener('touchmove',e=>{ if(!dragging)return; const t=e.touches[0],ddx=t.clientX-x0,ddy=t.clientY-y0;
-    if(!decided){ if(Math.abs(ddx)<6&&Math.abs(ddy)<6)return; decided=true; horiz=Math.abs(ddx)>Math.abs(ddy); if(!horiz){dragging=false;return;} }
-    dx=ddx; if(dx>0)dx=0; if(dx<-140)dx=-140; row.style.transform='translateX('+dx+'px)'; row.style.background = dx<-60?'var(--red-bg)':''; },{passive:true});
-  row.addEventListener('touchend',()=>{ if(!dragging)return; dragging=false; row.style.transition='transform .2s ease';
-    if(dx<-80){ vibe(40); row.style.transform='translateX(-110%)'; setTimeout(onDelete,160); }
-    else { row.style.transform='translateX(0)'; row.style.background=''; } });
-}
-
-function deleteExpenseById(id){
-  const e = DB.expenses.find(x=>x.id===id);
-  if(!e) return;
-  const snap = {amount:e.amount, comment:e.comment, _deleted:e._deleted};
-  e.amount=0; e.comment=''; e._deleted=true; e.updatedAt=Date.now();
-  saveDB();
-  const rerender=()=>{ if(currentPage==='day') renderDay(); else renderBudget(); };
-  rerender();
-  toastUndo('Удалено', ()=>{
-    e.amount=snap.amount; e.comment=snap.comment; e._deleted=snap._deleted; e.updatedAt=Date.now();
-    saveDB();
-    rerender();
-  });
-}
-
-function denomAdd(n,btn){
-  vibe();
-  flash(btn);
-  _denomAmount = Math.round((_denomAmount + n) * 100) / 100;
-  const inp = document.getElementById('denom-total');
-  inp.value = String(Math.round(_denomAmount));
-  formatMoneyInput(inp);
-}
-
-function denomClear(){
-  _denomAmount = 0;
-  const inp = document.getElementById('denom-total');
-  if(inp){ inp.value = ''; }
-  const ci = document.getElementById('denom-comment');
-  if(ci) ci.value = '';
-}
-
-function denomSave(){
-  _denomAmount = parseMoney(document.getElementById('denom-total').value);
-  if(_denomAmount <= 0){ toast('Введите сумму'); return; }
-  const catEl = document.getElementById('denom-cat');
-  const cat = parseInt(catEl.value);
-  if(isNaN(cat)){ toast('Выберите категорию'); return; }
-  const comment = (document.getElementById('denom-comment').value || '').trim();
-  const date = currentDay;
-  DB.expenses.push({id: uid(), cat, catId: DB.catIds[cat], amount: _denomAmount, date, comment, updatedAt:Date.now()});
-  saveDB();
-  checkBudgetNotifications();
-  toast(fmt(_denomAmount) + ' добавлено');
-  denomClear();
-  renderDay();
-}
-
-function renderDenomWidget(){
-  const sel = document.getElementById('denom-cat');
-  if(!sel || !DB.categories.length) return;
-  const prev = sel.value;
-  sel.innerHTML = DB.categories.map((c,i) => `<option value="${i}">${esc(c)}</option>`).join('');
-  if(prev !== '' && !isNaN(parseInt(prev)) && parseInt(prev) < DB.categories.length) sel.value = prev;
-}
 
 // ═══ income.js ═══
 
