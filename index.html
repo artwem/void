@@ -108,6 +108,15 @@ if ('serviceWorker' in navigator) {
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
+  <!-- Быстрый ввод: категория+сумма+✓ одной строкой; комментарий подъезжает при фокусе -->
+  <div style="display:flex;gap:8px;padding:0 16px 6px;align-items:center">
+    <select id="qa-cat" style="flex:1;min-width:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"></select>
+    <input id="qa-amount" type="text" inputmode="decimal" placeholder="0 ₽" style="width:110px;flex-shrink:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-weight:600;text-align:right;font-family:inherit" oninput="formatMoneyInput(this)" onfocus="document.getElementById('qa-comment-row').style.display='block'"/>
+    <button onclick="quickAddSave(this)" aria-label="Добавить расход" style="width:44px;height:44px;flex-shrink:0;border:none;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:20px;cursor:pointer;font-family:inherit">✓</button>
+  </div>
+  <div id="qa-comment-row" style="display:none;padding:0 16px 8px">
+    <input id="qa-comment" type="text" placeholder="Комментарий (необязательно)" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"/>
+  </div>
   <div style="padding:0 16px 8px">
     <input id="expense-search" type="search" placeholder="🔍 Поиск по расходам..." autocomplete="off"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"
@@ -1188,7 +1197,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2199,6 +2208,7 @@ function onDayCalChange(val){
 
 function renderDay(){
   renderExpenseCatChips();
+  renderQuickAdd();
   // Шапку обновляем всегда — иначе при активном фильтре висит итог чужого дня
   const d = new Date(currentDay+'T12:00:00');
   const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
@@ -2532,6 +2542,35 @@ function deleteExpenseById(id){
     saveDB();
     rerender();
   });
+}
+
+// ─── БЫСТРЫЙ ВВОД НА ДНЕ ────────────────────────────────────────────
+// Одна строка «категория+сумма+✓» — наследник деном-виджета (v1.41.2):
+// без кнопок номиналов, комментарий подъезжает при фокусе на сумме
+function renderQuickAdd(){
+  const sel = document.getElementById('qa-cat');
+  if(!sel || !DB.categories.length) return;
+  const prev = sel.value;
+  sel.innerHTML = DB.categories.map((c,i) => `<option value="${i}">${esc(c)}</option>`).join('');
+  if(prev !== '' && !isNaN(parseInt(prev)) && parseInt(prev) < DB.categories.length) sel.value = prev;
+}
+
+function quickAddSave(btn){
+  const amtInp = document.getElementById('qa-amount');
+  const amt = parseMoney(amtInp.value);
+  if(amt <= 0){ toast('Введите сумму'); return; }
+  const cat = parseInt(document.getElementById('qa-cat').value);
+  if(isNaN(cat)){ toast('Выберите категорию'); return; }
+  const comment = (document.getElementById('qa-comment').value || '').trim();
+  DB.expenses.push({id: uid(), cat, catId: DB.catIds[cat], amount: amt, date: currentDay, comment, updatedAt: Date.now()});
+  saveDB();
+  checkBudgetNotifications();
+  vibe(); flash(btn);
+  toast(fmt(amt) + ' добавлено');
+  amtInp.value = '';
+  document.getElementById('qa-comment').value = '';
+  document.getElementById('qa-comment-row').style.display = 'none';
+  renderDay();
 }
 
 // ═══ income.js ═══
