@@ -1188,7 +1188,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1651,7 +1651,9 @@ function showPage(name,btn){
   // Годовой отчёт открывается из Аналитики
   else if(name==='report'){ const nb=document.getElementById('nav-stats'); if(nb) nb.classList.add('active'); }
   currentPage = name;
-  document.getElementById('fab').style.display = name==='budget' ? 'flex' : 'none';
+  // FAB на Бюджете и Дне: быстрый ввод на Дне раньше жил в деном-виджете
+  // (удалён в v1.41.0) — openAddExpense сам подставит дату выбранного дня
+  document.getElementById('fab').style.display = (name==='budget'||name==='day') ? 'flex' : 'none';
   document.getElementById('fab').textContent = '+';
   if(name==='budget') renderBudget();
   if(name==='day') renderDay();
