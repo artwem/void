@@ -262,10 +262,15 @@ if ('serviceWorker' in navigator) {
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
         <div class="chart-title">Рост накоплений</div>
-        <div id="assets-chart-deps-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады·инвест</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div id="assets-chart-scale-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="acs-raw" onclick="setAssetsChartScale('raw')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">снимки</span><span id="acs-month" onclick="setAssetsChartScale('month')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">месяц</span><span id="acs-year" onclick="setAssetsChartScale('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">год</span>
+          </div>
+          <div id="assets-chart-deps-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады·инвест</span>
+          </div>
         </div>
       </div>
       <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
@@ -1214,7 +1219,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.38.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.39.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4241,6 +4246,41 @@ function setAssetsChartDeps(on){
   renderAssets();
 }
 
+// Переключатель шкалы графика «снимки / месяц / год» (настройка устройства).
+// Влияет ТОЛЬКО на график — история активов всегда по реальным снимкам.
+function setAssetsChartScale(scale){
+  try{ localStorage.setItem('assetsChartScale', scale); }catch(_){}
+  renderAssets();
+}
+
+// Огрубляет сетку дат графика активов до конца каждого месяца/года — только
+// для графика (см. setAssetsChartScale). Точка периода = последний снимок ≤
+// концу периода: диапазон — от месяца/года первого снимка до месяца/года
+// последнего, в будущее после последнего реального снимка не тянем (не гадаем).
+function _coarseAssetDates(scale, rawDates){
+  if(!rawDates || !rawDates.length) return [];
+  const minDate = rawDates[0], maxDate = rawDates[rawDates.length - 1];
+  const pad2 = n => String(n).padStart(2, '0');
+  const dates = [];
+  if(scale === 'year'){
+    const minY = Number(minDate.slice(0, 4)), maxY = Number(maxDate.slice(0, 4));
+    for(let y = minY; y <= maxY; y++){
+      const periodEnd = y + '-12-31';
+      dates.push(periodEnd <= maxDate ? periodEnd : maxDate);
+    }
+  } else {
+    let y = Number(minDate.slice(0, 4)), m = Number(minDate.slice(5, 7)) - 1; // 0-indexed
+    const maxY = Number(maxDate.slice(0, 4)), maxM = Number(maxDate.slice(5, 7)) - 1;
+    while(y < maxY || (y === maxY && m <= maxM)){
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      const periodEnd = y + '-' + pad2(m + 1) + '-' + pad2(lastDay);
+      dates.push(periodEnd <= maxDate ? periodEnd : maxDate);
+      m++; if(m > 11){ m = 0; y++; }
+    }
+  }
+  return dates;
+}
+
 function renderAssets(){
   const allBanks = getAllBanks();
   const allEntries = DB.assets.filter(a=>!a._deleted);
@@ -4406,8 +4446,29 @@ function renderAssets(){
     list.appendChild(tglRow);
   }
   // Chart — общие серии (carry-forward, вклады до дня закрытия)
-  const {dates: allDates, bankSeries, depSeries, invSeries} = _buildAssetSeries();
-  const labels = allDates.map(d=>d.slice(5));
+  const {dates: allDates, bankSeries: rawBankSeries, depSeries: rawDepSeries, invSeries: rawInvSeries} = _buildAssetSeries();
+  // Тумблер «снимки / месяц / год» — влияет только на график, история ниже
+  // (allDates/rawBankSeries и т.д.) всегда остаётся по реальным снимкам.
+  const chartScale = localStorage.getItem('assetsChartScale') || 'raw';
+  let chartDates = allDates, bankSeries = rawBankSeries, depSeries = rawDepSeries, invSeries = rawInvSeries;
+  if(chartScale !== 'raw' && allDates.length){
+    const coarseDates = _coarseAssetDates(chartScale, allDates);
+    ({dates: chartDates, bankSeries, depSeries, invSeries} = _buildAssetSeries(coarseDates));
+  }
+  const labels = chartDates.map(d => chartScale === 'year' ? d.slice(0, 4)
+    : chartScale === 'month' ? SHORT_MONTHS[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(2, 4)
+    : d.slice(5));
+  {
+    const stgl = document.getElementById('assets-chart-scale-toggle');
+    if(stgl){
+      stgl.style.display = allDates.length ? 'inline-flex' : 'none';
+      const aOn='background:rgba(128,128,128,0.18);color:var(--text)', aOff='color:#888';
+      const rawEl=document.getElementById('acs-raw'), monthEl=document.getElementById('acs-month'), yearEl=document.getElementById('acs-year');
+      if(rawEl)   rawEl.style.cssText  ='padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;'+(chartScale==='raw'?aOn:aOff);
+      if(monthEl) monthEl.style.cssText='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);'+(chartScale==='month'?aOn:aOff);
+      if(yearEl)  yearEl.style.cssText ='padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;'+(chartScale==='year'?aOn:aOff);
+    }
+  }
   // Тумблер «банки / +вклады·инвест»: добавить к каждой точке вклады и инвестиции на эту дату
   const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length + (DB.investments||[]).filter(x=>!x._deleted).length;
   const depsOn = localStorage.getItem('assetsChartDeps') === '1' && liveDepsCnt > 0;
@@ -4439,8 +4500,8 @@ function renderAssets(){
   const tbl = document.getElementById('assets-history-table');
   if(wrap && tbl && allDates.length > 0){
     wrap.style.display = 'block';
-    // История всегда с разбивкой «счета | вклады | всего», независимо от тумблера графика
-    const rows = allDates.map((date, idx) => ({date, banks: bankSeries[idx], deps: depSeries[idx], inv: invSeries[idx], total: bankSeries[idx] + depSeries[idx] + invSeries[idx]}))
+    // История всегда по реальным снимкам, независимо от тумблеров графика (масштаб/вклады)
+    const rows = allDates.map((date, idx) => ({date, banks: rawBankSeries[idx], deps: rawDepSeries[idx], inv: rawInvSeries[idx], total: rawBankSeries[idx] + rawDepSeries[idx] + rawInvSeries[idx]}))
                          .sort((a,b) => b.date.localeCompare(a.date));
     _assetsHistoryRows = rows;
     renderAssetsHistory(rows, false);
@@ -4723,7 +4784,11 @@ function invInvested(inv, dateStr){
 // Серии «счета / вклады» по датам снимков. Carry-forward: банк без записи
 // на дату берётся по последней известной. Вклады — с openDate, закрытые
 // учитываются до дня закрытия. Одна логика для графика, истории и аудита.
-function _buildAssetSeries(){
+// customDates (опционально) — своя огрублённая сетка (см. _coarseAssetDates,
+// график «месяц/год»): банковские записи применяются по факту их даты через
+// two-pointer, а не только на точные даты сетки — иначе запись между двумя
+// грубыми точками потерялась бы (осталась бы устаревшая lastVal).
+function _buildAssetSeries(customDates){
   const allBanks = getAllBanks();
   const byDate = {};
   [...DB.assets].filter(a=>!a._deleted).sort((a,b)=>a.date.localeCompare(b.date)).forEach(a=>{
@@ -4733,20 +4798,32 @@ function _buildAssetSeries(){
   });
   const histDeps = (DB.deposits||[]).filter(d=>d.openDate);
   const histInvs = (DB.investments||[]).filter(v=>v.snapshots && Object.keys(v.snapshots).length);
-  // Сетка дат: снимки банков + снимки инвестиций. Даты открытия вкладов
-  // НЕ добавляем (пробовали в v1.32.3, откатили): точка без данных банков
-  // на эту дату путает — вклад появляется в истории со следующего снимка,
-  // до него живёт только в шапке «Всего активов» (подписана датой снимка)
-  const dateSet = new Set(Object.keys(byDate));
-  histInvs.forEach(v=>{
-    const delDay = _depDelDay(v);
-    _invSnapDates(v).forEach(ds=>{ if(!(v._deleted && delDay && ds >= delDay)) dateSet.add(ds); });
-  });
-  const dates = [...dateSet].sort();
+  let dates;
+  if(customDates){
+    dates = customDates;
+  } else {
+    // Сетка дат: снимки банков + снимки инвестиций. Даты открытия вкладов
+    // НЕ добавляем (пробовали в v1.32.3, откатили): точка без данных банков
+    // на эту дату путает — вклад появляется в истории со следующего снимка,
+    // до него живёт только в шапке «Всего активов» (подписана датой снимка)
+    const dateSet = new Set(Object.keys(byDate));
+    histInvs.forEach(v=>{
+      const delDay = _depDelDay(v);
+      _invSnapDates(v).forEach(ds=>{ if(!(v._deleted && delDay && ds >= delDay)) dateSet.add(ds); });
+    });
+    dates = [...dateSet].sort();
+  }
+  const bankDateKeys = Object.keys(byDate).sort(); // реальные даты банковских записей, по возрастанию
   const lastVal = {};
+  let bankPtr = 0;
   const bankSeries = [], depSeries = [], invSeries = [];
   dates.forEach(date=>{
-    Object.entries(byDate[date]||{}).forEach(([b,amt])=>{ lastVal[b]=amt; });
+    // Применяем все банковские записи ≤ date — не только те, чья дата точно
+    // совпадает с точкой сетки (в raw-режиме это одно и то же).
+    while(bankPtr < bankDateKeys.length && bankDateKeys[bankPtr] <= date){
+      Object.entries(byDate[bankDateKeys[bankPtr]]).forEach(([b,amt])=>{ lastVal[b]=amt; });
+      bankPtr++;
+    }
     let total = 0;
     Object.entries(lastVal).forEach(([bname,amt])=>{
       total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
