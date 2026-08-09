@@ -57,7 +57,7 @@ if ('serviceWorker' in navigator) {
 ═══════════════════════════════════════════════════════════════ -->
 
 <!-- PAGE: BUDGET -->
-<div id="page-budget" class="page active">
+<div id="page-budget" class="page">
   <div class="hdr">
     <div class="hdr-row">
       <div style="display:flex;align-items:center;gap:8px"><svg width="26" height="26" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
@@ -92,7 +92,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- PAGE: DAY -->
-<div id="page-day" class="page">
+<div id="page-day" class="page active">
   <div class="day-hdr">
     <div class="date-nav">
       <button class="mn-btn" onclick="changeDay(-1)">‹</button>
@@ -587,13 +587,13 @@ if ('serviceWorker' in navigator) {
      NAVIGATION BAR
 ═══════════════════════════════════════════════════════════════ -->
 <nav class="nav">
-  <button class="nav-btn active" onclick="showPage('budget',this)" id="nav-budget">
-    <svg viewBox="0 0 22 22" fill="none"><path d="M2 19h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="3" y="10" width="4" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="6" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="15" y="13" width="4" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
-    Бюджет
-  </button>
-  <button class="nav-btn" onclick="showPage('day',this)" id="nav-day">
+  <button class="nav-btn active" onclick="showPage('day',this)" id="nav-day">
     <svg viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="14" rx="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v4M15 3v4M3 10h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="7" y="13" width="3" height="3" rx="0.8" fill="currentColor"/></svg>
     День
+  </button>
+  <button class="nav-btn" onclick="showPage('budget',this)" id="nav-budget">
+    <svg viewBox="0 0 22 22" fill="none"><path d="M2 19h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="3" y="10" width="4" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="6" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="15" y="13" width="4" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+    Бюджет
   </button>
   <button class="nav-btn" onclick="showPage('income',this)" id="nav-income">
     <svg viewBox="0 0 22 22" fill="none"><path d="M7 16V6M4 9l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6v10M12 13l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1197,7 +1197,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.41.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.42.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1645,7 +1645,7 @@ function initOverlays(){
 // ═══ nav.js ═══
 
 // ─── NAV / PAGES ────────────────────────────────────────────────────
-let currentPage = 'budget';
+let currentPage = 'day'; // День — стартовый таб (v1.42.0): открывается чаще всего, для записи трат
 let _calcPrefill = null;
 // Deep-link в калькулятор: openInCalc({start, rate, months|target, cap})
 function openInCalc(p){ _calcPrefill = p || null; showPage('calc'); }
@@ -7991,7 +7991,7 @@ function init(){
   currentDay=today();
   document.getElementById('fab').style.display='flex';
   document.getElementById('fab').textContent='+';
-  renderBudget();
+  renderDay(); // стартовый таб — День (v1.42.0)
   checkAssetNotification();
   checkDepositNotifications();
   checkCreditNotifications();
