@@ -2,7 +2,7 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-08-09 v1.44.0';
+const V = '2026-08-09 v1.45.0';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
@@ -11,7 +11,7 @@ const PRECACHE = [
   './css/app.css',
   './apps-script/Code.gs',
   './vendor/chart.umd.js',
-  './vendor/xlsx.full.min.js'
+  './vendor/xlsx.style.min.js'
 ];
 
 // INSTALL: кешируем ресурсы и сразу переходим в активный режим (без ожидания)

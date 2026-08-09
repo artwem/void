@@ -33,7 +33,7 @@
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
      script на мёртвой сети вешал парсер — белый экран у PWA без интернета -->
 <script src="vendor/chart.umd.js"></script>
-<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/xlsx.style.min.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(reg => {
@@ -1197,7 +1197,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.44.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.45.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6889,6 +6889,153 @@ function checkCreditNotifications(){
   });
 }
 
+// ── Сводный лист года для Excel: пивот расходов по категориям × месяцы,
+// доходы по тегам, строка накоплений, активы. Стили — xlsx-js-style
+// (заливки цветами категорий/тегов из аппа, зебра, итоговые строки).
+function _excelSummarySheet(X, yr){
+  const MO_S = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const hex = c => (c||'#888888').replace('#','').toUpperCase().padEnd(6,'0').slice(0,6);
+  const txtOn = c => { // белый или тёмный текст поверх заливки — по яркости
+    const h = hex(c);
+    const lum = 0.299*parseInt(h.slice(0,2),16) + 0.587*parseInt(h.slice(2,4),16) + 0.114*parseInt(h.slice(4,6),16);
+    return lum > 150 ? '1A1A18' : 'FFFFFF';
+  };
+  const NUM = '#,##0';
+  const thin = {style:'thin', color:{rgb:'DDDDDD'}};
+  const S = {
+    title:  {font:{bold:true, sz:14, color:{rgb:'1A1A18'}}},
+    hdr:    {font:{bold:true, color:{rgb:'FFFFFF'}, sz:10}, fill:{fgColor:{rgb:'333330'}}, alignment:{horizontal:'center'}},
+    hdrL:   {font:{bold:true, color:{rgb:'FFFFFF'}, sz:10}, fill:{fgColor:{rgb:'333330'}}},
+    num:    {numFmt:NUM, font:{sz:10}, alignment:{horizontal:'right'}},
+    numZ:   {numFmt:NUM, font:{sz:10}, alignment:{horizontal:'right'}, fill:{fgColor:{rgb:'F4F3EE'}}},
+    name:   {font:{sz:10}},
+    total:  {numFmt:NUM, font:{bold:true, sz:10}, alignment:{horizontal:'right'}, border:{top:thin}},
+    totalL: {font:{bold:true, sz:10}, border:{top:thin}},
+    pct:    {font:{sz:9, color:{rgb:'888882'}}, alignment:{horizontal:'right'}}
+  };
+  const exps = (DB.expenses||[]).filter(e=>!e._deleted && String(e.date||'').startsWith(yr+'-'));
+  const incs = (DB.incomes||[]).filter(x=>!x._deleted && String(x.date||'').startsWith(yr+'-'));
+
+  const rows = [];   // aoa
+  const styles = []; // параллельно: {r,c,s}
+  const put = (r,c,st) => styles.push({r,c,s:st});
+  let R = 0;
+  const width = 15; // Категория + 12 мес + Итого + %
+
+  rows.push(['V.O.I.D. — сводная за '+yr+' год']); put(R,0,S.title); R++;
+  rows.push([]); R++;
+
+  // ── Расходы: категории × месяцы ──
+  const catM = {}; // catIdx → number[12]
+  exps.forEach(e => {
+    const m = parseInt(e.date.slice(5,7))-1;
+    if(!(e.cat>=0)) return;
+    if(!catM[e.cat]) catM[e.cat] = Array(12).fill(0);
+    catM[e.cat][m] += e.amount;
+  });
+  const expMTot = Array(12).fill(0);
+  Object.values(catM).forEach(arr=>arr.forEach((v,m)=>expMTot[m]+=v));
+  const expTot = expMTot.reduce((a,b)=>a+b,0);
+
+  rows.push(['РАСХОДЫ', ...MO_S, 'Итого', '%']);
+  for(let c=0;c<width;c++) put(R,c, c===0?S.hdrL:S.hdr);
+  R++;
+  const catRows2 = Object.entries(catM).map(([i,arr])=>({i:+i, name:DB.categories[+i]||'?', arr, sum:arr.reduce((a,b)=>a+b,0)}))
+    .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
+  catRows2.forEach((cr, k) => {
+    const color = getCatColor(cr.i);
+    rows.push([cr.name, ...cr.arr.map(v=>v||''), cr.sum, expTot>0?Math.round(cr.sum/expTot*100)+'%':'']);
+    put(R,0,{font:{sz:10, bold:true, color:{rgb:txtOn(color)}}, fill:{fgColor:{rgb:hex(color)}}});
+    const zebra = k%2===1;
+    for(let c=1;c<=12;c++) put(R,c, zebra?S.numZ:S.num);
+    put(R,13,{numFmt:NUM, font:{bold:true, sz:10}, alignment:{horizontal:'right'}});
+    put(R,14,S.pct);
+    R++;
+  });
+  rows.push(['Итого расходы', ...expMTot.map(v=>v||''), expTot, '']);
+  put(R,0,S.totalL); for(let c=1;c<=13;c++) put(R,c,S.total);
+  R++;
+  rows.push([]); R++;
+
+  // ── Доходы: теги × месяцы ──
+  const tagM = {}; // tagName → number[12]
+  incs.forEach(x => {
+    const m = parseInt(x.date.slice(5,7))-1;
+    const t = x.tag || 'Без тега';
+    if(!tagM[t]) tagM[t] = Array(12).fill(0);
+    tagM[t][m] += x.amount;
+  });
+  const incMTot = Array(12).fill(0);
+  Object.values(tagM).forEach(arr=>arr.forEach((v,m)=>incMTot[m]+=v));
+  const incTot = incMTot.reduce((a,b)=>a+b,0);
+
+  rows.push(['ДОХОДЫ', ...MO_S, 'Итого', '%']);
+  for(let c=0;c<width;c++) put(R,c, c===0?S.hdrL:S.hdr);
+  R++;
+  Object.entries(tagM).map(([t,arr])=>({t, arr, sum:arr.reduce((a,b)=>a+b,0)}))
+    .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum)
+    .forEach((tr, k) => {
+      const color = tr.t==='Без тега' ? '#888882' : getIncomeTagColor(tr.t);
+      rows.push([tr.t, ...tr.arr.map(v=>v||''), tr.sum, incTot>0?Math.round(tr.sum/incTot*100)+'%':'']);
+      put(R,0,{font:{sz:10, bold:true, color:{rgb:txtOn(color)}}, fill:{fgColor:{rgb:hex(color)}}});
+      const zebra = k%2===1;
+      for(let c=1;c<=12;c++) put(R,c, zebra?S.numZ:S.num);
+      put(R,13,{numFmt:NUM, font:{bold:true, sz:10}, alignment:{horizontal:'right'}});
+      put(R,14,S.pct);
+      R++;
+    });
+  rows.push(['Итого доходы', ...incMTot.map(v=>v||''), incTot, '']);
+  put(R,0,S.totalL); for(let c=1;c<=13;c++) put(R,c,S.total);
+  R++;
+  rows.push([]); R++;
+
+  // ── Накоплено по месяцам ──
+  const savM = incMTot.map((v,m)=>v-expMTot[m]);
+  const savTot = incTot-expTot;
+  rows.push(['НАКОПЛЕНО', ...savM.map((v,m)=>(incMTot[m]||expMTot[m])?v:''), savTot, incTot>0?Math.round(savTot/incTot*100)+'%':'']);
+  put(R,0,{font:{bold:true, sz:10}});
+  savM.forEach((v,m)=>{ put(R,m+1,{numFmt:NUM, font:{bold:true, sz:10, color:{rgb:v>=0?'2D7A4F':'C0392B'}}, alignment:{horizontal:'right'}}); });
+  put(R,13,{numFmt:NUM, font:{bold:true, sz:10, color:{rgb:savTot>=0?'2D7A4F':'C0392B'}}, alignment:{horizontal:'right'}});
+  put(R,14,S.pct);
+  R++;
+  rows.push([]); R++;
+
+  // ── Активы на конец года ──
+  const series = _buildAssetSeries();
+  let aIdx = -1;
+  series.dates.forEach((d,i)=>{ if(d <= yr+'-12-31') aIdx = i; });
+  if(aIdx >= 0){
+    const snapDate = series.dates[aIdx];
+    const parts = [
+      ['Счета', series.bankSeries[aIdx]],
+      ['Вклады', series.depSeries[aIdx]],
+      ['Инвестиции', series.invSeries[aIdx]]
+    ].filter(p2=>p2[1]);
+    rows.push(['АКТИВЫ (снимок '+snapDate.slice(8,10)+'.'+snapDate.slice(5,7)+'.'+snapDate.slice(0,4)+')']);
+    put(R,0,{font:{bold:true, sz:10, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'333330'}}});
+    put(R,1,{fill:{fgColor:{rgb:'333330'}}});
+    R++;
+    parts.forEach(p2=>{
+      rows.push([p2[0], p2[1]]);
+      put(R,0,S.name); put(R,1,{numFmt:NUM, font:{sz:10}, alignment:{horizontal:'right'}});
+      R++;
+    });
+    const totalA = series.bankSeries[aIdx]+series.depSeries[aIdx]+series.invSeries[aIdx];
+    rows.push(['Всего активов', totalA]);
+    put(R,0,S.totalL); put(R,1,S.total);
+    R++;
+  }
+
+  const ws = X.utils.aoa_to_sheet(rows);
+  styles.forEach(o=>{
+    const addr = X.utils.encode_cell({r:o.r, c:o.c});
+    if(ws[addr]) ws[addr].s = o.s;
+  });
+  ws['!cols'] = [{wch:22}].concat(Array(12).fill({wch:9}), [{wch:11},{wch:6}]);
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:14}}];
+  return ws;
+}
+
 function exportExcel(){
   if(!window.XLSX){ toast('Библиотека XLSX не загружена'); return; }
   const X = window.XLSX;
@@ -6896,6 +7043,17 @@ function exportExcel(){
   const cats = DB.categories || [];
   const MO = ['Январь','Февраль','Март','Апрель','Май','Июнь',
                'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  // ── Сводная YYYY — первые листы, свежий год первым ──
+  {
+    const sumYears = [...new Set([
+      ...(DB.expenses||[]).filter(e=>!e._deleted).map(e=>String(e.date||'').slice(0,4)),
+      ...(DB.incomes||[]).filter(x=>!x._deleted).map(x=>String(x.date||'').slice(0,4))
+    ])].filter(y=>y.length===4).sort().reverse();
+    sumYears.forEach(yr => {
+      X.utils.book_append_sheet(wb, _excelSummarySheet(X, yr), ('Сводная '+yr).slice(0,31));
+    });
+  }
 
   // ── По дням YYYY ─────────────────────────────────────────────────────
   const expByYear = {};

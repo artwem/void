@@ -149,7 +149,7 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 ### Excel Export
 
-Settings → «Экспорт Excel» → `exportExcel()` (settings.js section). Uses **SheetJS 0.18.5**, vendored locally at vendor/xlsx.full.min.js (Chart.js 4.4.1 likewise at vendor/chart.umd.js, both in the SW PRECACHE since v1.40.2 — CDN scripts were the offline white-screen cause: uncacheable cross-origin + parser-blocking on dead networks). Sheets: По дням YYYY, Шаблон, month sheets, Активы, Вклады (live deposits: body, contributions, rate, dates, value now/at close). For a full backup use «Резервная копия» (JSON dump of entire `DB`) — restorable via «Восстановить из файла».
+Settings → «Экспорт Excel» → `exportExcel()` (settings.js section). Uses **xlsx-js-style 1.2.0** (SheetJS 0.18.5 fork with cell styling), vendored at vendor/xlsx.style.min.js (Chart.js 4.4.1 likewise at vendor/chart.umd.js, both in the SW PRECACHE since v1.40.2 — CDN scripts were the offline white-screen cause). First sheets: **«Сводная YYYY»** per year, newest first (`_excelSummarySheet`) — styled pivot расходы категории×месяцы (category-color fills, zebra, bold totals), доходы теги×месяцы, строка НАКОПЛЕНО (green/red) + норма %, блок АКТИВЫ на конец года. Sheets: По дням YYYY, Шаблон, month sheets, Активы, Вклады (live deposits: body, contributions, rate, dates, value now/at close). For a full backup use «Резервная копия» (JSON dump of entire `DB`) — restorable via «Восстановить из файла».
 
 ### PWA Caching — `sw.js`
 
