@@ -240,7 +240,7 @@ if ('serviceWorker' in navigator) {
   <div class="hdr" style="display:flex;align-items:center;gap:10px">
     <button onclick="showPage('stats',document.getElementById('nav-stats'))" aria-label="Назад к аналитике" style="background:none;border:none;color:var(--text);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px 4px 0;font-family:inherit">‹</button>
     <h1 style="white-space:nowrap">Годовой отчёт</h1>
-    <select id="report-year" onchange="renderReport()" style="font-size:15px;font-weight:600;border:none;background:transparent;color:var(--text);cursor:pointer;outline:none;flex-shrink:0;margin-left:auto"></select>
+    <select id="report-year" onchange="renderReport()" style="width:auto;font-size:16px;font-weight:600;border:none;background:transparent;color:var(--text);cursor:pointer;outline:none;flex-shrink:0;margin-left:auto"></select>
   </div>
   <div id="report-body" style="padding:0 16px"></div>
   <div class="page-end"></div>
@@ -1197,7 +1197,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.43.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.44.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2858,6 +2858,56 @@ function deleteIncome(){
 
 // ═══ stats.js ═══
 
+// «Из чего накоплено»: доходы периода по тегам, расходы поглощают крупнейшие
+// источники первыми, остаток каждого = вклад в накопления. Возвращает html
+// (заголовок + stacked bar + строки) или ''. Общая для сводки Аналитики и
+// годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
+function _savingsBreakdownHtml(periodIncs, totalExp){
+  const totalInc = periodIncs.reduce((s,x)=>s+x.amount,0);
+  const balance = totalInc - totalExp;
+  if(balance <= 0 || totalInc <= 0) return '';
+  const savSources = [];
+  (DB.incomeTags||[]).forEach(tag=>{
+    const total = periodIncs.filter(inc=>inc.tag===tag).reduce((s,inc)=>s+inc.amount,0);
+    if(total>0) savSources.push({name:tag, color:getIncomeTagColor(tag), total});
+  });
+  const noTagTotal = periodIncs.filter(inc=>!_normTag(inc)).reduce((s,inc)=>s+inc.amount,0);
+  if(noTagTotal>0) savSources.push({name:'Без тега', color:'rgba(128,128,128,0.55)', total:noTagTotal});
+  savSources.sort((a,b)=>{
+    if(a.name==='Без тега') return -1;
+    if(b.name==='Без тега') return 1;
+    return b.total-a.total;
+  });
+  // Расходы поглощают крупнейшие источники первыми; остаток = вклад в накопления
+  let rem = totalExp;
+  savSources.forEach(src=>{
+    if(rem<=0)             { src.saved=src.total; }
+    else if(rem>=src.total){ src.saved=0; rem-=src.total; }
+    else                   { src.saved=src.total-rem; rem=0; }
+  });
+  const activeSav = savSources.filter(s=>s.saved>0);
+  if(!activeSav.length) return '';
+  const stackedBar = activeSav.map(s=>{
+    const w = Math.round(s.saved/balance*100);
+    return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}${DB.privacyMode?'':': '+fmt(s.saved)}"></div>`;
+  }).join('');
+  return `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
+    +`<div style="display:flex;border-radius:4px;overflow:hidden;height:8px;margin-bottom:10px;gap:1px">${stackedBar}</div>`
+    +activeSav.map(s=>{
+      const pct  = (s.saved/balance*100).toFixed(1);
+      const barW = Math.round(s.saved/balance*100);
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
+        +`<div style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0"></div>`
+        +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>`
+        +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
+        +  `<div style="width:${barW}%;height:100%;background:${s.color};border-radius:3px"></div>`
+        +`</div>`
+        +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(s.saved)}</div>`
+        +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
+        +`</div>`;
+    }).join('');
+}
+
 // ─── THEME ──────────────────────────────────────────────────────────
 const THEMES = ['light','dark','sepia','sakura','ocean','forest','gruvbox','dracula','solarized','neon'];
 const _THEME_MIGRATE = {hellokitty:'sakura', nord:'dracula'};
@@ -2985,58 +3035,11 @@ function _renderStatsSummary(lastN){
       +`</div>`;
   }
 
-  // Savings breakdown — which income sources contributed to накоплено
+  // Savings breakdown — общий рендер с годовым отчётом (см. _savingsBreakdownHtml)
   if(balance > 0 && totalInc > 0){
-    // Collect all income sources (tagged + untagged)
-    const savSources = [];
-    (DB.incomeTags||[]).forEach(tag=>{
-      const total = lastN.reduce((s,x)=>s+(DB.incomes||[])
-        .filter(inc=>!inc._deleted&&inc.date&&inc.date.startsWith(monthKey(x.y,x.m))&&inc.tag===tag)
-        .reduce((ss,inc)=>ss+inc.amount,0),0);
-      if(total>0) savSources.push({name:tag, color:getIncomeTagColor(tag), total});
-    });
-    const noTagTotal = lastN.reduce((s,x)=>s+(DB.incomes||[])
-      .filter(inc=>!inc._deleted&&inc.date&&inc.date.startsWith(monthKey(x.y,x.m))&&!_normTag(inc))
-      .reduce((ss,inc)=>ss+inc.amount,0),0);
-    if(noTagTotal>0) savSources.push({name:'Без тега', color:'rgba(128,128,128,0.55)', total:noTagTotal});
-    savSources.sort((a,b)=>{
-      if(a.name==='Без тега') return -1;
-      if(b.name==='Без тега') return 1;
-      return b.total-a.total;
-    });
-
-    // Absorb expenses into largest sources first; remainder = savings contribution
-    let rem = totalExp;
-    savSources.forEach(src=>{
-      if(rem<=0)          { src.saved=src.total; }
-      else if(rem>=src.total){ src.saved=0; rem-=src.total; }
-      else                { src.saved=src.total-rem; rem=0; }
-    });
-    const activeSav = savSources.filter(s=>s.saved>0);
-
-    if(activeSav.length){
-      // Stacked proportional bar
-      const stackedBar = activeSav.map(s=>{
-        const w = Math.round(s.saved/balance*100);
-        return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}${DB.privacyMode?'':': '+fmt(s.saved)}"></div>`;
-      }).join('');
-
-      html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
-        +`<div style="display:flex;border-radius:4px;overflow:hidden;height:8px;margin-bottom:10px;gap:1px">${stackedBar}</div>`
-        +activeSav.map(s=>{
-          const pct  = (s.saved/balance*100).toFixed(1);
-          const barW = Math.round(s.saved/balance*100);
-          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
-            +`<div style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0"></div>`
-            +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>`
-            +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
-            +  `<div style="width:${barW}%;height:100%;background:${s.color};border-radius:3px"></div>`
-            +`</div>`
-            +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(s.saved)}</div>`
-            +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
-            +`</div>`;
-        }).join('');
-    }
+    const mkSet = new Set(lastN.map(x=>monthKey(x.y,x.m)));
+    const periodIncs = (DB.incomes||[]).filter(inc=>!inc._deleted&&inc.date&&mkSet.has(inc.date.slice(0,7)));
+    html += _savingsBreakdownHtml(periodIncs, totalExp);
     html += `<div style="margin-bottom:16px"></div>`;
   }
 
@@ -7489,14 +7492,18 @@ function renderReport(){
     return;
   }
   const prevChoice = sel.value;
-  sel.innerHTML = years.map(yy=>`<option value="${yy}">${yy}</option>`).join('');
-  sel.value = years.includes(prevChoice) ? prevChoice : years[0];
+  sel.innerHTML = years.map(yy=>`<option value="${yy}">${yy}</option>`).join('')
+    + `<option value="all">Всё время</option>`;
+  sel.value = (years.includes(prevChoice) || prevChoice==='all') ? prevChoice : years[0];
   const yr = sel.value;
+  const isAll = yr === 'all';
+  const inYr = ds => isAll ? true : String(ds||'').startsWith(yr+'-'); // период отчёта
 
-  // помесячные суммы
+  // помесячные суммы (за всё время — погодовые, см. таблицу ниже)
   const mInc = Array(12).fill(0), mExp = Array(12).fill(0);
-  incs.forEach(x=>{ if((x.date||'').startsWith(yr+'-')) mInc[parseInt(x.date.slice(5,7))-1] += x.amount; });
-  exps.forEach(e=>{ if((e.date||'').startsWith(yr+'-')) mExp[parseInt(e.date.slice(5,7))-1] += e.amount; });
+  const yInc = {}, yExp = {}; // для «Всё время»: год → сумма
+  incs.forEach(x=>{ if(!inYr(x.date)) return; mInc[parseInt(x.date.slice(5,7))-1] += x.amount; const y2=x.date.slice(0,4); yInc[y2]=(yInc[y2]||0)+x.amount; });
+  exps.forEach(e=>{ if(!inYr(e.date)) return; mExp[parseInt(e.date.slice(5,7))-1] += e.amount; const y2=e.date.slice(0,4); yExp[y2]=(yExp[y2]||0)+e.amount; });
   const totInc = mInc.reduce((s,v)=>s+v,0);
   const totExp = mExp.reduce((s,v)=>s+v,0);
   const totSaved = totInc - totExp;
@@ -7505,7 +7512,7 @@ function renderReport(){
   // расходы по категориям за год
   const catT = {};
   exps.forEach(e=>{
-    if(!(e.date||'').startsWith(yr+'-')) return;
+    if(!inYr(e.date)) return;
     catT[e.cat] = (catT[e.cat]||0) + e.amount;
   });
   const catRows = Object.entries(catT)
@@ -7526,7 +7533,7 @@ function renderReport(){
   // доходы по тегам за год
   const tagT = {};
   incs.forEach(x=>{
-    if(!(x.date||'').startsWith(yr+'-')) return;
+    if(!inYr(x.date)) return;
     const t = x.tag || 'Без тега';
     tagT[t] = (tagT[t]||0) + x.amount;
   });
@@ -7545,8 +7552,8 @@ function renderReport(){
     return {banks: series.bankSeries[idx], deps: series.depSeries[idx], inv: series.invSeries[idx],
             total: series.bankSeries[idx] + series.depSeries[idx] + series.invSeries[idx], date: series.dates[idx]};
   };
-  const endCur  = assetsAt(yr + '-12-31');
-  const endPrev = assetsAt((+yr - 1) + '-12-31');
+  const endCur  = isAll ? assetsAt('9999-12-31') : assetsAt(yr + '-12-31');
+  const endPrev = isAll ? null : assetsAt((+yr - 1) + '-12-31');
 
   let h = `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
@@ -7571,7 +7578,7 @@ function renderReport(){
     ].filter(([,v,p]) => v || p); // пустые компоненты не показываем
     h += `
     <div class="s-card" style="margin-bottom:14px">
-      <div class="s-lbl" style="margin-bottom:8px">Активы на конец года <span style="font-weight:400">(снимок ${endCur.date.slice(8,10)}.${endCur.date.slice(5,7)})</span></div>
+      <div class="s-lbl" style="margin-bottom:8px">${isAll ? 'Активы сейчас' : 'Активы на конец года'} <span style="font-weight:400">(снимок ${endCur.date.slice(8,10)}.${endCur.date.slice(5,7)}${isAll ? '.'+endCur.date.slice(0,4) : ''})</span></div>
       ${rows.map(([name, v, p]) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px">
           <span style="color:var(--muted)">${name}</span>
@@ -7584,9 +7591,30 @@ function renderReport(){
     </div>`;
   }
 
-  // таблица по месяцам (только месяцы с данными)
+  // Из чего накоплено — та же логика, что в сводке Аналитики (_savingsBreakdownHtml)
+  {
+    const periodIncs = incs.filter(x=>inYr(x.date));
+    const sb = _savingsBreakdownHtml(periodIncs, totExp);
+    if(sb) h += `<div class="s-card" style="margin-bottom:14px">${sb}</div>`;
+  }
+
+  // таблица по месяцам (за всё время — по годам)
   const monthRows = [];
-  for(let mm=0; mm<12; mm++){
+  if(isAll){
+    [...new Set([...Object.keys(yInc), ...Object.keys(yExp)])].sort().forEach(y2=>{
+      const iv = yInc[y2]||0, ev = yExp[y2]||0;
+      const sv = iv-ev;
+      const rt = iv>0 ? Math.round(sv/iv*100) : null;
+      monthRows.push(`<tr style="border-top:0.5px solid var(--border)">
+        <td style="padding:8px 4px 8px 0;font-size:12px;color:var(--muted)">${y2}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--green)">${fmtH(iv)}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--red)">${fmtH(ev)}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600;color:${sv>=0?'var(--green)':'var(--red)'}">${fmtH(sv)}</td>
+        <td style="padding:8px 0 8px 4px;font-size:12px;text-align:right;color:var(--muted)">${rt!==null?rt+'%':'—'}</td>
+      </tr>`);
+    });
+  }
+  else for(let mm=0; mm<12; mm++){
     if(!mInc[mm] && !mExp[mm]) continue;
     const sv = mInc[mm]-mExp[mm];
     const rt = mInc[mm]>0 ? Math.round(sv/mInc[mm]*100) : null;
@@ -7600,9 +7628,9 @@ function renderReport(){
   }
   if(monthRows.length){
     h += `<div class="chart-card" style="margin-bottom:14px;overflow-x:auto">
-      <div class="chart-title">По месяцам</div>
+      <div class="chart-title">${isAll ? 'По годам' : 'По месяцам'}</div>
       <table style="width:100%;border-collapse:collapse">
-        <tr><th style="padding:4px 4px 4px 0;font-size:11px;color:var(--muted);font-weight:500;text-align:left">Мес</th>
+        <tr><th style="padding:4px 4px 4px 0;font-size:11px;color:var(--muted);font-weight:500;text-align:left">${isAll ? 'Год' : 'Мес'}</th>
         <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Доход</th>
         <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Расход</th>
         <th style="padding:4px;font-size:11px;color:var(--muted);font-weight:500;text-align:right">Накоп.</th>
