@@ -1197,7 +1197,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.42.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.43.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -7535,6 +7535,19 @@ function renderReport(){
     .filter(r=>r.sum>0)
     .sort((a,b)=> a.name==='Без тега' ? 1 : b.name==='Без тега' ? -1 : b.sum-a.sum);
 
+  // Из чего накоплено: активы на конец года (последний снимок ≤ 31 дек)
+  // vs конец прошлого года — прирост по компонентам счета/вклады/инвестиции
+  const series = _buildAssetSeries();
+  const assetsAt = (dateStr) => {
+    let idx = -1;
+    series.dates.forEach((d,i)=>{ if(d <= dateStr) idx = i; });
+    if(idx < 0) return null;
+    return {banks: series.bankSeries[idx], deps: series.depSeries[idx], inv: series.invSeries[idx],
+            total: series.bankSeries[idx] + series.depSeries[idx] + series.invSeries[idx], date: series.dates[idx]};
+  };
+  const endCur  = assetsAt(yr + '-12-31');
+  const endPrev = assetsAt((+yr - 1) + '-12-31');
+
   let h = `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="s-card"><div class="s-lbl">Доходы</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--green)">${fmtH(totInc)}</div></div>
@@ -7542,6 +7555,34 @@ function renderReport(){
     <div class="s-card"><div class="s-lbl">Накоплено</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:${totSaved>=0?'var(--green)':'var(--red)'}">${fmtH(totSaved)}</div></div>
     <div class="s-card"><div class="s-lbl">Норма накопления</div><div style="font-size:18px;font-weight:700;margin-top:2px">${totRate!==null?totRate+'%':'—'}</div></div>
   </div>`;
+
+  if(endCur){
+    const delta = (cur, prev) => {
+      if(prev == null) return '';
+      const d = cur - prev;
+      if(!d) return '<span style="font-size:11px;color:var(--muted)"> ±0</span>';
+      const col = d > 0 ? 'var(--green)' : 'var(--red)';
+      return ` <span style="font-size:11px;color:${col}">${d>0?'+':'−'}${fmtShort(Math.abs(d))}</span>`;
+    };
+    const rows = [
+      ['Счета',      endCur.banks, endPrev ? endPrev.banks : null],
+      ['Вклады',     endCur.deps,  endPrev ? endPrev.deps  : null],
+      ['Инвестиции', endCur.inv,   endPrev ? endPrev.inv   : null]
+    ].filter(([,v,p]) => v || p); // пустые компоненты не показываем
+    h += `
+    <div class="s-card" style="margin-bottom:14px">
+      <div class="s-lbl" style="margin-bottom:8px">Активы на конец года <span style="font-weight:400">(снимок ${endCur.date.slice(8,10)}.${endCur.date.slice(5,7)})</span></div>
+      ${rows.map(([name, v, p]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px">
+          <span style="color:var(--muted)">${name}</span>
+          <span><b>${fmtH(v)}</b>${delta(v, p)}</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 0;margin-top:4px;border-top:0.5px solid var(--border);font-size:13px">
+        <span style="font-weight:600">Всего</span>
+        <span><b>${fmtH(endCur.total)}</b>${delta(endCur.total, endPrev ? endPrev.total : null)}</span>
+      </div>
+    </div>`;
+  }
 
   // таблица по месяцам (только месяцы с данными)
   const monthRows = [];
