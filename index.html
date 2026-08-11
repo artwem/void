@@ -1056,6 +1056,10 @@ if ('serviceWorker' in navigator) {
         <button class="btn primary small" onclick="addIncomeTag()">Добавить</button>
       </div>
     </div>
+    <div class="fgrp" style="margin-top:16px">
+      <label class="flbl">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Расходы списываются с доходов сверху вниз — так считается «Из чего накоплено»')">ⓘ</span></label>
+      <div id="income-tag-order-list" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div>
     <div class="btn-row" style="margin-top:8px"><button class="btn primary" onclick="closeModal('modal-income-tags')">Готово</button></div>
   </div>
 </div>
@@ -6363,7 +6367,94 @@ function removeCategory(i){
 // ─── INCOME TAGS MANAGER ────────────────────────────────────────────
 function openIncomeTagsManager(){
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   openModal('modal-income-tags');
+}
+
+// Секция «Порядок списания» в модале тегов доходов — отдельный drag-список,
+// не трогает DB.incomeTags/цвета/чипы. Рендерится из _incomeTagWriteoffOrder(),
+// чтобы всегда показывать актуальный (реконсиленный) порядок, даже если
+// DB.incomeTagOrder отстал от реальности (rename/delete/sync).
+function renderIncomeTagOrderList(){
+  const list = document.getElementById('income-tag-order-list');
+  if(!list) return;
+  const order = _incomeTagWriteoffOrder();
+  list.innerHTML = order.map(tag =>
+    '<div class="setting-row io-row" style="cursor:default;gap:6px" data-tag="'+esc(tag)+'">'
+    + '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;padding:2px 4px">⠿</span>'
+    + '<span style="width:8px;height:8px;border-radius:50%;background:'+_incomeTagOrderColor(tag)+';flex-shrink:0"></span>'
+    + '<span style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(_incomeTagOrderLabel(tag))+'</span>'
+    + '</div>'
+  ).join('');
+  _wireIncomeTagOrderDrag(list);
+}
+
+// Reorder через Pointer Events (не HTML5 Drag-and-Drop — ненадёжен для touch
+// на iOS Safari, основная платформа юзера). pointerdown на хендле поднимает
+// строку; pointermove — как только центр перетаскиваемой строки пересекает
+// середину соседней, меняем их местами в DOM (insertBefore) и сбрасываем
+// накопленный transform, чтобы строка визуально «осталась под пальцем»;
+// pointerup читает финальный порядок прямо из DOM (после всех swap'ов он уже
+// верный) и сохраняет.
+function _wireIncomeTagOrderDrag(list){
+  let dragRow = null, startY = 0, pointerId = null;
+
+  function onMove(e){
+    if(!dragRow || e.pointerId !== pointerId) return;
+    const dy = e.clientY - startY;
+    dragRow.style.transform = 'translateY(' + dy + 'px)';
+    const rows = [...list.querySelectorAll('.io-row')];
+    const dragIdx = rows.indexOf(dragRow);
+    const dragRect = dragRow.getBoundingClientRect();
+    const dragMid = dragRect.top + dragRect.height / 2;
+    for(let i = 0; i < rows.length; i++){
+      const sib = rows[i];
+      if(sib === dragRow) continue;
+      const r = sib.getBoundingClientRect();
+      const sibMid = r.top + r.height / 2;
+      if(i < dragIdx && dragMid < sibMid){
+        list.insertBefore(dragRow, sib);
+        startY = e.clientY; dragRow.style.transform = 'translateY(0px)';
+        break;
+      }
+      if(i > dragIdx && dragMid > sibMid){
+        list.insertBefore(dragRow, sib.nextSibling);
+        startY = e.clientY; dragRow.style.transform = 'translateY(0px)';
+        break;
+      }
+    }
+  }
+
+  function onUp(e){
+    if(!dragRow || e.pointerId !== pointerId) return;
+    dragRow.style.position = '';
+    dragRow.style.zIndex = '';
+    dragRow.style.transition = '';
+    dragRow.style.transform = '';
+    dragRow.style.boxShadow = '';
+    const order = [...list.querySelectorAll('.io-row')].map(r => r.dataset.tag);
+    DB.incomeTagOrder = order;
+    touchList('incomeTagOrder');
+    saveDB();
+    dragRow = null; pointerId = null;
+  }
+
+  list.querySelectorAll('.io-row').forEach(row => {
+    const handle = row.querySelector('.io-handle');
+    handle.addEventListener('pointerdown', e => {
+      dragRow = row;
+      pointerId = e.pointerId;
+      startY = e.clientY;
+      handle.setPointerCapture(e.pointerId);
+      row.style.position = 'relative';
+      row.style.zIndex = '10';
+      row.style.transition = 'none';
+      row.style.boxShadow = '0 4px 14px rgba(0,0,0,.18)';
+    });
+  });
+  list.addEventListener('pointermove', onMove);
+  list.addEventListener('pointerup', onUp);
+  list.addEventListener('pointercancel', onUp);
 }
 
 function renderIncomeTagsList(){
@@ -6389,6 +6480,7 @@ function setIncomeTagColor(i, color){
   touchList('incomeTags');
   saveDB();
   renderIncomeTagsList();
+  renderIncomeTagOrderList(); // dot color in the order list follows the tag's color
 }
 
 function startEditIncomeTag(i){
@@ -6415,8 +6507,15 @@ function startEditIncomeTag(i){
     (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = newName; inc.updatedAt = now; } });
     DB.incomeTags[i] = newName;
     touchList('incomeTags');
+    // Патчим слот в порядке списания на новое имя, чтобы rename не сбрасывал приоритет в конец
+    if(DB.incomeTagOrder){
+      const oi = DB.incomeTagOrder.indexOf(tag);
+      if(oi >= 0) DB.incomeTagOrder[oi] = newName;
+    }
+    touchList('incomeTagOrder');
     saveDB();
     renderIncomeTagsList();
+    renderIncomeTagOrderList();
   };
   btnSave.onclick = save;
   inp.onkeydown = e => { if(e.key==='Enter') save(); if(e.key==='Escape') renderIncomeTagsList(); };
@@ -6433,9 +6532,13 @@ function addIncomeTag(){
   if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
   DB.incomeTags.push(name);
   touchList('incomeTags');
+  if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
+  DB.incomeTagOrder.push(name); // новый тег — низший приоритет списания по умолчанию
+  touchList('incomeTagOrder');
   saveDB();
   inp.value = '';
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   renderSettings();
   toast('Тег добавлен: ' + name);
 }
