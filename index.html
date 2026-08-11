@@ -966,7 +966,6 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-close-deposit')">✕</button>
     <h2>Закрыть вклад</h2>
     <p id="close-dep-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
-    <div class="fgrp"><label class="flbl">Зачислить в банк</label><select id="close-dep-bank" class="finp"></select></div>
     <div class="fgrp" id="close-dep-tag-grp"><label class="flbl">Тег дохода (проценты)</label><select id="close-dep-tag" class="finp"></select></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-close-deposit')">Отмена</button>
@@ -1197,7 +1196,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.45.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.45.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5277,16 +5276,14 @@ let _closingDepositId = null;
 function openCloseDeposit(id){
   const d = (DB.deposits||[]).find(x=>x.id===id && !x._deleted);
   if(!d) return;
-  const banks = DB.banks||[];
-  if(!banks.length){ toast('Нет банков — добавьте в настройках'); return; }
   _closingDepositId = id;
   const val = depositValueAt(d, today());
-  document.getElementById('close-dep-info').innerHTML =
-    `${esc(d.name)}: ${fmtH(val)} (тело + проценты) добавится к балансу выбранного банка записью за сегодня. Проценты попадут в доходы отдельной записью. Вклад исчезнет из списка.`;
-  const sel = document.getElementById('close-dep-bank');
-  sel.innerHTML = banks.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
-  // тег для записи дохода: по умолчанию — тег с «процент» в названии
   const interest = val - d.amount - _depContribsSum(d, today());
+  document.getElementById('close-dep-info').innerHTML =
+    interest > 0
+      ? `${esc(d.name)}: проценты ${fmtH(interest)} добавятся в доходы отдельной записью. Вклад исчезнет из списка (снимок в банк не создаётся).`
+      : `${esc(d.name)}: процентов к начислению нет. Вклад исчезнет из списка (снимок в банк не создаётся).`;
+  // тег для записи дохода: по умолчанию — тег с «процент» в названии
   const tagGrp = document.getElementById('close-dep-tag-grp');
   tagGrp.style.display = interest > 0 ? '' : 'none';
   if(interest > 0){
@@ -5302,11 +5299,8 @@ function openCloseDeposit(id){
 function confirmCloseDeposit(){
   const d = (DB.deposits||[]).find(x=>x.id===_closingDepositId && !x._deleted);
   if(!d) return;
-  const bank = document.getElementById('close-dep-bank').value;
-  if(!bank){ toast('Выберите банк'); return; }
   const val = depositValueAt(d, today());
-  _bankAdjust(bank, today(), val);
-  // проценты (стоимость − тело − пополнения) — отдельной записью в доходы
+  // проценты (стоимость − тело − пополнения) — отдельной записью в доходы; снимок в банк не создаётся
   const interest = val - d.amount - _depContribsSum(d, today());
   if(interest > 0){
     if(!DB.incomes) DB.incomes = [];
@@ -5319,7 +5313,7 @@ function confirmCloseDeposit(){
   closeModal('modal-close-deposit');
   _closingDepositId = null;
   renderDeposits();
-  toast('✓ '+fmt(val)+' → '+bank+(interest>0?', проценты '+fmt(interest)+' → в доходы':''));
+  toast(interest>0?'✓ проценты '+fmt(interest)+' → в доходы':'✓ вклад закрыт');
 }
 
 // ── Корректировка баланса банка записью на дату (перевод банк↔вклад) ──
