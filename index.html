@@ -1374,6 +1374,7 @@ function loadDB(){
   DB.privacyMode = localStorage.getItem('privacyMode') === '1';
   if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
   if(!DB.incomeTagColors) DB.incomeTagColors = {};
+  if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
   // First run — no data at all: populate with defaults so app isn't empty
   if(!parsed && !DB.categories.length){
     DB.categories = [...DEFAULT_CATS];
@@ -2856,6 +2857,26 @@ function deleteIncome(){
 
 
 // ═══ stats.js ═══
+
+// Порядок списания тегов доходов для «Из чего накоплено»: DB.incomeTagOrder,
+// верх→низ = приоритет списания (спискывается первым = меньше остаётся в
+// накоплениях). Хранится ОТДЕЛЬНО от DB.incomeTags — не переставляет цвета/
+// чипы добавления дохода/график, те живут в порядке DB.incomeTags как раньше.
+// Реконсиляция при чтении, а не эагерная поддержка на каждой мутации:
+// неизвестные записи (тег переименован/удалён без патча) выкидываются,
+// отсутствующие (новый тег, первый запуск, отставший sync-мердж) дописываются
+// в конец — список самовосстанавливается сам, мутирующий код (Task 3/4)
+// патчит его для стабильного UX, но корректность от этого не зависит.
+function _incomeTagWriteoffOrder(){
+  const known = ['', ...(DB.incomeTags||[])];
+  const stored = (DB.incomeTagOrder||[]).filter(t => known.includes(t));
+  const seen = new Set(stored);
+  const missing = known.filter(t => !seen.has(t));
+  return [...stored, ...missing];
+}
+
+function _incomeTagOrderLabel(tag){ return tag === '' ? 'Без тега' : tag; }
+function _incomeTagOrderColor(tag){ return tag === '' ? 'rgba(128,128,128,0.55)' : getIncomeTagColor(tag); }
 
 // «Из чего накоплено»: доходы периода по тегам, расходы поглощают крупнейшие
 // источники первыми, остаток каждого = вклад в накопления. Возвращает html
@@ -8336,7 +8357,8 @@ function mergePullData(d){
   const listsChanged = catRemoteWon
     | _mergeList(d, 'banks', null)
     | _mergeList(d, 'creditBanks', null)
-    | _mergeList(d, 'incomeTags', 'incomeTagColors');
+    | _mergeList(d, 'incomeTags', 'incomeTagColors')
+    | _mergeList(d, 'incomeTagOrder', null);
   if(listsChanged) changed = true;
 
   // Limits: 3-way через _lastSyncedLimits — удалённое берём только для месяцев,
