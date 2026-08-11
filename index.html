@@ -1064,6 +1064,34 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- MODAL: DELETE INCOME TAG — REASSIGN AFFECTED INCOMES -->
+<div class="overlay" id="modal-delete-income-tag">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-delete-income-tag')">✕</button>
+    <h2 id="del-inc-tag-title">Удалить тег</h2>
+    <div class="fgrp">
+      <label class="setting-row" style="cursor:pointer;gap:8px;margin-bottom:6px">
+        <input type="radio" name="del-inc-tag-action" value="move" onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Перенести на другой тег</span>
+      </label>
+      <select id="del-inc-tag-move-select" class="finp" style="margin:0 0 10px"></select>
+      <label class="setting-row" style="cursor:pointer;gap:8px;margin-bottom:6px">
+        <input type="radio" name="del-inc-tag-action" value="new" onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Создать новый тег</span>
+      </label>
+      <input type="text" id="del-inc-tag-new-input" placeholder="Название тега" style="margin:0 0 10px"/>
+      <label class="setting-row" style="cursor:pointer;gap:8px">
+        <input type="radio" name="del-inc-tag-action" value="none" checked onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Оставить без тега</span>
+      </label>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-delete-income-tag')">Отмена</button>
+      <button class="btn danger" onclick="confirmDeleteIncomeTag()">Удалить</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: SCRIPT VIEWER -->
 <div class="overlay" id="modal-script">
   <div class="sheet" style="position:relative">
@@ -6555,16 +6583,70 @@ function addIncomeTag(){
   toast('Тег добавлен: ' + name);
 }
 
+let _deletingIncomeTagIdx = null;
+
 function deleteIncomeTag(i){
   const tag = (DB.incomeTags||[])[i];
   if(!tag) return;
   const tagged = (DB.incomes||[]).filter(inc => !inc._deleted && inc.tag === tag).length;
-  if(tagged && !confirm('Удалить тег «' + tag + '»?\n' + tagged + ' доход(ов) останутся без тега.')) return;
+  if(!tagged){
+    _removeIncomeTagAt(i, '');
+    toast('Удалено: ' + tag);
+    return;
+  }
+  _deletingIncomeTagIdx = i;
+  document.getElementById('del-inc-tag-title').textContent = 'Удалить тег «' + tag + '» — ' + tagged + ' доход(ов)';
+  const otherTags = (DB.incomeTags||[]).filter((t, ti) => ti !== i);
+  document.getElementById('del-inc-tag-move-select').innerHTML =
+    otherTags.map(t => '<option value="'+esc(t)+'">'+esc(t)+'</option>').join('');
+  document.getElementById('del-inc-tag-new-input').value = '';
+  document.querySelector('input[name="del-inc-tag-action"][value="none"]').checked = true;
+  _renderDelIncTagAction();
+  openModal('modal-delete-income-tag');
+}
+
+// Показывает только поле, относящееся к выбранному радио-варианту
+function _renderDelIncTagAction(){
+  const action = document.querySelector('input[name="del-inc-tag-action"]:checked').value;
+  document.getElementById('del-inc-tag-move-select').style.display = action === 'move' ? '' : 'none';
+  document.getElementById('del-inc-tag-new-input').style.display = action === 'new' ? '' : 'none';
+}
+
+function confirmDeleteIncomeTag(){
+  const i = _deletingIncomeTagIdx;
+  const tag = (DB.incomeTags||[])[i];
+  if(tag == null) return;
+  const action = document.querySelector('input[name="del-inc-tag-action"]:checked').value;
+  let destTag = '';
+  if(action === 'move'){
+    destTag = document.getElementById('del-inc-tag-move-select').value;
+    if(!destTag){ toast('Выберите тег'); return; }
+  } else if(action === 'new'){
+    const name = document.getElementById('del-inc-tag-new-input').value.trim();
+    if(!name){ toast('Введите название'); return; }
+    if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
+    DB.incomeTags.push(name);
+    destTag = name;
+  }
+  _removeIncomeTagAt(i, destTag);
+  closeModal('modal-delete-income-tag');
+  _deletingIncomeTagIdx = null;
+  toast('Удалено: ' + tag + (destTag ? ', доходы → ' + destTag : ''));
+}
+
+// Общий хвост удаления тега (i — индекс в DB.incomeTags ДО splice):
+// перевешивает затронутые доходы на destTag ('' = без тега), удаляет тег,
+// ремапит цвета по индексу (как раньше), чинит слот в порядке списания —
+// заменяет его на destTag, если у того ещё нет своего слота, иначе просто
+// убирает слот удалённого тега (дублей быть не должно; '' всегда уже имеет
+// свой слот благодаря _incomeTagWriteoffOrder, так что «оставить без тега»
+// корректно падает в ветку «просто убрать слот»).
+function _removeIncomeTagAt(i, destTag){
+  const tag = DB.incomeTags[i];
   const now = Date.now();
-  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = ''; inc.updatedAt = now; } });
+  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = destTag; inc.updatedAt = now; } });
   DB.incomeTags.splice(i, 1);
   touchList('incomeTags');
-  // Remap color indices: shift keys above i down by 1
   const newColors = {};
   Object.entries(DB.incomeTagColors||{}).forEach(([k,v]) => {
     const ki = parseInt(k);
@@ -6572,10 +6654,17 @@ function deleteIncomeTag(i){
     else if(ki > i) newColors[ki-1] = v;
   });
   DB.incomeTagColors = newColors;
+  if(DB.incomeTagOrder){
+    const destHasSlot = DB.incomeTagOrder.includes(destTag);
+    DB.incomeTagOrder = DB.incomeTagOrder
+      .map(t => t === tag ? (destHasSlot ? null : destTag) : t)
+      .filter(t => t !== null);
+  }
+  touchList('incomeTagOrder');
   saveDB();
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   renderSettings();
-  toast('Удалено: ' + tag);
 }
 
 // ─── EXPORT CSV ─────────────────────────────────────────────────────
