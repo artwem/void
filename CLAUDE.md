@@ -71,7 +71,8 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   credits:         [{id, kind:'grace', bank, payoffAmount, graceEnd, _deleted?} | {id, kind:'split', name, payments:[{date,amount,paid}], _deleted?}, ...],  // грейс кредиток + BNPL-сплиты; информационные, в итоги активов не входят
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
-  listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags (call touchList(name) on every list mutation)
+  incomeTagOrder:  ['', 'Проценты', ...],     // write-off priority for «Из чего накоплено» (top→bottom = spent first); '' = «Без тега»; independent of incomeTags' own order — see _incomeTagWriteoffOrder()
+  listsMeta:       {categories: 1234567890},  // list name → updatedAt ms; LWW-merge for categories/banks/creditBanks/incomeTags/incomeTagOrder (call touchList(name) on every list mutation)
   notifsEnabled:   false,
   notifThreshold:  90,                        // % of limit that triggers push notification
   _lastSyncedLimits: {},                      // snapshot of limits at last successful sync — 3-way merge baseline (device-local, stripped from payload)
@@ -130,7 +131,7 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, plus `listsMeta` (LWW timestamps).
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, plus `listsMeta` (LWW timestamps).
 
 **What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty`.
 
