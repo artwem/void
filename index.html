@@ -1056,7 +1056,39 @@ if ('serviceWorker' in navigator) {
         <button class="btn primary small" onclick="addIncomeTag()">Добавить</button>
       </div>
     </div>
+    <div class="fgrp" style="margin-top:16px">
+      <label class="flbl">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Расходы списываются с доходов сверху вниз — так считается «Из чего накоплено»')">ⓘ</span></label>
+      <div id="income-tag-order-list" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div>
     <div class="btn-row" style="margin-top:8px"><button class="btn primary" onclick="closeModal('modal-income-tags')">Готово</button></div>
+  </div>
+</div>
+
+<!-- MODAL: DELETE INCOME TAG — REASSIGN AFFECTED INCOMES -->
+<div class="overlay" id="modal-delete-income-tag">
+  <div class="sheet" style="position:relative">
+    <button class="close-btn" onclick="closeModal('modal-delete-income-tag')">✕</button>
+    <h2 id="del-inc-tag-title">Удалить тег</h2>
+    <div class="fgrp">
+      <label class="setting-row" style="cursor:pointer;gap:8px;margin-bottom:6px">
+        <input type="radio" name="del-inc-tag-action" value="move" onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Перенести на другой тег</span>
+      </label>
+      <select id="del-inc-tag-move-select" class="finp" style="margin:0 0 10px"></select>
+      <label class="setting-row" style="cursor:pointer;gap:8px;margin-bottom:6px">
+        <input type="radio" name="del-inc-tag-action" value="new" onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Создать новый тег</span>
+      </label>
+      <input type="text" id="del-inc-tag-new-input" placeholder="Название тега" style="margin:0 0 10px"/>
+      <label class="setting-row" style="cursor:pointer;gap:8px">
+        <input type="radio" name="del-inc-tag-action" value="none" checked onchange="_renderDelIncTagAction()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--accent);-webkit-appearance:radio;appearance:auto"/>
+        <span style="flex:1">Оставить без тега</span>
+      </label>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-delete-income-tag')">Отмена</button>
+      <button class="btn danger" onclick="confirmDeleteIncomeTag()">Удалить</button>
+    </div>
   </div>
 </div>
 
@@ -1196,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.45.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.46.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1374,6 +1406,7 @@ function loadDB(){
   DB.privacyMode = localStorage.getItem('privacyMode') === '1';
   if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
   if(!DB.incomeTagColors) DB.incomeTagColors = {};
+  if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
   // First run — no data at all: populate with defaults so app isn't empty
   if(!parsed && !DB.categories.length){
     DB.categories = [...DEFAULT_CATS];
@@ -2857,27 +2890,43 @@ function deleteIncome(){
 
 // ═══ stats.js ═══
 
-// «Из чего накоплено»: доходы периода по тегам, расходы поглощают крупнейшие
-// источники первыми, остаток каждого = вклад в накопления. Возвращает html
-// (заголовок + stacked bar + строки) или ''. Общая для сводки Аналитики и
-// годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
+// Порядок списания тегов доходов для «Из чего накоплено»: DB.incomeTagOrder,
+// верх→низ = приоритет списания (спискывается первым = меньше остаётся в
+// накоплениях). Хранится ОТДЕЛЬНО от DB.incomeTags — не переставляет цвета/
+// чипы добавления дохода/график, те живут в порядке DB.incomeTags как раньше.
+// Реконсиляция при чтении, а не эагерная поддержка на каждой мутации:
+// неизвестные записи (тег переименован/удалён без патча) выкидываются,
+// отсутствующие (новый тег, первый запуск, отставший sync-мердж) дописываются
+// в конец — список самовосстанавливается сам, мутирующий код (Task 3/4)
+// патчит его для стабильного UX, но корректность от этого не зависит.
+function _incomeTagWriteoffOrder(){
+  const known = ['', ...(DB.incomeTags||[])];
+  const seen = new Set();
+  // known.includes(t) фильтрует несуществующие теги; !seen.has(t) && seen.add(t) убирает дубли слотов
+  const stored = (DB.incomeTagOrder||[]).filter(t => known.includes(t) && !seen.has(t) && seen.add(t));
+  const missing = known.filter(t => !seen.has(t));
+  return [...stored, ...missing];
+}
+
+function _incomeTagOrderLabel(tag){ return tag === '' ? 'Без тега' : tag; }
+function _incomeTagOrderColor(tag){ return tag === '' ? 'rgba(128,128,128,0.55)' : getIncomeTagColor(tag); }
+
+// «Из чего накоплено»: доходы периода по тегам, расходы поглощают источники в
+// заданном порядке списания (_incomeTagWriteoffOrder) первыми, остаток каждого =
+// вклад в накопления. Возвращает html (заголовок + stacked bar + строки) или ''.
+// Общая для сводки Аналитики и годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
 function _savingsBreakdownHtml(periodIncs, totalExp){
   const totalInc = periodIncs.reduce((s,x)=>s+x.amount,0);
   const balance = totalInc - totalExp;
   if(balance <= 0 || totalInc <= 0) return '';
   const savSources = [];
-  (DB.incomeTags||[]).forEach(tag=>{
-    const total = periodIncs.filter(inc=>inc.tag===tag).reduce((s,inc)=>s+inc.amount,0);
-    if(total>0) savSources.push({name:tag, color:getIncomeTagColor(tag), total});
+  _incomeTagWriteoffOrder().forEach(tag=>{
+    const total = tag===''
+      ? periodIncs.filter(inc=>!_normTag(inc)).reduce((s,inc)=>s+inc.amount,0)
+      : periodIncs.filter(inc=>inc.tag===tag).reduce((s,inc)=>s+inc.amount,0);
+    if(total>0) savSources.push({name:_incomeTagOrderLabel(tag), color:_incomeTagOrderColor(tag), total});
   });
-  const noTagTotal = periodIncs.filter(inc=>!_normTag(inc)).reduce((s,inc)=>s+inc.amount,0);
-  if(noTagTotal>0) savSources.push({name:'Без тега', color:'rgba(128,128,128,0.55)', total:noTagTotal});
-  savSources.sort((a,b)=>{
-    if(a.name==='Без тега') return -1;
-    if(b.name==='Без тега') return 1;
-    return b.total-a.total;
-  });
-  // Расходы поглощают крупнейшие источники первыми; остаток = вклад в накопления
+  // Расходы поглощают источники в заданном порядке списания первыми; остаток = вклад в накопления
   let rem = totalExp;
   savSources.forEach(src=>{
     if(rem<=0)             { src.saved=src.total; }
@@ -6347,7 +6396,106 @@ function removeCategory(i){
 // ─── INCOME TAGS MANAGER ────────────────────────────────────────────
 function openIncomeTagsManager(){
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   openModal('modal-income-tags');
+}
+
+// Секция «Порядок списания» в модале тегов доходов — отдельный drag-список,
+// не трогает DB.incomeTags/цвета/чипы. Рендерится из _incomeTagWriteoffOrder(),
+// чтобы всегда показывать актуальный (реконсиленный) порядок, даже если
+// DB.incomeTagOrder отстал от реальности (rename/delete/sync).
+function renderIncomeTagOrderList(){
+  const list = document.getElementById('income-tag-order-list');
+  if(!list) return;
+  const order = _incomeTagWriteoffOrder();
+  list.innerHTML = order.map(tag =>
+    '<div class="setting-row io-row" style="cursor:default;gap:6px" data-tag="'+esc(tag)+'">'
+    + '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;padding:2px 4px">⠿</span>'
+    + '<span style="width:8px;height:8px;border-radius:50%;background:'+_incomeTagOrderColor(tag)+';flex-shrink:0"></span>'
+    + '<span style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(_incomeTagOrderLabel(tag))+'</span>'
+    + '</div>'
+  ).join('');
+  _wireIncomeTagOrderDrag(list);
+}
+
+// Reorder через Pointer Events (не HTML5 Drag-and-Drop — ненадёжен для touch
+// на iOS Safari, основная платформа юзера). pointerdown на хендле поднимает
+// строку; pointermove — как только центр перетаскиваемой строки пересекает
+// середину соседней, меняем их местами в DOM (insertBefore) и сбрасываем
+// накопленный transform, чтобы строка визуально «осталась под пальцем»;
+// pointerup читает финальный порядок прямо из DOM (после всех swap'ов он уже
+// верный) и сохраняет.
+function _wireIncomeTagOrderDrag(list){
+  // Drag state lives on the list element itself (not as plain closure
+  // variables) because #income-tag-order-list is static modal markup that's
+  // never recreated — only its .io-row children are replaced on each
+  // renderIncomeTagOrderList() call. The list-level pointermove/up/cancel
+  // listeners are therefore wired at most once per element (guarded below);
+  // sharing state via list._dragState lets that single, first-render set of
+  // listeners keep working correctly against whichever rows the *latest*
+  // render attached fresh pointerdown handlers to.
+  if(!list._dragState) list._dragState = { dragRow: null, startY: 0, pointerId: null };
+  const st = list._dragState;
+
+  function onMove(e){
+    if(!st.dragRow || e.pointerId !== st.pointerId) return;
+    const dy = e.clientY - st.startY;
+    st.dragRow.style.transform = 'translateY(' + dy + 'px)';
+    const rows = [...list.querySelectorAll('.io-row')];
+    const dragIdx = rows.indexOf(st.dragRow);
+    const dragRect = st.dragRow.getBoundingClientRect();
+    const dragMid = dragRect.top + dragRect.height / 2;
+    for(let i = 0; i < rows.length; i++){
+      const sib = rows[i];
+      if(sib === st.dragRow) continue;
+      const r = sib.getBoundingClientRect();
+      const sibMid = r.top + r.height / 2;
+      if(i < dragIdx && dragMid < sibMid){
+        list.insertBefore(st.dragRow, sib);
+        st.startY = e.clientY; st.dragRow.style.transform = 'translateY(0px)';
+        break;
+      }
+      if(i > dragIdx && dragMid > sibMid){
+        list.insertBefore(st.dragRow, sib.nextSibling);
+        st.startY = e.clientY; st.dragRow.style.transform = 'translateY(0px)';
+        break;
+      }
+    }
+  }
+
+  function onUp(e){
+    if(!st.dragRow || e.pointerId !== st.pointerId) return;
+    st.dragRow.style.position = '';
+    st.dragRow.style.zIndex = '';
+    st.dragRow.style.transition = '';
+    st.dragRow.style.transform = '';
+    st.dragRow.style.boxShadow = '';
+    const order = [...list.querySelectorAll('.io-row')].map(r => r.dataset.tag);
+    DB.incomeTagOrder = order;
+    touchList('incomeTagOrder');
+    saveDB();
+    st.dragRow = null; st.pointerId = null;
+  }
+
+  list.querySelectorAll('.io-row').forEach(row => {
+    const handle = row.querySelector('.io-handle');
+    handle.addEventListener('pointerdown', e => {
+      st.dragRow = row;
+      st.pointerId = e.pointerId;
+      st.startY = e.clientY;
+      handle.setPointerCapture(e.pointerId);
+      row.style.position = 'relative';
+      row.style.zIndex = '10';
+      row.style.transition = 'none';
+      row.style.boxShadow = '0 4px 14px rgba(0,0,0,.18)';
+    });
+  });
+  if(!list.dataset.wired){
+    list.dataset.wired = '1';
+    list.addEventListener('pointermove', onMove);
+    list.addEventListener('pointerup', onUp);
+    list.addEventListener('pointercancel', onUp);
+  }
 }
 
 function renderIncomeTagsList(){
@@ -6373,6 +6521,7 @@ function setIncomeTagColor(i, color){
   touchList('incomeTags');
   saveDB();
   renderIncomeTagsList();
+  renderIncomeTagOrderList(); // dot color in the order list follows the tag's color
 }
 
 function startEditIncomeTag(i){
@@ -6399,8 +6548,15 @@ function startEditIncomeTag(i){
     (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = newName; inc.updatedAt = now; } });
     DB.incomeTags[i] = newName;
     touchList('incomeTags');
+    // Патчим слот в порядке списания на новое имя, чтобы rename не сбрасывал приоритет в конец
+    if(DB.incomeTagOrder){
+      const oi = DB.incomeTagOrder.indexOf(tag);
+      if(oi >= 0) DB.incomeTagOrder[oi] = newName;
+    }
+    touchList('incomeTagOrder');
     saveDB();
     renderIncomeTagsList();
+    renderIncomeTagOrderList();
   };
   btnSave.onclick = save;
   inp.onkeydown = e => { if(e.key==='Enter') save(); if(e.key==='Escape') renderIncomeTagsList(); };
@@ -6417,23 +6573,93 @@ function addIncomeTag(){
   if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
   DB.incomeTags.push(name);
   touchList('incomeTags');
+  if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
+  DB.incomeTagOrder.push(name); // новый тег — низший приоритет списания по умолчанию
+  touchList('incomeTagOrder');
   saveDB();
   inp.value = '';
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   renderSettings();
   toast('Тег добавлен: ' + name);
 }
+
+let _deletingIncomeTagIdx = null;
+let _deletingIncomeTagName = null;
 
 function deleteIncomeTag(i){
   const tag = (DB.incomeTags||[])[i];
   if(!tag) return;
   const tagged = (DB.incomes||[]).filter(inc => !inc._deleted && inc.tag === tag).length;
-  if(tagged && !confirm('Удалить тег «' + tag + '»?\n' + tagged + ' доход(ов) останутся без тега.')) return;
+  if(!tagged){
+    _removeIncomeTagAt(i, '');
+    toast('Удалено: ' + tag);
+    return;
+  }
+  _deletingIncomeTagIdx = i;
+  _deletingIncomeTagName = tag;
+  document.getElementById('del-inc-tag-title').textContent = 'Удалить тег «' + tag + '» — ' + tagged + ' доход(ов)';
+  const otherTags = (DB.incomeTags||[]).filter((t, ti) => ti !== i);
+  document.getElementById('del-inc-tag-move-select').innerHTML =
+    otherTags.map(t => '<option value="'+esc(t)+'">'+esc(t)+'</option>').join('');
+  document.getElementById('del-inc-tag-new-input').value = '';
+  document.querySelector('input[name="del-inc-tag-action"][value="none"]').checked = true;
+  _renderDelIncTagAction();
+  openModal('modal-delete-income-tag');
+}
+
+// Показывает только поле, относящееся к выбранному радио-варианту
+function _renderDelIncTagAction(){
+  const action = document.querySelector('input[name="del-inc-tag-action"]:checked').value;
+  document.getElementById('del-inc-tag-move-select').style.display = action === 'move' ? '' : 'none';
+  document.getElementById('del-inc-tag-new-input').style.display = action === 'new' ? '' : 'none';
+}
+
+function confirmDeleteIncomeTag(){
+  // Индекс мог устареть за время, пока открыта модалка (фоновый sync-мёрж мог изменить DB.incomeTags) —
+  // перерезолвим тег по сохранённому имени, а не доверяем захваченному индексу.
+  const i = (DB.incomeTags||[]).indexOf(_deletingIncomeTagName);
+  if(i < 0){
+    toast('Тег изменился, повторите');
+    closeModal('modal-delete-income-tag');
+    _deletingIncomeTagIdx = null;
+    _deletingIncomeTagName = null;
+    return;
+  }
+  const tag = DB.incomeTags[i];
+  if(tag == null) return;
+  const action = document.querySelector('input[name="del-inc-tag-action"]:checked').value;
+  let destTag = '';
+  if(action === 'move'){
+    destTag = document.getElementById('del-inc-tag-move-select').value;
+    if(!destTag){ toast('Выберите тег'); return; }
+  } else if(action === 'new'){
+    const name = document.getElementById('del-inc-tag-new-input').value.trim();
+    if(!name){ toast('Введите название'); return; }
+    if(DB.incomeTags.includes(name)){ toast('Уже существует'); return; }
+    DB.incomeTags.push(name);
+    destTag = name;
+  }
+  _removeIncomeTagAt(i, destTag);
+  closeModal('modal-delete-income-tag');
+  _deletingIncomeTagIdx = null;
+  _deletingIncomeTagName = null;
+  toast('Удалено: ' + tag + (destTag ? ', доходы → ' + destTag : ''));
+}
+
+// Общий хвост удаления тега (i — индекс в DB.incomeTags ДО splice):
+// перевешивает затронутые доходы на destTag ('' = без тега), удаляет тег,
+// ремапит цвета по индексу (как раньше), чинит слот в порядке списания —
+// заменяет его на destTag, если у того ещё нет своего слота, иначе просто
+// убирает слот удалённого тега (дублей быть не должно; '' всегда уже имеет
+// свой слот благодаря _incomeTagWriteoffOrder, так что «оставить без тега»
+// корректно падает в ветку «просто убрать слот»).
+function _removeIncomeTagAt(i, destTag){
+  const tag = DB.incomeTags[i];
   const now = Date.now();
-  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = ''; inc.updatedAt = now; } });
+  (DB.incomes||[]).forEach(inc => { if(inc.tag === tag){ inc.tag = destTag; inc.updatedAt = now; } });
   DB.incomeTags.splice(i, 1);
   touchList('incomeTags');
-  // Remap color indices: shift keys above i down by 1
   const newColors = {};
   Object.entries(DB.incomeTagColors||{}).forEach(([k,v]) => {
     const ki = parseInt(k);
@@ -6441,10 +6667,17 @@ function deleteIncomeTag(i){
     else if(ki > i) newColors[ki-1] = v;
   });
   DB.incomeTagColors = newColors;
+  if(DB.incomeTagOrder){
+    const destHasSlot = DB.incomeTagOrder.includes(destTag);
+    DB.incomeTagOrder = DB.incomeTagOrder
+      .map(t => t === tag ? (destHasSlot ? null : destTag) : t)
+      .filter(t => t !== null);
+  }
+  touchList('incomeTagOrder');
   saveDB();
   renderIncomeTagsList();
+  renderIncomeTagOrderList();
   renderSettings();
-  toast('Удалено: ' + tag);
 }
 
 // ─── EXPORT CSV ─────────────────────────────────────────────────────
@@ -6700,7 +6933,7 @@ function _applyRestoredData(d, makeAuthoritative){
     ['expenses','incomes','assets','goals','templates','deposits','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
-    ['categories','banks','creditBanks','incomeTags'].forEach(l => touchList(l));
+    ['categories','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(l => touchList(l));
     DB._lastSyncedLimits = {}; // все limits считаются локально изменёнными → переживут merge
   }
   _ensureCatIds(); // бэкап может быть старого формата без catId
@@ -8336,7 +8569,8 @@ function mergePullData(d){
   const listsChanged = catRemoteWon
     | _mergeList(d, 'banks', null)
     | _mergeList(d, 'creditBanks', null)
-    | _mergeList(d, 'incomeTags', 'incomeTagColors');
+    | _mergeList(d, 'incomeTags', 'incomeTagColors')
+    | _mergeList(d, 'incomeTagOrder', null);
   if(listsChanged) changed = true;
 
   // Limits: 3-way через _lastSyncedLimits — удалённое берём только для месяцев,
