@@ -2901,8 +2901,9 @@ function deleteIncome(){
 // патчит его для стабильного UX, но корректность от этого не зависит.
 function _incomeTagWriteoffOrder(){
   const known = ['', ...(DB.incomeTags||[])];
-  const stored = (DB.incomeTagOrder||[]).filter(t => known.includes(t));
-  const seen = new Set(stored);
+  const seen = new Set();
+  // known.includes(t) фильтрует несуществующие теги; !seen.has(t) && seen.add(t) убирает дубли слотов
+  const stored = (DB.incomeTagOrder||[]).filter(t => known.includes(t) && !seen.has(t) && seen.add(t));
   const missing = known.filter(t => !seen.has(t));
   return [...stored, ...missing];
 }
@@ -2910,10 +2911,10 @@ function _incomeTagWriteoffOrder(){
 function _incomeTagOrderLabel(tag){ return tag === '' ? 'Без тега' : tag; }
 function _incomeTagOrderColor(tag){ return tag === '' ? 'rgba(128,128,128,0.55)' : getIncomeTagColor(tag); }
 
-// «Из чего накоплено»: доходы периода по тегам, расходы поглощают крупнейшие
-// источники первыми, остаток каждого = вклад в накопления. Возвращает html
-// (заголовок + stacked bar + строки) или ''. Общая для сводки Аналитики и
-// годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
+// «Из чего накоплено»: доходы периода по тегам, расходы поглощают источники в
+// заданном порядке списания (_incomeTagWriteoffOrder) первыми, остаток каждого =
+// вклад в накопления. Возвращает html (заголовок + stacked bar + строки) или ''.
+// Общая для сводки Аналитики и годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
 function _savingsBreakdownHtml(periodIncs, totalExp){
   const totalInc = periodIncs.reduce((s,x)=>s+x.amount,0);
   const balance = totalInc - totalExp;
@@ -6584,6 +6585,7 @@ function addIncomeTag(){
 }
 
 let _deletingIncomeTagIdx = null;
+let _deletingIncomeTagName = null;
 
 function deleteIncomeTag(i){
   const tag = (DB.incomeTags||[])[i];
@@ -6595,6 +6597,7 @@ function deleteIncomeTag(i){
     return;
   }
   _deletingIncomeTagIdx = i;
+  _deletingIncomeTagName = tag;
   document.getElementById('del-inc-tag-title').textContent = 'Удалить тег «' + tag + '» — ' + tagged + ' доход(ов)';
   const otherTags = (DB.incomeTags||[]).filter((t, ti) => ti !== i);
   document.getElementById('del-inc-tag-move-select').innerHTML =
@@ -6613,8 +6616,17 @@ function _renderDelIncTagAction(){
 }
 
 function confirmDeleteIncomeTag(){
-  const i = _deletingIncomeTagIdx;
-  const tag = (DB.incomeTags||[])[i];
+  // Индекс мог устареть за время, пока открыта модалка (фоновый sync-мёрж мог изменить DB.incomeTags) —
+  // перерезолвим тег по сохранённому имени, а не доверяем захваченному индексу.
+  const i = (DB.incomeTags||[]).indexOf(_deletingIncomeTagName);
+  if(i < 0){
+    toast('Тег изменился, повторите');
+    closeModal('modal-delete-income-tag');
+    _deletingIncomeTagIdx = null;
+    _deletingIncomeTagName = null;
+    return;
+  }
+  const tag = DB.incomeTags[i];
   if(tag == null) return;
   const action = document.querySelector('input[name="del-inc-tag-action"]:checked').value;
   let destTag = '';
@@ -6631,6 +6643,7 @@ function confirmDeleteIncomeTag(){
   _removeIncomeTagAt(i, destTag);
   closeModal('modal-delete-income-tag');
   _deletingIncomeTagIdx = null;
+  _deletingIncomeTagName = null;
   toast('Удалено: ' + tag + (destTag ? ', доходы → ' + destTag : ''));
 }
 
@@ -6920,7 +6933,7 @@ function _applyRestoredData(d, makeAuthoritative){
     ['expenses','incomes','assets','goals','templates','deposits','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
-    ['categories','banks','creditBanks','incomeTags'].forEach(l => touchList(l));
+    ['categories','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(l => touchList(l));
     DB._lastSyncedLimits = {}; // все limits считаются локально изменёнными → переживут merge
   }
   _ensureCatIds(); // бэкап может быть старого формата без catId
