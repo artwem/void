@@ -6397,54 +6397,63 @@ function renderIncomeTagOrderList(){
 // pointerup читает финальный порядок прямо из DOM (после всех swap'ов он уже
 // верный) и сохраняет.
 function _wireIncomeTagOrderDrag(list){
-  let dragRow = null, startY = 0, pointerId = null;
+  // Drag state lives on the list element itself (not as plain closure
+  // variables) because #income-tag-order-list is static modal markup that's
+  // never recreated — only its .io-row children are replaced on each
+  // renderIncomeTagOrderList() call. The list-level pointermove/up/cancel
+  // listeners are therefore wired at most once per element (guarded below);
+  // sharing state via list._dragState lets that single, first-render set of
+  // listeners keep working correctly against whichever rows the *latest*
+  // render attached fresh pointerdown handlers to.
+  if(!list._dragState) list._dragState = { dragRow: null, startY: 0, pointerId: null };
+  const st = list._dragState;
 
   function onMove(e){
-    if(!dragRow || e.pointerId !== pointerId) return;
-    const dy = e.clientY - startY;
-    dragRow.style.transform = 'translateY(' + dy + 'px)';
+    if(!st.dragRow || e.pointerId !== st.pointerId) return;
+    const dy = e.clientY - st.startY;
+    st.dragRow.style.transform = 'translateY(' + dy + 'px)';
     const rows = [...list.querySelectorAll('.io-row')];
-    const dragIdx = rows.indexOf(dragRow);
-    const dragRect = dragRow.getBoundingClientRect();
+    const dragIdx = rows.indexOf(st.dragRow);
+    const dragRect = st.dragRow.getBoundingClientRect();
     const dragMid = dragRect.top + dragRect.height / 2;
     for(let i = 0; i < rows.length; i++){
       const sib = rows[i];
-      if(sib === dragRow) continue;
+      if(sib === st.dragRow) continue;
       const r = sib.getBoundingClientRect();
       const sibMid = r.top + r.height / 2;
       if(i < dragIdx && dragMid < sibMid){
-        list.insertBefore(dragRow, sib);
-        startY = e.clientY; dragRow.style.transform = 'translateY(0px)';
+        list.insertBefore(st.dragRow, sib);
+        st.startY = e.clientY; st.dragRow.style.transform = 'translateY(0px)';
         break;
       }
       if(i > dragIdx && dragMid > sibMid){
-        list.insertBefore(dragRow, sib.nextSibling);
-        startY = e.clientY; dragRow.style.transform = 'translateY(0px)';
+        list.insertBefore(st.dragRow, sib.nextSibling);
+        st.startY = e.clientY; st.dragRow.style.transform = 'translateY(0px)';
         break;
       }
     }
   }
 
   function onUp(e){
-    if(!dragRow || e.pointerId !== pointerId) return;
-    dragRow.style.position = '';
-    dragRow.style.zIndex = '';
-    dragRow.style.transition = '';
-    dragRow.style.transform = '';
-    dragRow.style.boxShadow = '';
+    if(!st.dragRow || e.pointerId !== st.pointerId) return;
+    st.dragRow.style.position = '';
+    st.dragRow.style.zIndex = '';
+    st.dragRow.style.transition = '';
+    st.dragRow.style.transform = '';
+    st.dragRow.style.boxShadow = '';
     const order = [...list.querySelectorAll('.io-row')].map(r => r.dataset.tag);
     DB.incomeTagOrder = order;
     touchList('incomeTagOrder');
     saveDB();
-    dragRow = null; pointerId = null;
+    st.dragRow = null; st.pointerId = null;
   }
 
   list.querySelectorAll('.io-row').forEach(row => {
     const handle = row.querySelector('.io-handle');
     handle.addEventListener('pointerdown', e => {
-      dragRow = row;
-      pointerId = e.pointerId;
-      startY = e.clientY;
+      st.dragRow = row;
+      st.pointerId = e.pointerId;
+      st.startY = e.clientY;
       handle.setPointerCapture(e.pointerId);
       row.style.position = 'relative';
       row.style.zIndex = '10';
@@ -6452,9 +6461,12 @@ function _wireIncomeTagOrderDrag(list){
       row.style.boxShadow = '0 4px 14px rgba(0,0,0,.18)';
     });
   });
-  list.addEventListener('pointermove', onMove);
-  list.addEventListener('pointerup', onUp);
-  list.addEventListener('pointercancel', onUp);
+  if(!list.dataset.wired){
+    list.dataset.wired = '1';
+    list.addEventListener('pointermove', onMove);
+    list.addEventListener('pointerup', onUp);
+    list.addEventListener('pointercancel', onUp);
+  }
 }
 
 function renderIncomeTagsList(){
