@@ -1048,17 +1048,17 @@ if ('serviceWorker' in navigator) {
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-income-tags')">✕</button>
     <h2>Теги доходов</h2>
-    <div id="income-tags-list"></div>
+    <div class="fgrp" style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <label class="flbl" style="margin:0">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Сверху вниз = порядок списания расходов. Перетащите ⠿ или отсортируйте по текущей сумме — «Без тега» всегда наверху')">ⓘ</span></label>
+      <button class="btn small" onclick="sortIncomeTagsByAmount()">↓ по сумме</button>
+    </div>
+    <div id="income-tags-list" style="display:flex;flex-direction:column;gap:4px"></div>
     <div class="fgrp" style="margin-top:12px">
       <label class="flbl">Добавить тег</label>
       <div style="display:flex;gap:8px">
         <input type="text" id="new-income-tag-input" placeholder="Название тега"/>
         <button class="btn primary small" onclick="addIncomeTag()">Добавить</button>
       </div>
-    </div>
-    <div class="fgrp" style="margin-top:16px">
-      <label class="flbl">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Сверху вниз = порядок списания расходов')">ⓘ</span></label>
-      <div id="income-tag-order-list" style="display:flex;flex-direction:column;gap:4px"></div>
     </div>
     <div class="btn-row" style="margin-top:8px"><button class="btn primary" onclick="closeModal('modal-income-tags')">Готово</button></div>
   </div>
@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.46.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.47.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6406,26 +6406,31 @@ function removeCategory(i){
 // ─── INCOME TAGS MANAGER ────────────────────────────────────────────
 function openIncomeTagsManager(){
   renderIncomeTagsList();
-  renderIncomeTagOrderList();
   openModal('modal-income-tags');
 }
 
-// Секция «Порядок списания» в модале тегов доходов — отдельный drag-список,
-// не трогает DB.incomeTags/цвета/чипы. Рендерится из _incomeTagWriteoffOrder(),
-// чтобы всегда показывать актуальный (реконсиленный) порядок, даже если
-// DB.incomeTagOrder отстал от реальности (rename/delete/sync).
-function renderIncomeTagOrderList(){
-  const list = document.getElementById('income-tag-order-list');
-  if(!list) return;
-  const order = _incomeTagWriteoffOrder();
-  list.innerHTML = order.map(tag =>
-    '<div class="setting-row io-row" style="cursor:default;gap:6px" data-tag="'+esc(tag)+'">'
-    + '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;padding:2px 4px">⠿</span>'
-    + '<span style="width:8px;height:8px;border-radius:50%;background:'+_incomeTagOrderColor(tag)+';flex-shrink:0"></span>'
-    + '<span style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(_incomeTagOrderLabel(tag))+'</span>'
-    + '</div>'
-  ).join('');
-  _wireIncomeTagOrderDrag(list);
+// Текущая сумма по тегу (все недалённые доходы, '' = без тега/тег-сирота) —
+// основа для «↓ по сумме».
+function _incomeTagCurrentAmounts(){
+  const sums = {};
+  (DB.incomes||[]).forEach(inc=>{
+    if(inc._deleted) return;
+    const t = _normTag(inc);
+    sums[t] = (sums[t]||0) + inc.amount;
+  });
+  return sums;
+}
+
+// Разовая сортировка порядка списания по текущей сумме тега (убывание);
+// «Без тега» всегда закреплён первым независимо от суммы.
+function sortIncomeTagsByAmount(){
+  const sums = _incomeTagCurrentAmounts();
+  const tags = (DB.incomeTags||[]).slice().sort((a,b)=>(sums[b]||0)-(sums[a]||0));
+  DB.incomeTagOrder = ['', ...tags];
+  touchList('incomeTagOrder');
+  saveDB();
+  renderIncomeTagsList();
+  toast('Отсортировано по сумме');
 }
 
 // Reorder через Pointer Events (не HTML5 Drag-and-Drop — ненадёжен для touch
@@ -6437,9 +6442,9 @@ function renderIncomeTagOrderList(){
 // верный) и сохраняет.
 function _wireIncomeTagOrderDrag(list){
   // Drag state lives on the list element itself (not as plain closure
-  // variables) because #income-tag-order-list is static modal markup that's
+  // variables) because #income-tags-list is static modal markup that's
   // never recreated — only its .io-row children are replaced on each
-  // renderIncomeTagOrderList() call. The list-level pointermove/up/cancel
+  // renderIncomeTagsList() call. The list-level pointermove/up/cancel
   // listeners are therefore wired at most once per element (guarded below);
   // sharing state via list._dragState lets that single, first-render set of
   // listeners keep working correctly against whichever rows the *latest*
@@ -6451,7 +6456,9 @@ function _wireIncomeTagOrderDrag(list){
     if(!st.dragRow || e.pointerId !== st.pointerId) return;
     const dy = e.clientY - st.startY;
     st.dragRow.style.transform = 'translateY(' + dy + 'px)';
-    const rows = [...list.querySelectorAll('.io-row')];
+    // «Без тега» закреплён первым — исключаем его из сравнения, чтобы
+    // перетаскиваемая строка никогда не встала перед ним.
+    const rows = [...list.querySelectorAll('.io-row')].filter(r => r.dataset.tag !== '');
     const dragIdx = rows.indexOf(st.dragRow);
     const dragRect = st.dragRow.getBoundingClientRect();
     const dragMid = dragRect.top + dragRect.height / 2;
@@ -6480,8 +6487,10 @@ function _wireIncomeTagOrderDrag(list){
     st.dragRow.style.transition = '';
     st.dragRow.style.transform = '';
     st.dragRow.style.boxShadow = '';
-    const order = [...list.querySelectorAll('.io-row')].map(r => r.dataset.tag);
-    DB.incomeTagOrder = order;
+    // «Без тега» форсируется первым слотом независимо от DOM-позиции — он
+    // никогда не draggable, но защита не помешает.
+    const order = [...list.querySelectorAll('.io-row')].map(r => r.dataset.tag).filter(t => t !== '');
+    DB.incomeTagOrder = ['', ...order];
     touchList('incomeTagOrder');
     saveDB();
     st.dragRow = null; st.pointerId = null;
@@ -6489,6 +6498,7 @@ function _wireIncomeTagOrderDrag(list){
 
   list.querySelectorAll('.io-row').forEach(row => {
     const handle = row.querySelector('.io-handle');
+    if(!handle) return; // «Без тега» — без ручки, не перетаскивается
     handle.addEventListener('pointerdown', e => {
       st.dragRow = row;
       st.pointerId = e.pointerId;
@@ -6508,21 +6518,41 @@ function _wireIncomeTagOrderDrag(list){
   }
 }
 
+// Единый список: порядок списания (_incomeTagWriteoffOrder, всегда актуальный
+// даже если DB.incomeTagOrder отстал) + правки тега (цвет/переименование/
+// удаление) в одной строке — раньше это были два отдельных списка с почти
+// одинаковыми строками. «Без тега» рендерится первым всегда, без ручки
+// перетаскивания и без кнопок правки (виртуальный, не элемент DB.incomeTags).
 function renderIncomeTagsList(){
-  const tags = DB.incomeTags || [];
   const list = document.getElementById('income-tags-list');
   if(!list) return;
-  list.innerHTML = tags.map((tag, i) => {
-    const color = getIncomeTagColor(tag);
-    return '<div class="setting-row" style="cursor:default;gap:6px" id="inc-tag-row-'+i+'">'
-      + '<input type="color" value="'+color+'"'
-      + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
-      + ' onchange="setIncomeTagColor('+i+',this.value)" title="Цвет тега"/>'
-      + '<span class="setting-label" style="flex:1;cursor:pointer" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</span>'
-      + '<button class="btn small icon-btn" onclick="startEditIncomeTag('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
-      + '<button class="btn danger small" onclick="deleteIncomeTag('+i+')">✕</button>'
+  const order = _incomeTagWriteoffOrder();
+  const sums = _incomeTagCurrentAmounts();
+  list.innerHTML = order.map(tag => {
+    const isEmpty = tag === '';
+    const i = isEmpty ? -1 : DB.incomeTags.indexOf(tag);
+    const color = _incomeTagOrderColor(tag);
+    const amt = fmtShort(sums[tag]||0);
+    const handle = isEmpty
+      ? '<span style="width:24px;flex-shrink:0"></span>'
+      : '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;padding:2px 4px">⠿</span>';
+    const colorCtl = isEmpty
+      ? '<span style="width:16px;height:16px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'
+      : '<input type="color" value="'+color+'"'
+        + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
+        + ' onchange="setIncomeTagColor('+i+',this.value)" title="Цвет тега"/>';
+    const nameSpan = isEmpty
+      ? '<span class="setting-label" style="flex:1">Без тега</span>'
+      : '<span class="setting-label" style="flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</span>';
+    const amtSpan = '<span style="font-size:12px;color:var(--muted);flex-shrink:0">'+amt+'</span>';
+    const actions = isEmpty ? '' :
+      '<button class="btn small icon-btn" onclick="startEditIncomeTag('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      + '<button class="btn danger small" onclick="deleteIncomeTag('+i+')">✕</button>';
+    return '<div class="setting-row io-row" style="cursor:default;gap:6px" data-tag="'+esc(tag)+'" id="inc-tag-row-'+(isEmpty?'empty':i)+'">'
+      + handle + colorCtl + nameSpan + amtSpan + actions
       + '</div>';
   }).join('');
+  _wireIncomeTagOrderDrag(list);
 }
 
 function setIncomeTagColor(i, color){
@@ -6531,7 +6561,6 @@ function setIncomeTagColor(i, color){
   touchList('incomeTags');
   saveDB();
   renderIncomeTagsList();
-  renderIncomeTagOrderList(); // dot color in the order list follows the tag's color
 }
 
 function startEditIncomeTag(i){
@@ -6566,7 +6595,6 @@ function startEditIncomeTag(i){
     touchList('incomeTagOrder');
     saveDB();
     renderIncomeTagsList();
-    renderIncomeTagOrderList();
   };
   btnSave.onclick = save;
   inp.onkeydown = e => { if(e.key==='Enter') save(); if(e.key==='Escape') renderIncomeTagsList(); };
@@ -6589,7 +6617,6 @@ function addIncomeTag(){
   saveDB();
   inp.value = '';
   renderIncomeTagsList();
-  renderIncomeTagOrderList();
   renderSettings();
   toast('Тег добавлен: ' + name);
 }
@@ -6686,7 +6713,6 @@ function _removeIncomeTagAt(i, destTag){
   touchList('incomeTagOrder');
   saveDB();
   renderIncomeTagsList();
-  renderIncomeTagOrderList();
   renderSettings();
 }
 
