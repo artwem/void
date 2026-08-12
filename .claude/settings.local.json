@@ -25,7 +25,9 @@
       "PowerShell(git pull *)",
       "Bash(git restore *)",
       "Bash(git remote *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(npm ls *)",
+      "Bash(npm install *)"
     ]
   }
 }

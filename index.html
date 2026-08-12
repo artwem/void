@@ -1049,10 +1049,10 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-income-tags')">✕</button>
     <h2>Теги доходов</h2>
     <div class="fgrp" style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <label class="flbl" style="margin:0">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Сверху вниз = порядок списания расходов. Перетащите ⠿ или отсортируйте по текущей сумме — «Без тега» всегда наверху')">ⓘ</span></label>
-      <button class="btn small" onclick="sortIncomeTagsByAmount()">↓ по сумме</button>
+      <label class="flbl" style="margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Сверху вниз = порядок; без тега — первым')">ⓘ</span></label>
+      <button class="btn small" style="flex:0 0 auto;white-space:nowrap" onclick="sortIncomeTagsByAmount()">↓ по сумме</button>
     </div>
-    <div id="income-tags-list" style="display:flex;flex-direction:column;gap:4px"></div>
+    <div id="income-tags-list" style="display:flex;flex-direction:column;gap:6px"></div>
     <div class="fgrp" style="margin-top:12px">
       <label class="flbl">Добавить тег</label>
       <div style="display:flex;gap:8px">
@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.47.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.47.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6532,24 +6532,30 @@ function renderIncomeTagsList(){
     const isEmpty = tag === '';
     const i = isEmpty ? -1 : DB.incomeTags.indexOf(tag);
     const color = _incomeTagOrderColor(tag);
-    const amt = fmtShort(sums[tag]||0);
+    const amt = fmtH(sums[tag]||0);
     const handle = isEmpty
-      ? '<span style="width:24px;flex-shrink:0"></span>'
-      : '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;padding:2px 4px">⠿</span>';
+      ? '<span style="width:22px;flex-shrink:0"></span>'
+      : '<span class="io-handle" style="touch-action:none;cursor:grab;color:var(--muted);flex-shrink:0;font-size:16px;width:22px;text-align:center">⠿</span>';
+    // 26×26 box for both — real tags get a live color picker, «Без тега» a static dot,
+    // so the two row kinds line up in the same column regardless.
     const colorCtl = isEmpty
-      ? '<span style="width:16px;height:16px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'
+      ? '<span style="width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center"><span style="width:14px;height:14px;border-radius:50%;background:'+color+'"></span></span>'
       : '<input type="color" value="'+color+'"'
         + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
         + ' onchange="setIncomeTagColor('+i+',this.value)" title="Цвет тега"/>';
-    const nameSpan = isEmpty
-      ? '<span class="setting-label" style="flex:1">Без тега</span>'
-      : '<span class="setting-label" style="flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</span>';
-    const amtSpan = '<span style="font-size:12px;color:var(--muted);flex-shrink:0">'+amt+'</span>';
-    const actions = isEmpty ? '' :
-      '<button class="btn small icon-btn" onclick="startEditIncomeTag('+i+')" title="Переименовать"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
-      + '<button class="btn danger small" onclick="deleteIncomeTag('+i+')">✕</button>';
-    return '<div class="setting-row io-row" style="cursor:default;gap:6px" data-tag="'+esc(tag)+'" id="inc-tag-row-'+(isEmpty?'empty':i)+'">'
-      + handle + colorCtl + nameSpan + amtSpan + actions
+    // Имя + сумма в столбик, а не в строку — иначе длинное имя тега выталкивает
+    // сумму и кнопку удаления за край листа на узких экранах.
+    const namePart = '<div style="flex:1;min-width:0">'
+      + (isEmpty
+          ? '<div class="setting-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Без тега</div>'
+          : '<div class="setting-label" style="cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="startEditIncomeTag('+i+')">'+esc(tag)+'</div>')
+      + '<div style="font-size:12px;color:var(--muted);margin-top:1px">'+amt+'</div>'
+      + '</div>';
+    // Клик по имени уже открывает переименование — отдельная кнопка-карандаш
+    // дублировала это же действие, убрана.
+    const delBtn = isEmpty ? '' : '<button class="btn danger small" style="flex:0 0 auto" onclick="deleteIncomeTag('+i+')">✕</button>';
+    return '<div class="setting-row io-row" style="cursor:default;gap:8px" data-tag="'+esc(tag)+'" id="inc-tag-row-'+(isEmpty?'empty':i)+'">'
+      + handle + colorCtl + namePart + delBtn
       + '</div>';
   }).join('');
   _wireIncomeTagOrderDrag(list);
