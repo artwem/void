@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.46.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.46.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4395,13 +4395,23 @@ function renderAssets(){
   // «Всего активов» = счета + вклады (вклады видны в списке счетов и в
   // колонке «Всего» истории — шапка должна сходиться с ними)
   {
-    const liveDeps = (DB.deposits||[]).filter(d=>!d._deleted);
-    const liveInvs = (DB.investments||[]).filter(v=>!v._deleted);
     // Итог и разбивка — на дату последнего снимка счетов, не на сегодня:
     // шапка сходится с последней строкой истории. Вклад, открытый позже
-    // снимка, в итог не входит (как и в истории).
+    // снимка, в итог не входит (как и в истории). Вклад, закрытый ПОСЛЕ
+    // снимка, всё ещё входит — на дату снимка он был жив (см. _depDelDay,
+    // та же логика что в _buildAssetSeries).
     const lastSnapDate = allEntries.reduce((m,a)=>a.date>m?a.date:m,'');
     const snapD = lastSnapDate || today();
+    const liveDeps = (DB.deposits||[]).filter(d=>{
+      if(!d._deleted) return true;
+      const delDay = _depDelDay(d);
+      return delDay && snapD < delDay;
+    });
+    const liveInvs = (DB.investments||[]).filter(v=>{
+      if(!v._deleted) return true;
+      const delDay = _depDelDay(v);
+      return delDay && snapD < delDay;
+    });
     const depSumNow = liveDeps.reduce((s,d)=>s + (d.openDate && d.openDate > snapD ? 0 : depositValueAt(d,snapD)),0);
     const invSumNow = liveInvs.reduce((s,v)=>s+invValueAt(v,snapD),0);
     document.getElementById('total-val').innerHTML = fmtH(total + depSumNow + invSumNow);
