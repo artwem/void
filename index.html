@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.48.0">
+<link rel="stylesheet" href="css/app.css?v=1.49.0">
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
      script на мёртвой сети вешал парсер — белый экран у PWA без интернета -->
 <script src="vendor/chart.umd.js"></script>
@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.48.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.49.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1683,14 +1683,25 @@ let _calcPrefill = null;
 function openInCalc(p){ _calcPrefill = p || null; showPage('calc'); }
 
 function showPage(name,btn){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('page-'+name).classList.add('active');
+  const navs = Array.from(document.querySelectorAll('.nav-btn'));
+  const prevIdx = navs.findIndex(b => b.classList.contains('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active','slide-l','slide-r'));
+  navs.forEach(b=>b.classList.remove('active'));
+  // Снять и вернуть класс в одном кадре анимацию не перезапустит — нужен форс-рефлоу
+  void document.body.offsetWidth;
+  const pageEl = document.getElementById('page-'+name);
+  pageEl.classList.add('active');
   if(btn) btn.classList.add('active');
   // Прогноз и Вклады открываются из Активов — вкладок в навбаре у них нет, подсвечиваем Активы
   else if(name==='calc'||name==='deposits'||name==='investments'){ const nb=document.getElementById('nav-assets'); if(nb) nb.classList.add('active'); }
   // Годовой отчёт открывается из Аналитики
   else if(name==='report'){ const nb=document.getElementById('nav-stats'); if(nb) nb.classList.add('active'); }
+  // Направление въезда страницы = куда шагнули по навбару (правее — въезд справа)
+  {
+    const newIdx = navs.findIndex(b => b.classList.contains('active'));
+    if(prevIdx >= 0 && newIdx >= 0 && newIdx !== prevIdx)
+      pageEl.classList.add(newIdx > prevIdx ? 'slide-r' : 'slide-l');
+  }
   currentPage = name;
   // FAB на Бюджете и Дне: быстрый ввод на Дне раньше жил в деном-виджете
   // (удалён в v1.41.0) — openAddExpense сам подставит дату выбранного дня
@@ -1772,18 +1783,25 @@ function changeDay(d){
 // в день оплаты аренды. Прогноз — МИНИМУМ особых за 3 прошлых месяца, а не
 // среднее: минимум приближает повторяющуюся часть (аренда, ЖКУ, подписки)
 // и отсекает разовые всплески — холодильник попадёт лишь в один месяц из трёх.
-function _budgetFree(y, m, totalSpent, totalLimit){
+function _budgetFree(y, m, totalSpent, totalLimit, fc){
   let specSpent = 0;
   getMonthExpenses(y,m).forEach(e => { if(e.special) specSpent += e.amount; });
-  // Пустые месяцы пропускаем — иначе новый пользователь получит нулевой прогноз
+  // Резерв особых берём из общего движка прогноза (_monthForecast): факт этого
+  // месяца + покатегорийные ещё не оплаченные. Так «особые» в бюджете совпадают
+  // с тем, что прогноз «День за днём» добавляет к концу месяца.
   let specPlan = null;
-  for(let k = 1; k <= 3; k++){
-    const d = new Date(y, m - k, 1);
-    const exps = getMonthExpenses(d.getFullYear(), d.getMonth());
-    if(!exps.length) continue;
-    let sum = 0;
-    exps.forEach(e => { if(e.special) sum += e.amount; });
-    if(specPlan === null || sum < specPlan) specPlan = sum;
+  if(fc) specPlan = specSpent + fc.specRemain;
+  // Фолбэк для не-текущего месяца (fc === null): минимум суммы особых за 3 прошлых
+  // месяца. Пустые месяцы пропускаем — иначе новый пользователь получит ноль.
+  if(specPlan === null){
+    for(let k = 1; k <= 3; k++){
+      const d = new Date(y, m - k, 1);
+      const exps = getMonthExpenses(d.getFullYear(), d.getMonth());
+      if(!exps.length) continue;
+      let sum = 0;
+      exps.forEach(e => { if(e.special) sum += e.amount; });
+      if(specPlan === null || sum < specPlan) specPlan = sum;
+    }
   }
   if(specPlan === null) specPlan = 0;
   const reserve  = Math.max(specSpent, specPlan);
@@ -1889,9 +1907,11 @@ function renderBudget(){
       const today = now.getDate();
       const daysLeft = daysInMonth - today + 1; // include today
       const daysGone = today - 1;
-      const f = _budgetFree(y, m, totalSpent, totalLimit);
+      const fc = _monthForecast(y, m);
+      const f = _budgetFree(y, m, totalSpent, totalLimit, fc);
       const dailyAllowance = (daysLeft > 0 && f.varLimit > 0) ? Math.round(f.varLeft / daysLeft) : 0;
-      const dailySpent = daysGone > 0 ? Math.round(f.varSpent / daysGone) : 0;
+      // Темп — тот же, что в прогнозе: неособые / прожитых дней ВКЛЮЧАЯ сегодня.
+      const dailySpent = fc ? Math.round(fc.pace) : (daysGone > 0 ? Math.round(f.varSpent / daysGone) : 0);
       const ok = f.varLimit > 0 && f.varLeft >= 0;
       const parts = [
         '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
@@ -1900,10 +1920,9 @@ function renderBudget(){
         '</span>',
       ];
       if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
-      if(daysGone > 0 && daysLeft > 0){
-        // К прогнозу добавляем ещё не оплаченную часть резерва
-        const unpaid = Math.max(0, f.specPlan - f.specSpent);
-        const projected = Math.round(totalSpent + unpaid + dailySpent * daysLeft);
+      if(fc && daysGone > 0){
+        // Ровно то же число, что «Прогноз на конец месяца» в «День за днём»
+        const projected = fc.total;
         const projColor = projected > totalLimit && totalLimit > 0 ? 'var(--red)' : 'var(--muted)';
         parts.push('<span style="color:'+projColor+'">прогноз ' + fmtH(projected) + '</span>');
       }
@@ -3385,17 +3404,62 @@ function _specialForecastCumLine(forecast, cD, daysInMonth, displayDays){
   return extra.map(v => { acc += v; return acc; });
 }
 
-// Кумулятивная сумма НЕ-special трат по дням месяца (аналог локального cumByDay
-// внутри renderStats, но с фильтром !e.special) — база для линейного темпа прогноза.
-function _regularCumByDay(exps, y, m, maxDay, totalDays){
-  const mk = monthKey(y, m);
-  let acc = 0;
-  return Array.from({length: totalDays}, (_, i) => {
-    if(i >= maxDay) return null;
-    const ds = mk + '-' + String(i+1).padStart(2, '0');
-    acc += exps.filter(e => !e.special && e.date === ds).reduce((s,e) => s + e.amount, 0);
-    return Math.round(acc);
+// ─── ЕДИНЫЙ ПРОГНОЗ ТРАТ НА КОНЕЦ МЕСЯЦА ───────────────────────────
+// Один движок для линии «Прогноз» в «День за днём» и строки «прогноз» в Бюджете.
+// До v1.49.0 это были две независимые формулы и цифры расходились: бюджет делил
+// темп на (сегодня−1), а умножал на (осталось дней ВКЛЮЧАЯ сегодня) — сегодняшний
+// день считался дважды; резерв особых бюджет брал минимумом по месяцу целиком,
+// а график — покатегорийно. Здесь одна арифметика на оба места.
+//
+// total = факт по сегодня + темп неособых × дней после сегодня + не оплаченные особые
+//   fact       — все траты месяца с датой ≤ сегодня (будущие даты в факт не идут)
+//   pace       — неособые траты / cD (сегодня уже прожит, поэтому в знаменателе)
+//   specRemain — Σ unpaid из _specialForecastByCat (покатегорийный минимум по истории)
+// Возвращает null для не-текущего месяца и для месяца без трат.
+function _monthForecast(y, m){
+  const now = new Date();
+  if(y !== now.getFullYear() || m !== now.getMonth()) return null;
+  const cD = now.getDate();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const exps = getMonthExpenses(y, m);
+  const todayStr = monthKey(y, m) + '-' + String(cD).padStart(2, '0');
+  let fact = 0, regular = 0;
+  exps.forEach(e => {
+    if(!e.date || e.date > todayStr) return;
+    fact += e.amount;
+    if(!e.special) regular += e.amount;
   });
+  if(fact <= 0) return null;
+
+  const histMonths = [];
+  for(let k = 1; k <= 3; k++){
+    let hm = m - k, hy = y;
+    if(hm < 0){ hm += 12; hy--; }
+    histMonths.push({y: hy, m: hm, exps: getMonthExpenses(hy, hm)});
+  }
+
+  let pace = regular / cD;
+  if(regular === 0){
+    // Неособых трат в месяце ещё нет — темп 0 дал бы плоский прогноз «потратим
+    // ровно столько, сколько уже». Берём средний темп прошлых месяцев на эту же дату.
+    const paces = [];
+    histMonths.forEach(h => {
+      if(!h.exps.length) return;
+      const cut = monthKey(h.y, h.m) + '-' + String(cD).padStart(2, '0');
+      let s = 0;
+      h.exps.forEach(e => { if(!e.special && e.date && e.date <= cut) s += e.amount; });
+      paces.push(s / cD);
+    });
+    if(paces.length) pace = paces.reduce((s, v) => s + v, 0) / paces.length;
+  }
+
+  const forecast = _specialForecastByCat(exps, histMonths);
+  const specLine = _specialForecastCumLine(forecast, cD, daysInMonth, daysInMonth);
+  const specRemain = specLine[daysInMonth - 1] || 0;
+  return {
+    cD, daysInMonth, fact, pace, specRemain, specLine, forecast,
+    total: Math.round(fact + pace * (daysInMonth - cD) + specRemain)
+  };
 }
 
 function renderStats(){
@@ -3497,61 +3561,34 @@ function renderStats(){
     );
     const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
 
-    // Прогноз до конца месяца: линейный темп по НЕособым тратам от сегодняшней
-    // точки + прогноз особых по категориям (угаданная дата или размазка остатка
-    // резерва по оставшимся дням). Особые учитываются в прогнозе ВСЕГДА — тумблер
-    // dayInclSpecial влияет только на факт/среднее (что показывать на графике),
-    // а не на то, сколько реально будет потрачено. НО якорь прогноза — это selCum
-    // (та же точка, где кончается видимая факт-линия), а не факт без фильтра —
-    // иначе при выключенном тумблере пунктирная линия скачком отрывалась бы от
-    // конца сплошной. Уже оплаченную в этом месяце, но скрытую тумблером особую
-    // трату (factCumAll − selCum) не теряем — кладём её шагом на первый прогнозный
-    // день (как «просроченный» unpaid), а не в сам якорь.
+    // Прогноз до конца месяца — считает _monthForecast (общий с бюджетом).
+    // Здесь только рисование: якорь линии — selCum (та же точка, где кончается
+    // видимая факт-линия), а не полный факт, иначе при выключенном тумблере
+    // «Особые» пунктир скачком отрывался бы от конца сплошной. Само число
+    // projTotal — всегда полное (fc.total), с особыми и с уже оплаченными
+    // особыми, которые тумблер прячет: это реальные деньги, а не то, что нарисовано.
     // Только текущий месяц + режим «весь месяц».
     let projLine = null, projTotal = null;
     if (isCurrentMonth && showFull && cD < daysInSel) {
-      const curMonthExps = getMonthExpenses(selY, selM);
-      const factCumAll = cumByDay(curMonthExps, selY, selM, cD, displayDays);
-      if ((factCumAll[cD - 1] || 0) > 0) {
-        const regularCum = _regularCumByDay(curMonthExps, selY, selM, cD, displayDays);
-        let regularPace = (regularCum[cD - 1] || 0) / cD;
-        if (regularCum[cD - 1] === 0 && avgCumLine[cD - 1] != null) {
-          // Нет фактических неособых трат пока — темп 0 давал бы ложную плоскую
-          // линию (без прогноза). Подставляем средний исторический темп на эту дату.
-          regularPace = avgCumLine[cD - 1] / cD;
-        }
-
-        const histMonthsExps = [];
-        for (let k = 1; k <= 3; k++) {
-          let hm = selM - k, hy = selY;
-          if (hm < 0) { hm += 12; hy--; }
-          histMonthsExps.push({ exps: getMonthExpenses(hy, hm) });
-        }
-        const forecast = _specialForecastByCat(curMonthExps, histMonthsExps);
-        const specialCumLine = _specialForecastCumLine(forecast, cD, daysInSel, displayDays);
-
-        // Скрытые тумблером особые (уже потрачены, но не видны в selCum) — тем же
-        // приёмом, что и просроченный unpaid: шагом на первый прогнозный день.
-        // Нужны только для итоговой суммы (projTotal), не для самой линии.
-        const toggleHidden = Math.max(0, (factCumAll[cD - 1] || 0) - (selCum[cD - 1] || 0));
-        const totalSpecialLine = toggleHidden > 0 ? specialCumLine.slice() : specialCumLine;
-        if (toggleHidden > 0) {
-          for (let i = cD; i < totalSpecialLine.length; i++) totalSpecialLine[i] += toggleHidden;
-        }
-
+      // Общий движок с бюджетом (_monthForecast). displayDays === daysInSel в этой
+      // ветке (showFull), поэтому specLine из хелпера ложится один в один.
+      const fc = _monthForecast(selY, selM);
+      if (fc) {
         // Линия на графике следует тумблеру: выключен «особые» — рисуем чистый
-        // темп без скачков (как и факт-линия рядом с ней не показывает особые).
-        // Итоговая сумма ниже графика (projTotal) — ВСЕГДА полная, с особыми,
-        // независимо от тумблера: это реальные деньги, а не то, что нарисовано.
-        const lineSpecial = dayInclSpecial ? specialCumLine : null;
+        // темп без скачков (как и факт-линия рядом с ней не показывает особые),
+        // и якорь — selCum (та же точка, где кончается видимая факт-линия).
+        // Итоговая сумма ниже графика (projTotal) — ВСЕГДА полная, с особыми и с
+        // уже оплаченными особыми, скрытыми тумблером: это реальные деньги, а не
+        // то, что нарисовано.
+        const lineSpecial = dayInclSpecial ? fc.specLine : null;
 
         projLine = Array.from({length: displayDays}, (_, i) => {
           if (i < cD - 1) return null;
           const spec = lineSpecial ? lineSpecial[i] : 0;
-          return Math.round(selCum[cD - 1] + regularPace * (i - (cD - 1)) + spec);
+          return Math.round(selCum[cD - 1] + fc.pace * (i - (cD - 1)) + spec);
         });
         projLine[cD - 1] = selCum[cD - 1]; // старт из той же точки, где кончается факт-линия
-        projTotal = Math.round(selCum[cD - 1] + regularPace * (displayDays - cD) + totalSpecialLine[displayDays - 1]);
+        projTotal = fc.total;
       }
     }
 

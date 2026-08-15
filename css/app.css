@@ -202,6 +202,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 @keyframes tap-flash{0%{transform:scale(1);opacity:1}40%{transform:scale(.88);opacity:.75}100%{transform:scale(1);opacity:1}}
 .tap-flash{animation:tap-flash .18s ease-out}
 
+/* SWITCHING TABS — иконка «пружинит», подчёркивание выезжает, страница уезжает
+   в сторону нового таба. Направление ставит showPage классом slide-l/slide-r. */
+@keyframes nav-pop{0%{transform:scale(1)}35%{transform:scale(.84)}70%{transform:scale(1.16)}100%{transform:scale(1)}}
+.nav-btn.active svg{animation:nav-pop .34s cubic-bezier(.34,1.56,.64,1)}
+@keyframes nav-bar-in{from{width:0;opacity:.4}to{width:28px;opacity:1}}
+.nav-btn.active::before{animation:nav-bar-in .26s ease-out}
+@keyframes page-in-r{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+@keyframes page-in-l{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+.page.slide-r{animation:page-in-r .22s cubic-bezier(.22,.61,.36,1)}
+.page.slide-l{animation:page-in-l .22s cubic-bezier(.22,.61,.36,1)}
+@media(prefers-reduced-motion:reduce){
+  .page,.page.slide-l,.page.slide-r,.nav-btn.active svg,.nav-btn.active::before{animation:none}
+}
+
 .page-end{height:max(80px,calc(64px + env(safe-area-inset-bottom)))}
 
 

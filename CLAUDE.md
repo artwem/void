@@ -101,7 +101,18 @@ Each tab has a `render*()` function called after any data change:
 
 **Sub-pages without a navbar tab** (open via buttons, highlight the parent tab's nav button in `showPage`): `page-calc` and `page-deposits` from Assets; `page-report` (annual report: year selector, summary cards, per-month table, expenses-by-category, income-by-tag; `renderReport()` in stats.js section) from Аналитика.
 
-**«День за днём» forecast line** (five helpers — `_specialCatStats`, `_guessSpecialDay`, `_specialForecastByCat`, `_specialForecastCumLine`, `_regularCumByDay` — right before `function renderStats(){` in `═══ stats.js ═══`): the «Прогноз» line extrapolates from today's actual cumulative spend using a linear pace from non-special expenses, plus a per-category special-expense reserve (`_specialForecastByCat`, requires ≥2 historical months per category so a one-off lump isn't mistaken for a recurring one) forecasted onto its guessed recurring day-of-month or spread evenly if no day can be guessed. If there's no non-special spending yet this month, the pace falls back to the historical average line rather than flatlining at zero. Anchor is always `selCum[cD-1]` (same point the visible fact line ends at — never jumps away from it). **The drawn line and the printed total are decoupled w.r.t. `dayInclSpecial`** (since v1.38.3): with the toggle off the line itself is pure `regularPace` with zero special-driven steps, matching the plain fact line next to it; the total text below the chart (`projTotal`, «Прогноз на конец месяца») always includes the full special forecast regardless of the toggle — real expected spend isn't the same question as what's drawn. A special already paid this month but hidden by the toggle (`factCumAll[cD-1] − selCum[cD-1]`, via the local `cumByDay` without the toggle filter) folds into `projTotal` via the same first-forecast-day placement as an overdue guessed date, but never touches the line.
+**Month-end spend forecast — one engine, two consumers (since v1.49.0).** `_monthForecast(y, m)` (in `═══ stats.js ═══`, right before `function renderStats(){`, with helpers `_specialCatStats`, `_guessSpecialDay`, `_specialForecastByCat`, `_specialForecastCumLine`) is the single source for both the «Прогноз» line/total on «День за днём» and the «прогноз» chip in the Budget header. Returns `null` for a non-current month or a month with no spend yet, otherwise `{cD, daysInMonth, fact, pace, specRemain, specLine, forecast, total}`:
+
+```
+total = fact + pace × (daysInMonth − cD) + specRemain
+fact  = all expenses dated ≤ today (future-dated entries excluded)
+pace  = non-special spend / cD          ← today is lived, so it's in the divisor and NOT in the multiplier
+specRemain = Σ unpaid from _specialForecastByCat (per-category min over ≤3 prior months, ≥2 months of history required)
+```
+
+Before v1.49.0 the two places had independent formulas and never matched: Budget divided by `today−1` but multiplied by days-left *including* today (counting today twice, ~+1 day of pace) and reserved specials as a whole-month minimum, while the chart used the per-category forecast. If no non-special spend exists yet this month, `pace` falls back to the average of the previous 3 months' non-special spend up to the same day-of-month rather than flatlining at zero. `_budgetFree(y, m, totalSpent, totalLimit, fc)` takes the same `fc` so the «особые» reserve row and the «/день» allowance rest on the same numbers (its old whole-month-minimum path survives only as the `fc === null` fallback).
+
+**The drawn line and the printed total are decoupled w.r.t. `dayInclSpecial`** (since v1.38.3): the line is anchored at `selCum[cD-1]` (same point the visible fact line ends at — never jumps away from it) and adds `fc.specLine` steps only when the toggle is on, so with it off the line is pure `fc.pace`, matching the plain fact line next to it. The total below the chart is always `fc.total` — full spend including specials the toggle hides, because real expected spend isn't the same question as what's drawn.
 
 ### Deposits (вклады) — in `═══ assets.js ═══`
 
@@ -181,7 +192,7 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 Session-persisted UI state uses `sessionStorage`:
 - `expViewMode` (`'cats'`|`'groups'`), `pieViewMode` — breakdown views in Аналитика
 - `statsPeriod` — months shown in Аналитика charts
-- `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Only affects the fact/average lines — the «Прогноз» line always includes special expenses (see below), independent of this toggle
+- `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Affects the fact/average lines and the drawn «Прогноз» line; the printed «Прогноз на конец месяца» total always includes specials (see the forecast section above)
 - `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
 - `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`)
 

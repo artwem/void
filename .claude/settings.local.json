@@ -29,7 +29,10 @@
       "Bash(npm ls *)",
       "Bash(npm install *)",
       "Bash(sed -i 's|css/app.css?v=1.41.0|css/app.css?v=1.48.0|; s|>v1.47.1<|>v1.48.0<|' index.html)",
-      "Bash(sed -i \"s|const V = '2026-08-12 v1.47.1'|const V = '2026-08-16 v1.48.0'|\" sw.js)"
+      "Bash(sed -i \"s|const V = '2026-08-12 v1.47.1'|const V = '2026-08-16 v1.48.0'|\" sw.js)",
+      "Bash(/c/Program Files/GitHub CLI/gh.exe api *)",
+      "Bash(sed -i 's|css/app.css?v=1.48.0|css/app.css?v=1.49.0|; s|>v1.48.0<|>v1.49.0<|' index.html)",
+      "Bash(sed -i \"s|const V = '2026-08-16 v1.48.0'|const V = '2026-08-16 v1.49.0'|\" sw.js)"
     ]
   }
 }
