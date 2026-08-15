@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.41.0">
+<link rel="stylesheet" href="css/app.css?v=1.48.0">
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
      script на мёртвой сети вешал парсер — белый экран у PWA без интернета -->
 <script src="vendor/chart.umd.js"></script>
@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.47.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.48.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4587,7 +4587,7 @@ function renderAssets(){
       const _cc=_chartColors();
       charts.assets=new Chart(document.getElementById('chartAssets'),{
         type:'line',
-        data:{labels,datasets:[{data,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:_cc.blue,borderWidth:2}]},
+        data:{labels,datasets:[{data,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,cubicInterpolationMode:'monotone',pointRadius:3,pointBackgroundColor:_cc.blue,borderWidth:2}]},
         options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted}},y:{grid:{color:_cc.gridLine},ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_cc.muted}}}}
       });
     }
@@ -6093,16 +6093,27 @@ function renderCatManager(){
     colorCount[c] = (colorCount[c]||0) + 1;
   });
 
-  document.getElementById('cat-manager-list').innerHTML = DB.categories.map((c,i) => {
+  // Порядок вывода: категории одного цвета идут подряд. Порядок групп — по первому
+  // появлению цвета в DB.categories, внутри группы — исходный порядок. Только отображение,
+  // DB.categories не трогаем (индексы i в onclick остаются настоящими).
+  const _colorFirst = {};
+  DB.categories.forEach((_,i) => { const c = getCatColor(i); if(_colorFirst[c] === undefined) _colorFirst[c] = i; });
+  const order = DB.categories.map((_,i) => i)
+    .sort((a,b) => (_colorFirst[getCatColor(a)] - _colorFirst[getCatColor(b)]) || (a - b));
+
+  document.getElementById('cat-manager-list').innerHTML = order.map((i, pos) => {
+    const c = DB.categories[i];
     const color = getCatColor(i);
     const inGroup = colorCount[color] > 1;
+    const grpStart = inGroup && (pos === 0 || getCatColor(order[pos-1]) !== color);
     const delBtn = DB.categories.length > 1
       ? '<button class="btn danger small" onclick="removeCategory('+i+')">✕</button>'
       : '';
     const groupDot = inGroup
       ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+color+';margin-left:5px;vertical-align:middle" title="В группе"></span>'
       : '';
-    return '<div class="setting-row" style="cursor:default;gap:6px;flex-wrap:nowrap" id="cat-row-'+i+'">'
+    return '<div class="setting-row" style="cursor:default;gap:6px;flex-wrap:nowrap'
+      + (grpStart && pos > 0 ? ';margin-top:8px' : '') + '" id="cat-row-'+i+'">'
       + '<input type="color" value="'+color+'"'
       + ' style="width:26px;height:26px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"'
       + ' onchange="setCatColor('+i+',this.value)" title="Цвет. Одинаковый цвет = одна группа"/>'
@@ -8383,9 +8394,9 @@ function calcUpdate(){
       data:{
         labels,
         datasets:[
-          {label:'Итого',data:dataTotal,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,tension:0.3,pointRadius:0,borderWidth:2},
-          {label:'Вложено',data:dataInvested,borderColor:_cc.mutedMid,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[4,3]},
-          ...(iR>0 ? [{label:'Реальные ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
+          {label:'Итого',data:dataTotal,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,cubicInterpolationMode:'monotone',pointRadius:0,borderWidth:2},
+          {label:'Вложено',data:dataInvested,borderColor:_cc.mutedMid,backgroundColor:'transparent',fill:false,cubicInterpolationMode:'monotone',pointRadius:0,borderWidth:1.5,borderDash:[4,3]},
+          ...(iR>0 ? [{label:'Реальные ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,cubicInterpolationMode:'monotone',pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
         ]
       },
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
