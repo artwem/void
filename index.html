@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.49.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.50.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3348,13 +3348,30 @@ function _guessSpecialDay(days){
   return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid-1]+sorted[mid])/2);
 }
 
-// Резерв особых по категориям: plan = минимум суммы категории за прошлые месяцы,
-// где категория встречалась; unpaid = max(0, plan − факт текущего месяца).
+// Резерв особых по категориям: plan = ожидаемая сумма = средняя сумма категории
+// за месяцы, где она встречалась, × частота (месяцев с категорией / месяцев в
+// окне); unpaid = max(0, plan − факт текущего месяца).
 // Категории с историей всего в 1 месяце из histMonthsExps исключаются — одна
 // точка недостаточна, чтобы считать особую трату повторяющейся закономерностью.
-// histMonthsExps — траты прошлых месяцев, от ближайшего к дальнему (обычно 3).
+// histMonthsExps — траты прошлых месяцев, от ближайшего к дальнему (обычно 6).
+//
+// Почему среднее×частота, а не минимум (v1.50.0): минимум систематически
+// недобирал. Аренда за март–июль — 47411/37314/33000/38580/34073: минимум даёт
+// 33000, среднее 38076, и эти 5к недоставало КАЖДЫЙ месяц. Особые у пользователя
+// ~половина месячных трат, поэтому недобор резерва и был основным источником
+// смещения прогноза (−10.7% на бэктесте май–июль, даже на 26-й день месяца, где
+// pace экстраполирует всего 4 дня и заведомо ни при чём).
+// Частота нужна против обратного перекоса: «Хотелки» были особыми в 2 месяцах из
+// 5 (32788 и 17990) — голое среднее резервировало бы 25389 ежемесячно, включая
+// месяцы без единой покупки. С частотой выходит 25389 × 2/5 ≈ 10156.
+// Фильтр «≥2 месяца» ослаблять нельзя: с ним разовая покупка резервируется
+// вечно и смещение переворачивается с −10.7% на +11%.
+// Бэктест май+июнь+июль: средняя |ошибка| 13.1% → 10.3%, смещение −10.7% → −6.3%.
 function _specialForecastByCat(curExps, histMonthsExps){
   const curMap = _specialCatStats(curExps);
+  // Пустые месяцы (данных ещё нет) не должны разбавлять частоту: категория,
+  // встреченная в 2 месяцах из 2 реально заполненных — это частота 1, а не 2/6.
+  const monthsWithData = Math.max(1, histMonthsExps.filter(h => h.exps.length).length);
   const histByCat = {};
   histMonthsExps.forEach(({exps}) => {
     const hMap = _specialCatStats(exps);
@@ -3369,7 +3386,8 @@ function _specialForecastByCat(curExps, histMonthsExps){
     const ci = Number(ciStr);
     const hist = histByCat[ci];
     if(hist.length < 2) return; // одна точка истории — не считаем закономерностью
-    const plan = Math.min(...hist.map(h => h.sum));
+    const avgSum = hist.reduce((s, h) => s + h.sum, 0) / hist.length;
+    const plan = avgSum * (Math.min(hist.length, monthsWithData) / monthsWithData);
     const spent = (curMap[ci] && curMap[ci].sum) || 0;
     const unpaid = Math.max(0, plan - spent);
     if(unpaid <= 0) return;
@@ -3416,7 +3434,8 @@ function _specialForecastCumLine(forecast, cD, daysInMonth, displayDays){
 //   fact       — все траты месяца с датой ≤ сегодня (будущие даты в факт не идут)
 //   futPlanned — траты месяца с датой > сегодня: уже внесены, но ещё не наступили
 //   pace       — неособые траты / cD (сегодня уже прожит, поэтому в знаменателе)
-//   specRemain — Σ unpaid из _specialForecastByCat (покатегорийный минимум по истории)
+//   specRemain — Σ unpaid из _specialForecastByCat (покатегорийное ожидание по
+//                истории: средняя сумма × частота, окно 6 месяцев)
 // Возвращает null для не-текущего месяца и для месяца без трат.
 //
 // Про futPlanned (v1.49.1): до этого траты с будущей датой выпадали из прогноза
@@ -3459,8 +3478,11 @@ function _monthForecast(y, m){
     accR += futCumReg[i]; futCumReg[i] = accR;
   }
 
+  // Глубина истории 6 месяцев (было 3, с v1.50.0): и оценка суммы особых, и их
+  // частота считаются по большей выборке. Пустые месяцы отсеиваются внутри
+  // _specialForecastByCat, так что новому пользователю глубина не вредит.
   const histMonths = [];
-  for(let k = 1; k <= 3; k++){
+  for(let k = 1; k <= 6; k++){
     let hm = m - k, hy = y;
     if(hm < 0){ hm += 12; hy--; }
     histMonths.push({y: hy, m: hm, exps: getMonthExpenses(hy, hm)});
