@@ -1228,7 +1228,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.49.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.49.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3411,11 +3411,21 @@ function _specialForecastCumLine(forecast, cD, daysInMonth, displayDays){
 // день считался дважды; резерв особых бюджет брал минимумом по месяцу целиком,
 // а график — покатегорийно. Здесь одна арифметика на оба места.
 //
-// total = факт по сегодня + темп неособых × дней после сегодня + не оплаченные особые
+// total = факт по сегодня + запланированное будущими датами + темп неособых ×
+//         дней после сегодня + не оплаченные особые
 //   fact       — все траты месяца с датой ≤ сегодня (будущие даты в факт не идут)
+//   futPlanned — траты месяца с датой > сегодня: уже внесены, но ещё не наступили
 //   pace       — неособые траты / cD (сегодня уже прожит, поэтому в знаменателе)
 //   specRemain — Σ unpaid из _specialForecastByCat (покатегорийный минимум по истории)
 // Возвращает null для не-текущего месяца и для месяца без трат.
+//
+// Про futPlanned (v1.49.1): до этого траты с будущей датой выпадали из прогноза
+// ЦЕЛИКОМ. Из fact их исключает фильтр по дате, в pace они не попадают по той же
+// причине, а в резерве особых они, наоборот, УЧИТЫВАЛИСЬ как уже оплаченные
+// (_specialForecastByCat берёт весь месяц) и обнуляли unpaid своей категории.
+// Внесённая заранее аренда 33 000 ₽ занижала прогноз ровно на 33 000 ₽.
+// Двойного счёта нет: раз spent в _specialForecastByCat по-прежнему считает весь
+// месяц, будущая особая трата даёт unpaid = 0 и живёт только в futPlanned.
 function _monthForecast(y, m){
   const now = new Date();
   if(y !== now.getFullYear() || m !== now.getMonth()) return null;
@@ -3423,13 +3433,31 @@ function _monthForecast(y, m){
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const exps = getMonthExpenses(y, m);
   const todayStr = monthKey(y, m) + '-' + String(cD).padStart(2, '0');
-  let fact = 0, regular = 0;
+  let fact = 0, regular = 0, futPlanned = 0;
+  // futCum/futCumReg — кумулятивные добавки будущих трат по дням месяца, чтобы
+  // линия на графике шагала ровно там же, где их учитывает total. Reg-вариант —
+  // без особых: им пользуется график при выключенном тумблере «Особые».
+  const futCum = Array.from({length: daysInMonth}, () => 0);
+  const futCumReg = Array.from({length: daysInMonth}, () => 0);
   exps.forEach(e => {
-    if(!e.date || e.date > todayStr) return;
+    if(!e.date) return;
+    if(e.date > todayStr){
+      const d = Number(e.date.slice(-2));
+      if(!(d >= 1 && d <= daysInMonth)) return;
+      futPlanned += e.amount;
+      futCum[d-1] += e.amount;
+      if(!e.special) futCumReg[d-1] += e.amount;
+      return;
+    }
     fact += e.amount;
     if(!e.special) regular += e.amount;
   });
-  if(fact <= 0) return null;
+  if(fact + futPlanned <= 0) return null;
+  let accF = 0, accR = 0;
+  for(let i = 0; i < daysInMonth; i++){
+    accF += futCum[i]; futCum[i] = accF;
+    accR += futCumReg[i]; futCumReg[i] = accR;
+  }
 
   const histMonths = [];
   for(let k = 1; k <= 3; k++){
@@ -3458,7 +3486,8 @@ function _monthForecast(y, m){
   const specRemain = specLine[daysInMonth - 1] || 0;
   return {
     cD, daysInMonth, fact, pace, specRemain, specLine, forecast,
-    total: Math.round(fact + pace * (daysInMonth - cD) + specRemain)
+    futPlanned, futLine: futCum, futLineReg: futCumReg,
+    total: Math.round(fact + futPlanned + pace * (daysInMonth - cD) + specRemain)
   };
 }
 
@@ -3581,11 +3610,16 @@ function renderStats(){
         // уже оплаченными особыми, скрытыми тумблером: это реальные деньги, а не
         // то, что нарисовано.
         const lineSpecial = dayInclSpecial ? fc.specLine : null;
+        // Траты, внесённые вперёд (дата > сегодня), рисуем ступенькой на их дате —
+        // так линия совпадает с total, который их учитывает. Тумблер «Особые»
+        // выключен → берём вариант без особых, как и selCum рядом.
+        const lineFuture = dayInclSpecial ? fc.futLine : fc.futLineReg;
 
         projLine = Array.from({length: displayDays}, (_, i) => {
           if (i < cD - 1) return null;
           const spec = lineSpecial ? lineSpecial[i] : 0;
-          return Math.round(selCum[cD - 1] + fc.pace * (i - (cD - 1)) + spec);
+          const fut = lineFuture[i] || 0;
+          return Math.round(selCum[cD - 1] + fc.pace * (i - (cD - 1)) + spec + fut);
         });
         projLine[cD - 1] = selCum[cD - 1]; // старт из той же точки, где кончается факт-линия
         projTotal = fc.total;
