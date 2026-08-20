@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.52.0">
+<link rel="stylesheet" href="css/app.css?v=1.53.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -584,28 +584,6 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="page-end"></div>
 </div>
-
-<!-- ═══════════════════════════════════════════════════════════════
-     КОНТЕКСТНАЯ КОЛОНКА (только десктоп, ≥1000px)
-     Липкая: цифры месяца не уезжают при скролле рабочей области.
-═══════════════════════════════════════════════════════════════ -->
-<aside id="dt-ctx" aria-label="Контекст месяца">
-  <div class="dtc-nav">
-    <button class="mn-btn" onclick="dtcMonth(-1)" aria-label="Предыдущий месяц">‹</button>
-    <span class="dtc-month" id="dtc-month"></span>
-    <button class="mn-btn" onclick="dtcMonth(1)" aria-label="Следующий месяц">›</button>
-  </div>
-  <button class="btn" id="dtc-add" onclick="openAddExpense()">+ Расход</button>
-  <div class="dtc-figs">
-    <div class="dtc-fig lead"><span class="dtc-l">Потрачено</span><span class="dtc-v money" id="dtc-spent">0₽</span></div>
-    <div class="dtc-fig"><span class="dtc-l">Лимит</span><span class="dtc-v money" id="dtc-limit">0₽</span></div>
-    <div class="dtc-fig"><span class="dtc-l">Остаток</span><span class="dtc-v money" id="dtc-left">0₽</span></div>
-    <div class="dtc-fig"><span class="dtc-l">Прогноз</span><span class="dtc-v money" id="dtc-fc">—</span></div>
-  </div>
-  <div class="dtc-bar"><i id="dtc-bar-fill"></i></div>
-  <div class="sec-title" style="padding:0">Категории</div>
-  <div id="dtc-cats"></div>
-</aside>
 
 <!-- ═══════════════════════════════════════════════════════════════
      NAVIGATION BAR
@@ -1252,7 +1230,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.52.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.53.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1791,29 +1769,6 @@ function showPage(name,btn){
   if(name==='report') renderReport();
   if(name==='income') renderIncome();
   if(name==='settings') renderSettings();
-  // Колонка живёт независимо от активной вкладки — обновляем при каждом переключении
-  renderDeskCtx();
-}
-
-// ─── ЕДИНЫЙ МЕСЯЦ (только десктоп) ──────────────────────────────────
-// На широком экране месяцем рулит контекстная колонка: помесячные шапки
-// вкладок скрыты, поэтому доходы и день обязаны следовать за ней, иначе
-// пользователь останется на прошлом месяце без единого видимого контрола.
-// На мобиле каждая вкладка по-прежнему живёт своим месяцем.
-// `_isDesktop()` уже объявлена в задаче 5 рядом с renderDeskCtx.
-function _syncMonthContext(y, m){
-  if(!_isDesktop()) return;
-  currentIncomeMonth = {y, m};
-  // То же, что делает changeIncomeMonth: фильтр по тегу и строка поиска
-  // относятся к прежнему месяцу. Без сброса чип остаётся подсвеченным,
-  // а список его уже не применяет.
-  _incomeTagFilter = null;
-  const _incSrch = document.getElementById('income-search');
-  if(_incSrch) _incSrch.value = '';
-  const t = today();
-  const mk = y + '-' + String(m + 1).padStart(2, '0');
-  // Текущий месяц — встаём на сегодня, прошлый или будущий — на 1-е число
-  currentDay = t.startsWith(mk) ? t : mk + '-01';
 }
 
 // ─── MONTH NAV ──────────────────────────────────────────────────────
@@ -1821,12 +1776,8 @@ function changeMonth(d){
   currentMonth.m+=d;
   if(currentMonth.m>11){currentMonth.m=0;currentMonth.y++;}
   if(currentMonth.m<0){currentMonth.m=11;currentMonth.y--;}
-  _syncMonthContext(currentMonth.y, currentMonth.m);
   renderBudget();
   syncBudgetMonthInput();
-  // Скрытые вкладки перерисовываем тоже: при возврате на них
-  // не должно оказаться данных прошлого месяца
-  if(_isDesktop()){ renderDay(); renderIncome(); }
 }
 
 function syncBudgetMonthInput(){
@@ -1838,12 +1789,8 @@ function onBudgetMonthChange(val){
   if(!val) return;
   const [y,m] = val.split('-').map(Number);
   currentMonth = {y, m:m-1};
-  _syncMonthContext(currentMonth.y, currentMonth.m);
   renderBudget();
   syncBudgetMonthInput();
-  // Скрытые вкладки перерисовываем тоже: при возврате на них
-  // не должно оказаться данных прошлого месяца
-  if(_isDesktop()){ renderDay(); renderIncome(); }
 }
 
 // ─── DAY NAV ────────────────────────────────────────────────────────
@@ -1890,65 +1837,6 @@ function _budgetFree(y, m, totalSpent, totalLimit, fc){
   const varLimit = totalLimit - reserve;
   return {specSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
 }
-
-// ─── КОНТЕКСТНАЯ КОЛОНКА (десктоп) ──────────────────────────────────
-// Ничего не считает сама: берёт те же getLimits/_monthForecast/_budgetFree,
-// что и бюджет, — иначе колонка и вкладка разойдутся в цифрах.
-function _isDesktop(){ return matchMedia('(min-width:1000px)').matches; }
-
-function renderDeskCtx(){
-  const box = document.getElementById('dt-ctx');
-  if(!box || !_isDesktop()) return;
-  const {y, m} = currentMonth;
-  const lims = getLimits(y, m);
-  let spent = 0, limit = 0;
-  const rows = DB.categories.map((name, i) => {
-    const s = getCatSpent(i, y, m), l = lims[i] || 0;
-    spent += s; limit += l;
-    return {name, i, s, l};
-  });
-  const fc = _monthForecast(y, m);
-
-  document.getElementById('dtc-month').textContent = MONTHS_RU[m] + ' ' + y;
-  document.getElementById('dtc-spent').innerHTML = fmtH(spent);
-  document.getElementById('dtc-limit').innerHTML = fmtH(limit);
-
-  const left = limit - spent;
-  const leftEl = document.getElementById('dtc-left');
-  leftEl.innerHTML = fmtH(Math.abs(left));
-  leftEl.classList.toggle('over', left < 0);
-
-  const fcEl = document.getElementById('dtc-fc');
-  if(fc){
-    fcEl.innerHTML = fmtH(fc.total);
-    fcEl.classList.toggle('over', limit > 0 && fc.total > limit);
-  } else {
-    fcEl.textContent = '—';
-    fcEl.classList.remove('over');
-  }
-
-  const pct = limit > 0 ? Math.min(100, Math.round(spent / limit * 100)) : 0;
-  const fill = document.getElementById('dtc-bar-fill');
-  fill.style.width = pct + '%';
-  fill.classList.toggle('over', limit > 0 && spent > limit);
-
-  // Топ-6 по тратам: колонка — сводка, полный список живёт на вкладке «Бюджет»
-  const top = rows.filter(r => r.s > 0).sort((a, b) => b.s - a.s).slice(0, 6);
-  document.getElementById('dtc-cats').innerHTML = top.map(r => {
-    const over = r.l > 0 && r.s > r.l;
-    const p = r.l > 0 ? Math.round(r.s / r.l * 100) : null;
-    return `<div class="dtc-cat" onclick="openCatExpenses(${r.i})">
-      <span class="dtc-dot" style="background:${getCatColor(r.i)}"></span>
-      <span class="dtc-cn">${esc(r.name)}</span>
-      <span class="dtc-cv money${over ? ' over' : ''}">${fmtH(r.s)}</span>
-      <span class="dtc-cp money">${p === null ? '' : p + '%'}</span>
-    </div>`;
-  }).join('') || '<div class="dtc-empty">Трат в этом месяце нет</div>';
-}
-
-// Переключение месяца из колонки. Единый навигатор на десктопе:
-// тянет за собой доходы и день (см. задачу 6).
-function dtcMonth(d){ changeMonth(d); }
 
 function renderBudget(){
   const {y,m} = currentMonth;
@@ -2104,7 +1992,6 @@ function renderBudget(){
       progressBar.style.display = 'none';
     }
   }
-  renderDeskCtx();
 }
 
 function makeCatRow(i, spent, lim, totalLimit, inGroup){
@@ -2417,7 +2304,6 @@ function renderDay(){
   if(_expCatFilter !== null && _expCatFilter.size > 0){
     const srch = document.getElementById('expense-search');
     renderExpenseSearch(srch ? srch.value : '');
-    renderDeskCtx(); // ранний выход — колонка обновляется и здесь
     return;
   }
   const srch = document.getElementById('expense-search');
@@ -2514,10 +2400,6 @@ function renderDay(){
       list.appendChild(row);
     });
   }
-  // «День» — стартовая вкладка, и кнопка «+ Расход» живёт в самой колонке.
-  // Все пути записи траты (saveExpense, быстрый ввод, свайп-удаление, поиск)
-  // сходятся сюда, поэтому колонку обновляем именно здесь.
-  renderDeskCtx();
 }
 
 function renderExpenseSearch(query){
@@ -8049,9 +7931,6 @@ function renderCurrentPage(){
   else if(currentPage==='report') renderReport();
   else if(currentPage==='income') renderIncome();
   else renderBudget();
-  // Перерисовка после merge с другого устройства: колонка обязана поехать
-  // за данными на любой вкладке, а не только на «Дне» и «Бюджете».
-  renderDeskCtx();
 }
 
 // ── Pull — загрузить из Drive (через общий цикл: pull+merge, push при dirty) ──
@@ -8758,15 +8637,6 @@ function init(){
   document.getElementById('fab').style.display='flex';
   document.getElementById('fab').textContent='+';
   renderDay(); // стартовый таб — День (v1.42.0)
-  renderDeskCtx(); // колонка на десктопе живёт независимо от стартовой вкладки
-  // Пересечение брейкпоинта без смены вкладки не вызывает ни один render*,
-  // и колонка осталась бы с плейсхолдерами разметки.
-  // У MediaQueryList в Safari < 14 нет addEventListener — без проверки
-  // TypeError оборвал бы init() до initSyncWidget/syncCycle, то есть тихо
-  // отключил бы синхронизацию. Ради косметики колонки это слишком дорого.
-  const _mqDesk = matchMedia('(min-width:1000px)');
-  if(_mqDesk.addEventListener) _mqDesk.addEventListener('change', renderDeskCtx);
-  else if(_mqDesk.addListener) _mqDesk.addListener(renderDeskCtx);
   checkAssetNotification();
   checkDepositNotifications();
   checkCreditNotifications();

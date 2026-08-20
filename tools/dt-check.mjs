@@ -28,9 +28,6 @@ suite(390, 'мобильная база', () => {
     const r = await rect(p, 'nav.nav');
     near(r.y + r.height, 900, 'низ навбара', 2); // высота вьюпорта в харнессе
   });
-  check('контекстной колонки нет', async p => {
-    eq(await isVisible(p, '#dt-ctx'), false, 'видимость #dt-ctx');
-  });
   check('индикатор активной вкладки анимируется мобильной пилюлей', async p => {
     await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
     const anim = await p.evaluate(() =>
@@ -95,15 +92,24 @@ suite(1280, 'оболочка 1280', () => {
   check('подписи вкладок видны', async p => {
     eq(await isVisible(p, '#nav-day .nav-lbl'), true, 'видимость подписи');
   });
-  check('страница начинается после сайдбара и контекста', async p => {
+  check('страница начинается сразу после сайдбара', async p => {
     // Вкладку задаём явно: у неактивной .page display:none и нулевая геометрия,
     // так что проверка молча зазеленела бы от чужого showPage в соседнем чеке.
     await p.evaluate(() => window.showPage('day', document.getElementById('nav-day')));
     const r = await rect(p, '#page-day');
-    near(r.x, 504, 'левый край страницы'); // 208 + 296
+    near(r.x, 208, 'левый край страницы');
   });
-  check('FAB спрятан', async p => {
-    eq(await isVisible(p, '#fab'), false, 'видимость FAB');
+  check('FAB виден — колонки с «+ Расход» больше нет', async p => {
+    // Плавающую кнопку прятали, пока добавление жило в контекстной колонке.
+    // Колонка снята, и на «Бюджете» FAB — единственный способ внести трату.
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    eq(await isVisible(p, '#fab'), true, 'видимость FAB на «Бюджете»');
+  });
+  check('помесячные шапки вернулись на десктоп', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    eq(await isVisible(p, '#page-budget .month-nav'), true, 'шапка «Бюджета»');
+    await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
+    eq(await isVisible(p, '#page-income .month-nav'), true, 'шапка «Доходов»');
   });
   check('индикатор активной вкладки не анимируется мобильной пилюлей', async p => {
     await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
@@ -118,106 +124,25 @@ suite(1000, 'оболочка 1000', () => {
     near((await rect(p, 'nav.nav')).width, 64, 'ширина рельса');
     eq(await isVisible(p, '#nav-day .nav-lbl'), false, 'видимость подписи');
   });
-  check('затемнение инспектора начинается после рельса и колонки', async p => {
+  check('затемнение инспектора начинается после рельса', async p => {
     await p.evaluate(() => window.openAddExpense());
     const ov = await rect(p, '#modal-expense');
-    near(ov.x, 344, 'левый край подложки'); // 64 + 280
-    near(ov.width, 1000 - 344, 'ширина подложки');
+    near(ov.x, 64, 'левый край подложки');
+    near(ov.width, 1000 - 64, 'ширина подложки');
     await p.evaluate(() => window.closeModal('modal-expense'));
   });
 });
 
-suite(1280, 'контекстная колонка', () => {
-  check('колонка на месте, 296 px, липкая', async p => {
-    // «Аналитика» — вкладка выше вьюпорта, см. комментарий у проверки сайдбара
-    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
-    eq(await isVisible(p, '#dt-ctx'), true, 'видимость #dt-ctx');
-    const r = await rect(p, '#dt-ctx');
-    near(r.x, 208, 'левый край колонки');
-    near(r.width, 296, 'ширина колонки');
-    eq(await cssOf(p, '#dt-ctx', 'position'), 'sticky', 'position колонки');
-    // Липкость — это поведение при прокрутке, а не слово в computed style
-    // (см. комментарий у проверки сайдбара).
-    const sy = await scrollDown(p, 600);
-    near((await rect(p, '#dt-ctx')).y, 0, `верх колонки после прокрутки на ${sy}`, 1);
-    await resetScroll(p);
-    // Дальше сюита работает с «Бюджетом»
-    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
-  });
-  check('в колонке та же сумма, что на вкладке «Бюджет»', async p => {
-    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
-    const [ctx, page] = await p.evaluate(() => [
-      document.querySelector('#dtc-spent').textContent.replace(/\s/g, ''),
-      document.querySelector('#sum-spent').textContent.replace(/\s/g, ''),
-    ]);
-    eq(ctx, page, 'сумма в колонке против суммы на вкладке');
-    if (/^0/.test(ctx)) throw new Error('сумма нулевая — фикстура не засеялась');
-  });
-  check('в колонке тот же остаток, что на вкладке «Бюджет»', async p => {
-    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
-    const [ctx, page] = await p.evaluate(() => [
-      document.querySelector('#dtc-left').textContent.replace(/\s/g, ''),
-      document.querySelector('#sum-left').textContent.replace(/\s/g, ''),
-    ]);
-    eq(ctx, page, 'остаток в колонке против остатка на вкладке');
-  });
-  check('в колонке только категории с тратами, по убыванию', async p => {
-    const rows = await p.evaluate(() =>
-      [...document.querySelectorAll('#dtc-cats .dtc-cat .dtc-cn')].map(e => e.textContent));
-    // Во фикстуре семь категорий, траты есть в пяти. Ожидания выписаны явно,
-    // а не пересчитаны из DB на месте: иначе проверка повторила бы логику
-    // реализации и согласилась бы с любой её ошибкой.
-    const want = ['Аренда', 'Хотелки', 'Продукты + хозтовары + уход', 'Еда вне дома', 'Одежда'];
-    eq(rows.join(' | '), want.join(' | '), 'строки категорий');
-  });
-  check('колонка обрезает список шестью категориями', async p => {
-    // Потолок в шесть на фикстуре из пяти непустых категорий не виден —
-    // временно подсыпаем трат в обе нулевые, получая семь кандидатов.
-    const rows = await p.evaluate(() => {
-      const mk = currentMonth.y + '-' + String(currentMonth.m + 1).padStart(2, '0');
-      DB.expenses.push(
-        { id: 'tmpA', date: mk + '-11', cat: 5, catId: 'cat0006', amount: 700, comment: '', updatedAt: 2 },
-        { id: 'tmpB', date: mk + '-11', cat: 6, catId: 'cat0007', amount: 300, comment: '', updatedAt: 2 });
-      renderDeskCtx();
-      const out = [...document.querySelectorAll('#dtc-cats .dtc-cat .dtc-cn')].map(e => e.textContent);
-      DB.expenses = DB.expenses.filter(e => e.id !== 'tmpA' && e.id !== 'tmpB');
-      renderDeskCtx();
-      return out;
-    });
-    eq(rows.length, 6, 'число строк категорий при семи кандидатах');
-    if (rows.includes('Подписки')) throw new Error('седьмая по величине категория попала в колонку');
-    if (!rows.includes('Мама')) throw new Error('шестая по величине категория до колонки не доехала');
-  });
-  check('помесячная шапка бюджета скрыта', async p => {
-    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
-    eq(await isVisible(p, '#page-budget .month-nav'), false, 'видимость month-nav');
-  });
-});
-
-suite(1280, 'единый месяц', () => {
-  check('переключение месяца в колонке тянет доходы и день', async p => {
-    const before = await p.evaluate(() => currentDay);
-    await p.evaluate(() => window.dtcMonth(-1));
-    const got = await p.evaluate(() => ({
-      m: currentMonth.m, y: currentMonth.y,
-      inc: currentIncomeMonth, day: currentDay,
-    }));
-    const mk = `${got.y}-${String(got.m + 1).padStart(2, '0')}`;
-    if (!got.day.startsWith(mk)) throw new Error(`currentDay = ${got.day}, ожидался месяц ${mk}`);
-    if (!(got.inc && got.inc.y === got.y && got.inc.m === got.m))
-      throw new Error(`currentIncomeMonth = ${JSON.stringify(got.inc)}, ожидался ${mk}`);
-    if (before === got.day) throw new Error('currentDay не изменился');
-  });
-  check('колонка показывает тот же месяц', async p => {
-    // Сравниваем с той же конвенцией форматирования, что использует само
-    // приложение (MONTHS_RU[m]+' '+y — так же на вкладках «Бюджет» и «Доходы»),
-    // а не с toLocaleDateString: у него другой регистр и суффикс «г.»,
-    // так что строки никогда не совпали бы независимо от значения месяца.
-    const [label, state] = await p.evaluate(() => [
-      document.getElementById('dtc-month').textContent,
-      MONTHS_RU[currentMonth.m] + ' ' + currentMonth.y,
-    ]);
-    eq(label, state, 'подпись месяца');
+// Колонка была единственным навигатором месяца, поэтому тянула за собой день
+// и доходы. Колонки нет — проводки быть не должно нигде, ни на телефоне, ни на ПК.
+suite(1280, 'месяц вкладок независим и на десктопе', () => {
+  check('changeMonth не трогает день и доходы', async p => {
+    const before = await p.evaluate(() => ({ day: currentDay, inc: JSON.stringify(currentIncomeMonth) }));
+    await p.evaluate(() => window.changeMonth(-1));
+    const after = await p.evaluate(() => ({ day: currentDay, inc: JSON.stringify(currentIncomeMonth) }));
+    eq(after.day, before.day, 'currentDay после changeMonth');
+    eq(after.inc, before.inc, 'currentIncomeMonth после changeMonth');
+    await p.evaluate(() => window.changeMonth(1));
   });
 });
 
@@ -232,50 +157,19 @@ suite(390, 'месяц на мобиле независим', () => {
 });
 
 suite(1280, 'инспектор 1280', () => {
-  check('затемнение не накрывает сайдбар и колонку', async p => {
+  check('затемнение не накрывает сайдбар', async p => {
     await p.evaluate(() => window.openAddExpense());
     const ov = await rect(p, '#modal-expense');
-    near(ov.x, 504, 'левый край подложки'); // 208 + 296
-    near(ov.width, 1280 - 504, 'ширина подложки');
-    const nav = await rect(p, 'nav.nav'), ctx = await rect(p, '#dt-ctx');
+    near(ov.x, 208, 'левый край подложки');
+    near(ov.width, 1280 - 208, 'ширина подложки');
+    const nav = await rect(p, 'nav.nav');
     if (ov.x < nav.x + nav.width - 0.5) throw new Error('подложка заходит на сайдбар');
-    if (ov.x < ctx.x + ctx.width - 0.5) throw new Error('подложка заходит на контекстную колонку');
     await p.evaluate(() => window.closeModal('modal-expense'));
   });
 });
 
-suite(1280, 'колонка следует за тратой со «Дня»', () => {
-  check('расход, записанный на вкладке «День», двигает сумму в колонке', async p => {
-    const before = await p.evaluate(() => {
-      window.showPage('day', document.getElementById('nav-day'));
-      return document.getElementById('dtc-spent').textContent.replace(/\s/g, '');
-    });
-    const after = await p.evaluate(() => {
-      window.openAddExpense();
-      document.getElementById('exp-cat').value = '1';
-      window.setMoneyInput('exp-amount', 1234);
-      document.getElementById('exp-date').value = currentDay;
-      window.saveExpense();
-      return {
-        page: currentPage,
-        ctx: document.getElementById('dtc-spent').textContent.replace(/\s/g, ''),
-      };
-    });
-    eq(after.page, 'day', 'активная вкладка');
-    if (after.ctx === before)
-      throw new Error(`сумма в колонке не изменилась: было ${before}, стало ${after.ctx}`);
-    // …и сходится с тем, что покажет «Бюджет», пересчитывающий всё заново
-    const [ctx, page] = await p.evaluate(() => {
-      window.showPage('budget', document.getElementById('nav-budget'));
-      return [document.getElementById('dtc-spent').textContent.replace(/\s/g, ''),
-              document.getElementById('sum-spent').textContent.replace(/\s/g, '')];
-    });
-    eq(ctx, page, 'сумма в колонке против суммы на «Бюджете»');
-  });
-});
-
 suite(1600, 'инспектор 1600', () => {
-  check('панель записи встаёт четвёртой колонкой', async p => {
+  check('панель записи встаёт третьей колонкой', async p => {
     // «Аналитика»: вкладка выше вьюпорта, иначе прокручивать нечего и
     // липкость панели не проверить (см. проверку сайдбара).
     await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
@@ -312,18 +206,18 @@ suite(1600, 'инспектор 1600', () => {
     eq(await isVisible(p, '#modal-expense'), false, 'видимость модалки');
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'класс insp-open');
   });
-  check('клик по подложке снимает insp-open и четвёртую колонку', async p => {
+  check('клик по подложке снимает insp-open и третью колонку', async p => {
     await p.evaluate(() => window.openAddExpense());
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), true, 'insp-open после открытия');
     // Кликаем событием, а не координатами: при insp-open панель занимает всю
-    // четвёртую колонку, и свободной подложки под курсором может не быть.
+    // третью колонку, и свободной подложки под курсором может не быть.
     // target === сам оверлей — ровно то, на что реагирует обработчик подложки.
     await p.evaluate(() => document.getElementById('modal-expense')
       .dispatchEvent(new MouseEvent('click', { bubbles: true })));
     eq(await isVisible(p, '#modal-expense'), false, 'видимость модалки');
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'класс insp-open');
     const cols = (await cssOf(p, 'body', 'gridTemplateColumns')).trim().split(/\s+/);
-    eq(cols.length, 3, `число колонок грида (${cols.join(' ')})`);
+    eq(cols.length, 2, `число колонок грида (${cols.join(' ')})`);
   });
   check('менеджер открывается диалогом по центру, а не панелью', async p => {
     await p.evaluate(() => window.openCatManager());

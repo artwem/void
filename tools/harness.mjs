@@ -107,6 +107,15 @@ export async function withPage(widths, fn) {
     for (const [index, width] of widths.entries()) {
       const page = await browser.newPage();
       await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
+      // Закрепляем prefers-reduced-motion: без этого значение берётся из настроек
+      // ОС машины, где идёт прогон. У приложения есть собственное правило
+      // доступности (@media(prefers-reduced-motion:reduce) гасит все анимации),
+      // поэтому проверки анимаций зеленели или краснели в зависимости от того,
+      // включена ли на компьютере «уменьшенная анимация» — то есть были
+      // недетерминированы. Тестируем поведение по умолчанию.
+      await page.emulateMediaFeatures([
+        { name: 'prefers-reduced-motion', value: 'no-preference' },
+      ]);
       await page.evaluateOnNewDocument(fx => {
         localStorage.setItem('budgetDB_v2', JSON.stringify(fx));
         // SW перезагружает страницу по controllerchange — в тестах это помеха.
