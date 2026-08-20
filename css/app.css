@@ -372,9 +372,11 @@ body.privacy-mode .prv *{color:transparent!important}
   .dtc-cp{font-size:10.5px; color:var(--hint); min-width:34px; text-align:right}
   .dtc-empty{font-size:12px; color:var(--muted); padding:8px 0}
 
-  /* Помесячные шапки внутри вкладок: месяцем рулит колонка, два
-     конкурирующих контрола на одном экране недопустимы. */
-  #page-budget .month-nav,#page-income .month-nav{display:none}
+  /* Месяцем на десктопе рулит контекстная колонка, две помесячные шапки на
+     одном экране конфликтуют. «Доходы» прячутся не здесь, а в задаче 6 —
+     в том же коммите, где появляется проводка _syncMonthContext: иначе
+     вкладка остаётся без единственного работающего контрола. */
+  #page-budget .month-nav{display:none}
 
   /* ─── конец десктопного блока 1000px ─── */
 }
