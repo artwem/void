@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.51.0">
+<link rel="stylesheet" href="css/app.css?v=1.52.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -651,7 +651,7 @@ if ('serviceWorker' in navigator) {
 ═══════════════════════════════════════════════════════════════ -->
 
 <!-- MODAL: ADD/EDIT INCOME -->
-<div class="overlay" id="modal-income">
+<div class="overlay" data-dt="insp" id="modal-income">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-income')">✕</button>
     <h2 id="income-modal-title">Добавить доход</h2>
@@ -669,7 +669,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: ADD/EDIT EXPENSE -->
-<div class="overlay" id="modal-expense">
+<div class="overlay" data-dt="insp" id="modal-expense">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-expense')">✕</button>
     <h2 id="expense-modal-title">Добавить расход</h2>
@@ -695,7 +695,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: ADD/EDIT TEMPLATE -->
-<div class="overlay" id="modal-template">
+<div class="overlay" data-dt="insp" id="modal-template">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-template')">✕</button>
     <h2 id="template-modal-title">Новый шаблон</h2>
@@ -719,7 +719,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: CATEGORY EXPENSES LIST -->
-<div class="overlay" id="modal-cat-expenses">
+<div class="overlay" data-dt="insp" id="modal-cat-expenses">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-cat-expenses')">✕</button>
     <h2 id="cat-exp-title">Расходы</h2>
@@ -731,7 +731,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: LIMIT EDITOR -->
-<div class="overlay" id="modal-limits">
+<div class="overlay" data-dt="dialog" id="modal-limits">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-limits')">✕</button>
     <h2>Лимиты</h2>
@@ -756,7 +756,7 @@ if ('serviceWorker' in navigator) {
 
 <!-- MODAL: ADD ASSET -->
 <!-- MODAL: GOAL -->
-<div class="overlay" id="modal-goal">
+<div class="overlay" data-dt="insp" id="modal-goal">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-goal')">✕</button>
     <h2 id="goal-modal-title" style="margin-bottom:16px">Новая цель</h2>
@@ -787,7 +787,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-goal-topup">
+<div class="overlay" data-dt="insp" id="modal-goal-topup">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-goal-topup')">✕</button>
     <h2 style="margin-bottom:4px">Пополнить цель</h2>
@@ -801,7 +801,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: DEPOSIT -->
-<div class="overlay" id="modal-deposit">
+<div class="overlay" data-dt="insp" id="modal-deposit">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-deposit')">✕</button>
     <h2 id="deposit-modal-title" style="margin-bottom:16px">Новый вклад</h2>
@@ -869,7 +869,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-dep-contrib">
+<div class="overlay" data-dt="insp" id="modal-dep-contrib">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-dep-contrib')">✕</button>
     <h2>Пополнить вклад</h2>
@@ -894,7 +894,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-investment">
+<div class="overlay" data-dt="insp" id="modal-investment">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-investment')">✕</button>
     <h2 id="invest-modal-title" style="margin-bottom:16px">Новый счёт</h2>
@@ -932,7 +932,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-inv-snap">
+<div class="overlay" data-dt="insp" id="modal-inv-snap">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-inv-snap')">✕</button>
     <h2>Обновить стоимость</h2>
@@ -952,7 +952,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-inv-contrib">
+<div class="overlay" data-dt="insp" id="modal-inv-contrib">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-inv-contrib')">✕</button>
     <h2 id="inv-contrib-title">Пополнить счёт</h2>
@@ -977,7 +977,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-data-audit">
+<div class="overlay" data-dt="dialog" id="modal-data-audit">
   <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
     <button class="close-btn" onclick="closeModal('modal-data-audit')">✕</button>
     <h2 style="margin-bottom:12px">Проверка данных</h2>
@@ -985,7 +985,7 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div class="overlay" id="modal-close-deposit">
+<div class="overlay" data-dt="insp" id="modal-close-deposit">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-close-deposit')">✕</button>
     <h2>Закрыть вклад</h2>
@@ -999,7 +999,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: EDIT ASSET DATE -->
-<div class="overlay" id="modal-asset-edit">
+<div class="overlay" data-dt="dialog" id="modal-asset-edit">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-asset-edit')">✕</button>
     <h2 id="asset-edit-title">Редактировать</h2>
@@ -1015,7 +1015,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: BANK MANAGER -->
-<div class="overlay" id="modal-banks">
+<div class="overlay" data-dt="dialog" id="modal-banks">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-banks')">✕</button>
     <h2>Банки</h2>
@@ -1037,7 +1037,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: CAT MANAGER -->
-<div class="overlay" id="modal-cats">
+<div class="overlay" data-dt="dialog" id="modal-cats">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-cats')">✕</button>
     <h2>Категории расходов</h2>
@@ -1055,7 +1055,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: TEMPLATES MANAGER -->
-<div class="overlay" id="modal-templates">
+<div class="overlay" data-dt="dialog" id="modal-templates">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-templates')">✕</button>
     <h2>Шаблоны трат</h2>
@@ -1068,7 +1068,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: INCOME TAGS MANAGER -->
-<div class="overlay" id="modal-income-tags">
+<div class="overlay" data-dt="dialog" id="modal-income-tags">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-income-tags')">✕</button>
     <h2>Теги доходов</h2>
@@ -1089,7 +1089,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: DELETE INCOME TAG — REASSIGN AFFECTED INCOMES -->
-<div class="overlay" id="modal-delete-income-tag">
+<div class="overlay" data-dt="confirm" id="modal-delete-income-tag">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-delete-income-tag')">✕</button>
     <h2 id="del-inc-tag-title">Удалить тег</h2>
@@ -1117,7 +1117,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: SCRIPT VIEWER -->
-<div class="overlay" id="modal-script">
+<div class="overlay" data-dt="dialog" id="modal-script">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-script')">✕</button>
     <h2>Apps Script</h2>
@@ -1131,7 +1131,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: SYNC CHOICE -->
-<div class="overlay" id="modal-sync-choice">
+<div class="overlay" data-dt="dialog" id="modal-sync-choice">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-sync-choice')">✕</button>
     <h2 style="margin-bottom:6px">Синхронизация</h2>
@@ -1171,7 +1171,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: SYNC CONFLICT -->
 
 <!-- MODAL: SYNC SETTINGS -->
-<div class="overlay" id="modal-sync">
+<div class="overlay" data-dt="dialog" id="modal-sync">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-sync')">✕</button>
     <h2>Google Drive</h2>
@@ -1196,7 +1196,7 @@ if ('serviceWorker' in navigator) {
 <div class="toast" id="toast"></div>
 
 <!-- MODAL: GRACE -->
-<div class="overlay" id="modal-grace">
+<div class="overlay" data-dt="insp" id="modal-grace">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-grace')">✕</button>
     <h2 style="margin-bottom:16px">Грейс-период</h2>
@@ -1209,7 +1209,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: SPLIT (создание) -->
-<div class="overlay" id="modal-split">
+<div class="overlay" data-dt="insp" id="modal-split">
   <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
     <button class="close-btn" onclick="closeModal('modal-split')">✕</button>
     <h2 id="split-modal-title" style="margin-bottom:16px">Новый сплит</h2>
@@ -1230,7 +1230,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: SPLIT (просмотр/оплата) -->
-<div class="overlay" id="modal-split-view">
+<div class="overlay" data-dt="insp" id="modal-split-view">
   <div class="sheet" style="position:relative;max-height:85vh;overflow-y:auto">
     <button class="close-btn" onclick="closeModal('modal-split-view')">✕</button>
     <h2 id="split-view-title" style="margin-bottom:4px">Сплит</h2>
@@ -1242,7 +1242,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: ABOUT -->
-<div class="overlay" id="modal-about">
+<div class="overlay" data-dt="dialog" id="modal-about">
   <div class="sheet" style="position:relative">
     <button class="close-btn" onclick="closeModal('modal-about')">✕</button>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
@@ -1252,7 +1252,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.51.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.52.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1264,7 +1264,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: CONFIRM CLEAR -->
-<div class="overlay" id="modal-confirm-clear">
+<div class="overlay" data-dt="confirm" id="modal-confirm-clear">
   <div class="sheet" style="position:relative">
     <h2 style="color:var(--red)">Очистить все данные?</h2>
     <p style="font-size:14px;color:var(--muted);margin:8px 0 4px;line-height:1.6">Будут удалены и сброшены к значениям по умолчанию:</p>
@@ -1688,12 +1688,35 @@ function _segActive(pairs){
 }
 
 // ─── MODAL HELPERS ──────────────────────────────────────────────────
-function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+// На десктопе оверлеи с data-dt="insp" — правая панель. При ≥1440px она
+// становится четвёртой колонкой грида, для чего body нужен класс insp-open.
+function _isInspector(el){
+  return el.dataset.dt === 'insp' && matchMedia('(min-width:1440px)').matches;
+}
+function openModal(id){
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  if(_isInspector(el)) document.body.classList.add('insp-open');
+}
+function closeModal(id){
+  const el = document.getElementById(id);
+  el.classList.remove('open');
+  // Снимаем класс только если не осталось других открытых панелей
+  if(!document.querySelector('.overlay.open[data-dt="insp"]'))
+    document.body.classList.remove('insp-open');
+}
 // Close on backdrop click — runs after full DOM load
 function initOverlays(){
   document.querySelectorAll('.overlay').forEach(el=>{
     el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');});
+  });
+  // Esc закрывает верхний открытый оверлей. На десктопе подложки под
+  // курсором может не быть вовсе — панель прижата к правому краю.
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    const open = document.querySelectorAll('.overlay.open');
+    if(!open.length) return;
+    closeModal(open[open.length - 1].id);
   });
 }
 

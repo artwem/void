@@ -22,4 +22,23 @@ await withPage(WIDTHS, async (page, { width }) => {
   }
   console.log('снято', width);
 });
+
+// Все оверлеи в трёх амплуа — основная визуальная проверка задачи 7
+const MODALS = await (async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  return [...html.matchAll(/<div class="overlay"[^>]*id="([^"]+)"/g)].map(m => m[1]);
+})();
+
+await withPage([390, 1280, 1600], async (page, { width }) => {
+  for (const id of MODALS) {
+    await page.evaluate(i => window.openModal(i), id);
+    await new Promise(r => setTimeout(r, 120));
+    await page.screenshot({
+      path: new URL(`m-${String(width).padStart(4, '0')}-${id}.png`, OUT).pathname.slice(1),
+    });
+    await page.evaluate(i => window.closeModal(i), id);
+  }
+  console.log('модалки сняты', width);
+});
 console.log('готово:', OUT.pathname);

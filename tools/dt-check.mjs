@@ -179,6 +179,47 @@ suite(390, 'месяц на мобиле независим', () => {
   });
 });
 
+suite(1600, 'инспектор 1600', () => {
+  check('панель записи встаёт четвёртой колонкой', async p => {
+    await p.evaluate(() => window.openAddExpense());
+    const ins = await rect(p, '#modal-expense .sheet');
+    near(ins.width, 380, 'ширина инспектора');
+    near(ins.x, 1220, 'левый край инспектора', 2); // 1600 − 380
+    near(ins.height, 900, 'высота инспектора');
+    eq(await p.evaluate(() => document.body.classList.contains('insp-open')), true, 'класс insp-open');
+  });
+  check('рабочая область не перекрыта', async p => {
+    const page = await rect(p, '#page-day');
+    const ins = await rect(p, '#modal-expense .sheet');
+    if (page.x + page.width > ins.x + 1)
+      throw new Error(`страница заходит под инспектор: ${page.x + page.width} > ${ins.x}`);
+  });
+  check('Escape закрывает', async p => {
+    await p.keyboard.press('Escape');
+    eq(await isVisible(p, '#modal-expense'), false, 'видимость модалки');
+    eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'класс insp-open');
+  });
+  check('менеджер открывается диалогом по центру, а не панелью', async p => {
+    await p.evaluate(() => window.openCatManager());
+    const r = await rect(p, '#modal-cats .sheet');
+    if (r.width > 560) throw new Error(`ширина диалога ${r.width}`);
+    const cx = r.x + r.width / 2;
+    near(cx, 800, 'центр диалога', 4);
+    eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'insp-open для диалога');
+    await p.keyboard.press('Escape');
+  });
+});
+
+suite(390, 'модалки на мобиле — шторки', () => {
+  check('шторка снизу во всю ширину', async p => {
+    await p.evaluate(() => window.openAddExpense());
+    const r = await rect(p, '#modal-expense .sheet');
+    near(r.width, 390, 'ширина шторки');
+    if (r.y + r.height < 800) throw new Error(`шторка не прижата книзу: низ ${r.y + r.height}`);
+    await p.evaluate(() => window.closeModal('modal-expense'));
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

@@ -378,6 +378,31 @@ body.privacy-mode .prv *{color:transparent!important}
      вкладка остаётся без единственного работающего контрола. */
   #page-budget .month-nav,#page-income .month-nav{display:none}
 
+  /* ОВЕРЛЕИ: три десктопных амплуа вместо нижней шторки.
+     Содержимое модалок не меняется — только позиционирование. */
+  .sheet::before{display:none}          /* полоска-хваталка — мобильная цитата */
+  .overlay{align-items:center}
+  .sheet{
+    max-width:560px; max-height:88vh;
+    border-radius:var(--r);
+    padding:22px 24px;
+  }
+
+  /* insp — правая панель во всю высоту */
+  .overlay[data-dt="insp"]{
+    justify-content:flex-end; align-items:stretch;
+    background:rgba(0,0,0,.28);
+  }
+  .overlay[data-dt="insp"] .sheet{
+    width:380px; max-width:380px;
+    height:100vh; max-height:100vh;
+    border-radius:0; border-left:.5px solid var(--border);
+    overflow-y:auto;
+  }
+
+  /* confirm — компактное окно */
+  .overlay[data-dt="confirm"] .sheet{max-width:380px}
+
   /* ─── конец десктопного блока 1000px ─── */
 }
 
@@ -385,4 +410,18 @@ body.privacy-mode .prv *{color:transparent!important}
   body{grid-template-columns:208px 296px minmax(0,1fr)}
   .nav-btn{justify-content:flex-start; padding:10px 12px}
   .nav-lbl{display:inline}
+}
+
+@media (min-width:1440px){
+  /* Инспектор перестаёт быть наложением и становится четвёртой колонкой.
+     Работает потому, что .overlay — прямой потомок body, то есть
+     полноценный грид-элемент. */
+  body.insp-open{grid-template-columns:208px 296px minmax(0,1fr) 380px}
+  body.insp-open .overlay[data-dt="insp"].open{
+    position:static; display:block; background:none;
+    grid-column:4; grid-row:1;
+  }
+  body.insp-open .overlay[data-dt="insp"].open .sheet{
+    position:sticky; top:0;
+  }
 }
