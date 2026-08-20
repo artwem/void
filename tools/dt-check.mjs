@@ -205,6 +205,14 @@ suite(1600, 'инспектор 1600', () => {
     if (r.width > 560) throw new Error(`ширина диалога ${r.width}`);
     const cx = r.x + r.width / 2;
     near(cx, 800, 'центр диалога', 4);
+    // Ширина ≤560 и горизонтальный центр ≈800 выполняются и на мобильной
+    // шторке (align-items:flex-end;justify-content:center + max-width:430px)
+    // без единого десктопного правила — они не отличают диалог от шторки.
+    // Единственная реальная разница — по вертикали: шторка прижата к низу,
+    // диалог центрирован по высоте вьюпорта (900).
+    const cy = r.y + r.height / 2;
+    near(cy, 450, 'вертикальный центр диалога', 8); // высота вьюпорта харнесса — 900
+    if (r.y < 20) throw new Error(`диалог прижат к верху: y=${r.y}`);
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'insp-open для диалога');
     await p.keyboard.press('Escape');
   });
