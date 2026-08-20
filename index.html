@@ -586,6 +586,28 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════
+     КОНТЕКСТНАЯ КОЛОНКА (только десктоп, ≥1000px)
+     Липкая: цифры месяца не уезжают при скролле рабочей области.
+═══════════════════════════════════════════════════════════════ -->
+<aside id="dt-ctx" aria-label="Контекст месяца">
+  <div class="dtc-nav">
+    <button class="mn-btn" onclick="dtcMonth(-1)" aria-label="Предыдущий месяц">‹</button>
+    <span class="dtc-month" id="dtc-month"></span>
+    <button class="mn-btn" onclick="dtcMonth(1)" aria-label="Следующий месяц">›</button>
+  </div>
+  <button class="btn" id="dtc-add" onclick="openAddExpense()">+ Расход</button>
+  <div class="dtc-figs">
+    <div class="dtc-fig lead"><span class="dtc-l">Потрачено</span><span class="dtc-v money" id="dtc-spent">0₽</span></div>
+    <div class="dtc-fig"><span class="dtc-l">Лимит</span><span class="dtc-v money" id="dtc-limit">0₽</span></div>
+    <div class="dtc-fig"><span class="dtc-l">Остаток</span><span class="dtc-v money" id="dtc-left">0₽</span></div>
+    <div class="dtc-fig"><span class="dtc-l">Прогноз</span><span class="dtc-v money" id="dtc-fc">—</span></div>
+  </div>
+  <div class="dtc-bar"><i id="dtc-bar-fill"></i></div>
+  <div class="sec-title" style="padding:0">Категории</div>
+  <div id="dtc-cats"></div>
+</aside>
+
+<!-- ═══════════════════════════════════════════════════════════════
      NAVIGATION BAR
 ═══════════════════════════════════════════════════════════════ -->
 <nav class="nav">
@@ -1744,6 +1766,8 @@ function showPage(name,btn){
   if(name==='report') renderReport();
   if(name==='income') renderIncome();
   if(name==='settings') renderSettings();
+  // Колонка живёт независимо от активной вкладки — обновляем при каждом переключении
+  renderDeskCtx();
 }
 
 // ─── MONTH NAV ──────────────────────────────────────────────────────
@@ -1811,6 +1835,67 @@ function _budgetFree(y, m, totalSpent, totalLimit, fc){
   const varLimit = totalLimit - reserve;
   return {specSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
 }
+
+// ─── КОНТЕКСТНАЯ КОЛОНКА (десктоп) ──────────────────────────────────
+// Ничего не считает сама: берёт те же getLimits/_monthForecast/_budgetFree,
+// что и бюджет, — иначе колонка и вкладка разойдутся в цифрах.
+function _isDesktop(){ return matchMedia('(min-width:1000px)').matches; }
+
+function renderDeskCtx(){
+  const box = document.getElementById('dt-ctx');
+  if(!box || !_isDesktop()) return;
+  const {y, m} = currentMonth;
+  const lims = getLimits(y, m);
+  let spent = 0, limit = 0;
+  const rows = DB.categories.map((name, i) => {
+    const s = getCatSpent(i, y, m), l = lims[i] || 0;
+    spent += s; limit += l;
+    return {name, i, s, l};
+  });
+  const fc = _monthForecast(y, m);
+
+  document.getElementById('dtc-month').textContent =
+    new Date(y, m, 1).toLocaleDateString('ru-RU', {month:'long', year:'numeric'});
+  document.getElementById('dtc-spent').innerHTML = fmtH(spent);
+  document.getElementById('dtc-limit').innerHTML = fmtH(limit);
+
+  const left = limit - spent;
+  const leftEl = document.getElementById('dtc-left');
+  leftEl.innerHTML = fmtH(left);
+  leftEl.classList.toggle('over', left < 0);
+
+  const fcEl = document.getElementById('dtc-fc');
+  if(fc){
+    fcEl.innerHTML = fmtH(fc.total);
+    fcEl.classList.toggle('over', limit > 0 && fc.total > limit);
+  } else {
+    fcEl.textContent = '—';
+    fcEl.classList.remove('over');
+  }
+
+  const pct = limit > 0 ? Math.min(100, Math.round(spent / limit * 100)) : 0;
+  const fill = document.getElementById('dtc-bar-fill');
+  fill.style.width = pct + '%';
+  fill.classList.toggle('over', limit > 0 && spent > limit);
+
+  // Топ-6 по тратам: колонка — сводка, полный список живёт на вкладке «Бюджет»
+  const top = rows.filter(r => r.s > 0).sort((a, b) => b.s - a.s).slice(0, 6);
+  document.getElementById('dtc-cats').innerHTML = top.map(r => {
+    const over = r.l > 0 && r.s > r.l;
+    const p = r.l > 0 ? Math.round(r.s / r.l * 100) : null;
+    return `<div class="dtc-cat" onclick="openCatExpenses(${r.i})">
+      <span class="dtc-dot" style="background:${getCatColor(r.i)}"></span>
+      <span class="dtc-cn">${esc(r.name)}</span>
+      <span class="dtc-cv money${over ? ' over' : ''}">${fmtH(r.s)}</span>
+      <span class="dtc-cp money">${p === null ? '' : p + '%'}</span>
+    </div>`;
+  }).join('') || '<div class="dtc-empty">Трат в этом месяце нет</div>';
+}
+
+// Переключение месяца из колонки. Единый навигатор на десктопе:
+// тянет за собой доходы и день (см. задачу 6).
+function dtcMonth(d){ changeMonth(d); }
+
 function renderBudget(){
   const {y,m} = currentMonth;
   document.getElementById('month-label').textContent = MONTHS_RU[m]+' '+y;
@@ -1965,6 +2050,7 @@ function renderBudget(){
       progressBar.style.display = 'none';
     }
   }
+  renderDeskCtx();
 }
 
 function makeCatRow(i, spent, lim, totalLimit, inGroup){
@@ -8610,6 +8696,7 @@ function init(){
   document.getElementById('fab').style.display='flex';
   document.getElementById('fab').textContent='+';
   renderDay(); // стартовый таб — День (v1.42.0)
+  renderDeskCtx(); // колонка на десктопе живёт независимо от стартовой вкладки
   checkAssetNotification();
   checkDepositNotifications();
   checkCreditNotifications();

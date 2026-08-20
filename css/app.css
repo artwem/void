@@ -43,6 +43,10 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 
 /* NAV */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--card);border-top:0.5px solid var(--border);display:flex;z-index:100;padding:8px 4px max(20px,env(safe-area-inset-bottom))}
+
+/* Контекстная колонка — только десктоп (см. @media min-width:1000px);
+   на мобиле её не существует, тут прячем базовым правилом. */
+#dt-ctx{display:none}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;border:none;background:none;cursor:pointer;font-size:10px;color:var(--muted);transition:color .15s;font-family:inherit}
 .nav-btn svg{width:22px;height:22px}
 .nav-btn.active{color:var(--text)}
@@ -333,6 +337,44 @@ body.privacy-mode .prv *{color:transparent!important}
 
   /* Плавающая кнопка — мобильная цитата, на широком экране не нужна */
   #fab{display:none !important}
+
+  /* КОНТЕКСТНАЯ КОЛОНКА */
+  #dt-ctx{
+    grid-area:ctx; position:sticky; top:0; align-self:start;
+    height:100vh; overflow-y:auto;
+    background:var(--card); border-right:.5px solid var(--border);
+    padding:14px 16px 20px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .dtc-nav{display:flex; align-items:center; gap:6px}
+  .dtc-nav .mn-btn{width:28px; height:28px; font-size:15px}
+  .dtc-month{flex:1; text-align:center; font-size:13px; font-weight:600; text-transform:capitalize}
+  #dtc-add{width:100%; flex:none}
+  .dtc-figs{display:flex; flex-direction:column; gap:7px}
+  .dtc-fig{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .dtc-l{font-size:11.5px; color:var(--muted)}
+  .dtc-v{font-size:15px; font-weight:600}
+  .dtc-fig.lead .dtc-v{font-size:23px; letter-spacing:-.03em; line-height:1.1}
+  .dtc-v.over{color:var(--red)}
+  .dtc-bar{height:5px; border-radius:3px; background:var(--border); overflow:hidden}
+  .dtc-bar > i{display:block; height:100%; background:var(--accent); transition:width .2s}
+  .dtc-bar > i.over{background:var(--red)}
+  .dtc-cat{
+    display:grid; grid-template-columns:8px 1fr auto auto; gap:8px;
+    align-items:baseline; padding:6px 0; cursor:pointer;
+    border-bottom:.5px solid var(--border);
+  }
+  .dtc-cat:hover{background:var(--bg)}
+  .dtc-dot{width:8px; height:8px; border-radius:2px; align-self:center}
+  .dtc-cn{font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .dtc-cv{font-size:12px; font-weight:600}
+  .dtc-cv.over{color:var(--red)}
+  .dtc-cp{font-size:10.5px; color:var(--hint); min-width:34px; text-align:right}
+  .dtc-empty{font-size:12px; color:var(--muted); padding:8px 0}
+
+  /* Помесячные шапки внутри вкладок: месяцем рулит колонка, два
+     конкурирующих контрола на одном экране недопустимы. */
+  #page-budget .month-nav,#page-income .month-nav{display:none}
 
   /* ─── конец десктопного блока 1000px ─── */
 }

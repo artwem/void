@@ -107,6 +107,33 @@ suite(1000, 'оболочка 1000', () => {
   });
 });
 
+suite(1280, 'контекстная колонка', () => {
+  check('колонка на месте, 296 px, липкая', async p => {
+    eq(await isVisible(p, '#dt-ctx'), true, 'видимость #dt-ctx');
+    const r = await rect(p, '#dt-ctx');
+    near(r.x, 208, 'левый край колонки');
+    near(r.width, 296, 'ширина колонки');
+    eq(await cssOf(p, '#dt-ctx', 'position'), 'sticky', 'position колонки');
+  });
+  check('в колонке та же сумма, что на вкладке «Бюджет»', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const [ctx, page] = await p.evaluate(() => [
+      document.querySelector('#dtc-spent').textContent.replace(/\s/g, ''),
+      document.querySelector('#sum-spent').textContent.replace(/\s/g, ''),
+    ]);
+    eq(ctx, page, 'сумма в колонке против суммы на вкладке');
+    if (/^0/.test(ctx)) throw new Error('сумма нулевая — фикстура не засеялась');
+  });
+  check('в колонке шесть категорий', async p => {
+    const n = await p.evaluate(() => document.querySelectorAll('#dtc-cats .dtc-cat').length);
+    eq(n, 6, 'число строк категорий');
+  });
+  check('помесячная шапка бюджета скрыта', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    eq(await isVisible(p, '#page-budget .month-nav'), false, 'видимость month-nav');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
