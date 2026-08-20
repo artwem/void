@@ -31,6 +31,12 @@ suite(390, 'мобильная база', () => {
   check('контекстной колонки нет', async p => {
     eq(await isVisible(p, '#dt-ctx'), false, 'видимость #dt-ctx');
   });
+  check('индикатор активной вкладки анимируется мобильной пилюлей', async p => {
+    await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
+    const anim = await p.evaluate(() =>
+      getComputedStyle(document.getElementById('nav-income'), '::before').animationName);
+    eq(anim, 'nav-bar-in', 'animation-name у ::before активной вкладки');
+  });
 });
 
 suite(390, 'типографика', () => {
@@ -85,6 +91,12 @@ suite(1280, 'оболочка 1280', () => {
   });
   check('FAB спрятан', async p => {
     eq(await isVisible(p, '#fab'), false, 'видимость FAB');
+  });
+  check('индикатор активной вкладки не анимируется мобильной пилюлей', async p => {
+    await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
+    const anim = await p.evaluate(() =>
+      getComputedStyle(document.getElementById('nav-income'), '::before').animationName);
+    eq(anim, 'none', 'animation-name у ::before активной вкладки');
   });
 });
 

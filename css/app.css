@@ -320,12 +320,15 @@ body.privacy-mode .prv *{color:transparent!important}
   .nav-btn.active::before{
     content:''; position:absolute; left:-8px; top:6px; bottom:6px;
     width:2px; background:var(--accent); border-radius:0 2px 2px 0;
+    /* Мобильный keyframe nav-bar-in (строка 236) безусловный и во время
+       проигрывания перебивает width/opacity этого правила — без сброса
+       полоска раздувалась бы до 28px мобильной пилюли на каждый клик. */
+    animation:none;
   }
   .nav-lbl{display:none}
 
   /* СТРАНИЦЫ */
   .page{grid-area:main; min-width:0}
-  .page.active{animation:fadeIn .18s ease}
   .page.slide-l,.page.slide-r{animation:fadeIn .18s ease}
 
   /* Плавающая кнопка — мобильная цитата, на широком экране не нужна */
