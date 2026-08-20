@@ -376,7 +376,9 @@ body.privacy-mode .prv *{color:transparent!important}
   /* АНАЛИТИКА: карточки в две колонки.
      Гутер даёт собственный padding .chart-wrap (16+16), поэтому gap не нужен —
      иначе между колонками получится 48 px вместо 32. */
-  #page-stats{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
+  /* .active обязателен: #page-stats без него перебивает .page{display:none}
+     по специфичности идентификатора, и неактивная страница остаётся видимой. */
+  #page-stats.active{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
   /* Сводка и «День за днём» — во всю ширину: первая читается строкой,
      вторая несёт прогноз и выигрывает от длинной оси дней. */
   #page-stats > .hdr,
@@ -390,6 +392,20 @@ body.privacy-mode .prv *{color:transparent!important}
   #page-stats #cw-daycompare .chart-box{height:260px}
   #page-assets .chart-box{height:240px}
   #page-calc .chart-box{height:280px}
+
+  /* АКТИВЫ: слева то, что правят, справа то, на что смотрят.
+     Обёртки #assets-charts / #assets-lists идут в разметке в прежнем порядке
+     (сначала графики), поэтому на мобиле страница не изменилась ни на пиксель;
+     колонки им назначает грид, а он порядку DOM не подчиняется.
+     Ряды заданы явно: при автоматическом размещении курсор не возвращается
+     назад, и вторая колонка уехала бы на строку ниже первой. */
+  #page-assets.active{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
+  #page-assets > .hdr{grid-column:1 / -1; grid-row:1}
+  #page-assets > .total-bar{grid-column:1 / -1; grid-row:2}
+  #page-assets > #total-with-deps{grid-column:1 / -1; grid-row:3}
+  #assets-lists{grid-column:1; grid-row:4}
+  #assets-charts{grid-column:2; grid-row:4}
+  #page-assets > .page-end{grid-column:1 / -1; grid-row:5}
 
   /* ─── конец десктопного блока 1000px ─── */
 }

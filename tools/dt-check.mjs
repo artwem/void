@@ -147,6 +147,22 @@ suite(1280, 'оболочка 1280', () => {
   });
 });
 
+// Правило вида #page-stats{display:grid} перебивает .page{display:none} по
+// специфичности идентификатора, и неактивные страницы остаются на экране,
+// просвечивая друг сквозь друга. Геометрические проверки этого не видят —
+// они меряют отдельные элементы, а не то, что показано лишнее.
+suite(1600, 'на экране только активная страница', () => {
+  check('переключение вкладок не оставляет предыдущую видимой', async p => {
+    for (const tab of ['stats', 'assets', 'day', 'budget']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      const shown = await p.evaluate(() => [...document.querySelectorAll('.page')]
+        .filter(el => getComputedStyle(el).display !== 'none')
+        .map(el => el.id));
+      eq(shown.join(','), 'page-' + tab, `видимые страницы после перехода на «${tab}»`);
+    }
+  });
+});
+
 suite(1600, 'раскладка «Аналитики»', () => {
   check('карточки в две колонки, сводка и «День за днём» во всю ширину', async p => {
     await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
