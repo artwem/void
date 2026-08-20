@@ -288,3 +288,54 @@ body.privacy-mode .prv *{color:transparent!important}
 
 /* Bottom sheet drag handle */
 .sheet::before{content:'';display:block;width:32px;height:4px;background:var(--border2);border-radius:2px;margin:-8px auto 8px}
+
+/* ═══ ДЕСКТОП ═══════════════════════════════════════════════════════
+   Ниже 1000 px ни одно правило отсюда не применяется — мобильная
+   вёрстка остаётся ровно такой, какой была. */
+@media (min-width:1000px){
+  body{
+    max-width:none; margin:0; padding-bottom:0;
+    display:grid; min-height:100vh;
+    grid-template-columns:64px 280px minmax(0,1fr);
+    grid-template-areas:"nav ctx main";
+  }
+
+  /* НАВБАР → САЙДБАР */
+  nav.nav{
+    grid-area:nav; position:sticky; top:0; left:auto; transform:none;
+    width:auto; max-width:none; height:100vh;
+    flex-direction:column; justify-content:flex-start; gap:2px;
+    border-top:none; border-right:.5px solid var(--border);
+    padding:14px 8px;
+  }
+  .nav-btn{
+    flex:none; flex-direction:row; gap:10px;
+    justify-content:center; padding:10px 0; border-radius:var(--r-sm);
+    font-size:13px; position:relative;
+  }
+  .nav-btn:hover{background:var(--bg)}
+  .nav-btn.active{background:var(--bg)}
+  /* Активная вкладка отмечается полоской слева — тем же приёмом,
+     что и hairline-границы карточек, а не заливкой цветом. */
+  .nav-btn.active::before{
+    content:''; position:absolute; left:-8px; top:6px; bottom:6px;
+    width:2px; background:var(--accent); border-radius:0 2px 2px 0;
+  }
+  .nav-lbl{display:none}
+
+  /* СТРАНИЦЫ */
+  .page{grid-area:main; min-width:0}
+  .page.active{animation:fadeIn .18s ease}
+  .page.slide-l,.page.slide-r{animation:fadeIn .18s ease}
+
+  /* Плавающая кнопка — мобильная цитата, на широком экране не нужна */
+  #fab{display:none !important}
+
+  /* ─── конец десктопного блока 1000px ─── */
+}
+
+@media (min-width:1200px){
+  body{grid-template-columns:208px 296px minmax(0,1fr)}
+  .nav-btn{justify-content:flex-start; padding:10px 12px}
+  .nav-lbl{display:inline}
+}

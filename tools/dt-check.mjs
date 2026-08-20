@@ -68,6 +68,33 @@ suite(390, 'типографика', () => {
   });
 });
 
+suite(1280, 'оболочка 1280', () => {
+  check('сайдбар слева, 208 px, липкий', async p => {
+    eq(await cssOf(p, 'nav.nav', 'position'), 'sticky', 'position навбара');
+    const r = await rect(p, 'nav.nav');
+    near(r.x, 0, 'левый край навбара');
+    near(r.width, 208, 'ширина навбара');
+    near(r.height, 900, 'высота навбара');
+  });
+  check('подписи вкладок видны', async p => {
+    eq(await isVisible(p, '#nav-day .nav-lbl'), true, 'видимость подписи');
+  });
+  check('страница начинается после сайдбара и контекста', async p => {
+    const r = await rect(p, '#page-day');
+    near(r.x, 504, 'левый край страницы'); // 208 + 296
+  });
+  check('FAB спрятан', async p => {
+    eq(await isVisible(p, '#fab'), false, 'видимость FAB');
+  });
+});
+
+suite(1000, 'оболочка 1000', () => {
+  check('сайдбар схлопнут в рельс 64 px', async p => {
+    near((await rect(p, 'nav.nav')).width, 64, 'ширина рельса');
+    eq(await isVisible(p, '#nav-day .nav-lbl'), false, 'видимость подписи');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
