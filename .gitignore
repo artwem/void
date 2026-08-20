@@ -1,3 +1,5 @@
 backup.json
 budget_backup_*.json
 .superpowers/
+tools/node_modules/
+tools/shots/
