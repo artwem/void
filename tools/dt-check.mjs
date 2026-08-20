@@ -142,6 +142,43 @@ suite(1280, 'контекстная колонка', () => {
   });
 });
 
+suite(1280, 'единый месяц', () => {
+  check('переключение месяца в колонке тянет доходы и день', async p => {
+    const before = await p.evaluate(() => currentDay);
+    await p.evaluate(() => window.dtcMonth(-1));
+    const got = await p.evaluate(() => ({
+      m: currentMonth.m, y: currentMonth.y,
+      inc: currentIncomeMonth, day: currentDay,
+    }));
+    const mk = `${got.y}-${String(got.m + 1).padStart(2, '0')}`;
+    if (!got.day.startsWith(mk)) throw new Error(`currentDay = ${got.day}, ожидался месяц ${mk}`);
+    if (!(got.inc && got.inc.y === got.y && got.inc.m === got.m))
+      throw new Error(`currentIncomeMonth = ${JSON.stringify(got.inc)}, ожидался ${mk}`);
+    if (before === got.day) throw new Error('currentDay не изменился');
+  });
+  check('колонка показывает тот же месяц', async p => {
+    // Сравниваем с той же конвенцией форматирования, что использует само
+    // приложение (MONTHS_RU[m]+' '+y — так же на вкладках «Бюджет» и «Доходы»),
+    // а не с toLocaleDateString: у него другой регистр и суффикс «г.»,
+    // так что строки никогда не совпали бы независимо от значения месяца.
+    const [label, state] = await p.evaluate(() => [
+      document.getElementById('dtc-month').textContent,
+      MONTHS_RU[currentMonth.m] + ' ' + currentMonth.y,
+    ]);
+    eq(label, state, 'подпись месяца');
+  });
+});
+
+suite(390, 'месяц на мобиле независим', () => {
+  check('changeMonth не трогает день и доходы', async p => {
+    const before = await p.evaluate(() => ({ day: currentDay, inc: JSON.stringify(currentIncomeMonth) }));
+    await p.evaluate(() => window.changeMonth(-1));
+    const after = await p.evaluate(() => ({ day: currentDay, inc: JSON.stringify(currentIncomeMonth) }));
+    eq(after.day, before.day, 'currentDay после changeMonth');
+    eq(after.inc, before.inc, 'currentIncomeMonth после changeMonth');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

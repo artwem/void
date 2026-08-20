@@ -376,7 +376,7 @@ body.privacy-mode .prv *{color:transparent!important}
      одном экране конфликтуют. «Доходы» прячутся не здесь, а в задаче 6 —
      в том же коммите, где появляется проводка _syncMonthContext: иначе
      вкладка остаётся без единственного работающего контрола. */
-  #page-budget .month-nav{display:none}
+  #page-budget .month-nav,#page-income .month-nav{display:none}
 
   /* ─── конец десктопного блока 1000px ─── */
 }

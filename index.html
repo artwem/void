@@ -1770,13 +1770,32 @@ function showPage(name,btn){
   renderDeskCtx();
 }
 
+// ─── ЕДИНЫЙ МЕСЯЦ (только десктоп) ──────────────────────────────────
+// На широком экране месяцем рулит контекстная колонка: помесячные шапки
+// вкладок скрыты, поэтому доходы и день обязаны следовать за ней, иначе
+// пользователь останется на прошлом месяце без единого видимого контрола.
+// На мобиле каждая вкладка по-прежнему живёт своим месяцем.
+// `_isDesktop()` уже объявлена в задаче 5 рядом с renderDeskCtx.
+function _syncMonthContext(y, m){
+  if(!_isDesktop()) return;
+  currentIncomeMonth = {y, m};
+  const t = today();
+  const mk = y + '-' + String(m + 1).padStart(2, '0');
+  // Текущий месяц — встаём на сегодня, прошлый или будущий — на 1-е число
+  currentDay = t.startsWith(mk) ? t : mk + '-01';
+}
+
 // ─── MONTH NAV ──────────────────────────────────────────────────────
 function changeMonth(d){
   currentMonth.m+=d;
   if(currentMonth.m>11){currentMonth.m=0;currentMonth.y++;}
   if(currentMonth.m<0){currentMonth.m=11;currentMonth.y--;}
+  _syncMonthContext(currentMonth.y, currentMonth.m);
   renderBudget();
   syncBudgetMonthInput();
+  // Скрытые вкладки перерисовываем тоже: при возврате на них
+  // не должно оказаться данных прошлого месяца
+  if(_isDesktop()){ renderDay(); renderIncome(); }
 }
 
 function syncBudgetMonthInput(){
@@ -1788,7 +1807,12 @@ function onBudgetMonthChange(val){
   if(!val) return;
   const [y,m] = val.split('-').map(Number);
   currentMonth = {y, m:m-1};
+  _syncMonthContext(currentMonth.y, currentMonth.m);
   renderBudget();
+  syncBudgetMonthInput();
+  // Скрытые вкладки перерисовываем тоже: при возврате на них
+  // не должно оказаться данных прошлого месяца
+  if(_isDesktop()){ renderDay(); renderIncome(); }
 }
 
 // ─── DAY NAV ────────────────────────────────────────────────────────
@@ -8696,6 +8720,9 @@ function init(){
   document.getElementById('fab').textContent='+';
   renderDay(); // стартовый таб — День (v1.42.0)
   renderDeskCtx(); // колонка на десктопе живёт независимо от стартовой вкладки
+  // Пересечение брейкпоинта без смены вкладки не вызывает ни один render*,
+  // и колонка осталась бы с плейсхолдерами разметки.
+  matchMedia('(min-width:1000px)').addEventListener('change', renderDeskCtx);
   checkAssetNotification();
   checkDepositNotifications();
   checkCreditNotifications();
