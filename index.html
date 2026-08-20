@@ -1854,14 +1854,13 @@ function renderDeskCtx(){
   });
   const fc = _monthForecast(y, m);
 
-  document.getElementById('dtc-month').textContent =
-    new Date(y, m, 1).toLocaleDateString('ru-RU', {month:'long', year:'numeric'});
+  document.getElementById('dtc-month').textContent = MONTHS_RU[m] + ' ' + y;
   document.getElementById('dtc-spent').innerHTML = fmtH(spent);
   document.getElementById('dtc-limit').innerHTML = fmtH(limit);
 
   const left = limit - spent;
   const leftEl = document.getElementById('dtc-left');
-  leftEl.innerHTML = fmtH(left);
+  leftEl.innerHTML = fmtH(Math.abs(left));
   leftEl.classList.toggle('over', left < 0);
 
   const fcEl = document.getElementById('dtc-fc');

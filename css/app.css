@@ -348,7 +348,7 @@ body.privacy-mode .prv *{color:transparent!important}
   }
   .dtc-nav{display:flex; align-items:center; gap:6px}
   .dtc-nav .mn-btn{width:28px; height:28px; font-size:15px}
-  .dtc-month{flex:1; text-align:center; font-size:13px; font-weight:600; text-transform:capitalize}
+  .dtc-month{flex:1; text-align:center; font-size:13px; font-weight:600}
   #dtc-add{width:100%; flex:none}
   .dtc-figs{display:flex; flex-direction:column; gap:7px}
   .dtc-fig{display:flex; align-items:baseline; justify-content:space-between; gap:10px}

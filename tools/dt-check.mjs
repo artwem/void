@@ -124,6 +124,14 @@ suite(1280, 'контекстная колонка', () => {
     eq(ctx, page, 'сумма в колонке против суммы на вкладке');
     if (/^0/.test(ctx)) throw new Error('сумма нулевая — фикстура не засеялась');
   });
+  check('в колонке тот же остаток, что на вкладке «Бюджет»', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const [ctx, page] = await p.evaluate(() => [
+      document.querySelector('#dtc-left').textContent.replace(/\s/g, ''),
+      document.querySelector('#sum-left').textContent.replace(/\s/g, ''),
+    ]);
+    eq(ctx, page, 'остаток в колонке против остатка на вкладке');
+  });
   check('в колонке шесть категорий', async p => {
     const n = await p.evaluate(() => document.querySelectorAll('#dtc-cats .dtc-cat').length);
     eq(n, 6, 'число строк категорий');
