@@ -33,6 +33,28 @@ suite(390, 'мобильная база', () => {
   });
 });
 
+suite(390, 'типографика', () => {
+  check('body набран Golos Text', async p => {
+    const ff = await cssOf(p, 'body', 'fontFamily');
+    if (!/Golos Text/.test(ff)) throw new Error(`fontFamily = ${ff}`);
+  });
+  check('обе гарнитуры реально загрузились', async p => {
+    const miss = await p.evaluate(() =>
+      ['Golos Text', 'JetBrains Mono'].filter(f => !document.fonts.check(`16px "${f}"`)));
+    if (miss.length) throw new Error('не загрузились: ' + miss.join(', '));
+  });
+  check('денежные значения табличные и моноширинные', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const got = await p.evaluate(() => {
+      const el = document.querySelector('#sum-spent');
+      const st = getComputedStyle(el);
+      return { fv: st.fontVariantNumeric, ff: st.fontFamily };
+    });
+    if (!/tabular-nums/.test(got.fv)) throw new Error(`font-variant-numeric = ${got.fv}`);
+    if (!/JetBrains Mono/.test(got.ff)) throw new Error(`fontFamily = ${got.ff}`);
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

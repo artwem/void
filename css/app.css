@@ -1,3 +1,17 @@
+/* Вендоренные гарнитуры: сабсеты нарезаны tools/subset-fonts.sh.
+   Golos Text — кириллица родная; JetBrains Mono — только цифры и денежные
+   знаки (3 КБ), чтобы суммы читались как показания прибора.
+   font-display:swap: до загрузки страница рисуется системным стеком. */
+@font-face{
+  font-family:'Golos Text';
+  src:url('../vendor/golos-text.woff2') format('woff2');
+  font-weight:400 700; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'JetBrains Mono';
+  src:url('../vendor/jetbrains-digits.woff2') format('woff2');
+  font-weight:400 700; font-style:normal; font-display:swap;
+}
 :root{
   --bg:#f7f6f1;--card:#ffffff;--border:rgba(0,0,0,.1);--border2:rgba(0,0,0,.2);
   --text:#1a1a18;--muted:#888882;--hint:#93938b;
@@ -6,6 +20,10 @@
   --amber:#b07d1a;--amber-bg:#fffbf0;
   --blue:#1a5fa8;--blue-bg:#f0f6ff;
   --accent:#1a1a18;--r:12px;--r-sm:8px;
+  /* Символы ✓ ✕ ✎ ↻ ↳ ⌀ ∅ Δ в Golos Text отсутствуют — их рисует системный
+     фолбэк-шрифт, поэтому стеки ниже сохраняют системные шрифты хвостом. */
+  --font-text:'Golos Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --font-num:'JetBrains Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
 }
 @media(prefers-color-scheme:dark){
   html:not(.light):not(.dark):not(.sepia):not(.sakura):not(.ocean):not(.forest):not(.gruvbox):not(.dracula):not(.solarized):not(.neon){--bg:#141412;--card:#1e1e1c;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);--text:#f0efe8;--muted:#888;--hint:#7a7a74;--red-bg:rgba(192,57,43,.15);--green-bg:rgba(45,122,79,.15);--amber-bg:rgba(176,125,26,.15);--blue-bg:rgba(26,95,168,.15);}
@@ -20,7 +38,7 @@ html.ocean{--bg:#0b1a2a;--card:#14283d;--border:rgba(140,190,230,.1);--border2:r
 html.forest{--bg:#16241a;--card:#213024;--border:rgba(180,220,170,.1);--border2:rgba(180,220,170,.22);--text:#e2efdc;--muted:#7d9b76;--hint:#65805f;--red:#e07a5f;--red-bg:rgba(224,122,95,.15);--red-light:rgba(224,122,95,.15);--green:#88c070;--green-bg:rgba(136,192,112,.12);--amber:#d9a441;--amber-bg:rgba(217,164,65,.12);--blue:#6db3a0;--blue-bg:rgba(109,179,160,.12);--accent:#5fa860;}
 html.neon{--bg:#0a0a0f;--card:#15151f;--border:rgba(180,120,255,.12);--border2:rgba(180,120,255,.28);--text:#f0e8ff;--muted:#8a7fb0;--hint:#6d66a0;--red:#ff3b6b;--red-bg:rgba(255,59,107,.15);--red-light:rgba(255,59,107,.18);--green:#2dffc3;--green-bg:rgba(45,255,195,.1);--amber:#ffd23f;--amber-bg:rgba(255,210,63,.1);--blue:#29e0ff;--blue-bg:rgba(41,224,255,.1);--accent:#ff2bd0;}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;touch-action:manipulation}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-text);touch-action:manipulation}
 body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,calc(100px + env(safe-area-inset-bottom)));position:relative}
 
 /* NAV */
@@ -51,6 +69,14 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 .s-val{font-size:16px;font-weight:600;letter-spacing:-0.3px}
 .s-val.over{color:var(--red)}
 .s-val.ok{color:var(--green)}
+
+/* Денежные значения: моноширинные табличные цифры, чтобы колонки сумм
+   вставали знак под знак. Отрицательный трекинг компенсирует ширину моно. */
+.money,.s-val,.cat-spent,.total-val,.day-total{
+  font-family:var(--font-num);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;
+}
 
 /* SECTIONS */
 .sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:4px 16px 6px}
