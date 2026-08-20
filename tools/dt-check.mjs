@@ -1,5 +1,5 @@
 // Проверки геометрии десктопной раскладки. Запуск: node tools/dt-check.mjs
-import { withPage, rect, cssOf, isVisible } from './harness.mjs';
+import { withPage, rect, cssOf, isVisible, scrollDown, resetScroll } from './harness.mjs';
 
 const results = [];
 let current = null;
@@ -76,16 +76,29 @@ suite(390, 'типографика', () => {
 
 suite(1280, 'оболочка 1280', () => {
   check('сайдбар слева, 208 px, липкий', async p => {
+    // «Аналитика» — единственная вкладка, которая на фикстуре заведомо выше
+    // вьюпорта (≈1700 px). Без запаса прокрутки проверять липкость не на чем.
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
     eq(await cssOf(p, 'nav.nav', 'position'), 'sticky', 'position навбара');
     const r = await rect(p, 'nav.nav');
     near(r.x, 0, 'левый край навбара');
     near(r.width, 208, 'ширина навбара');
     near(r.height, 900, 'высота навбара');
+    // computed position === 'sticky' проверяет лишь то, что в CSS написано
+    // слово: при body{height:100%} ряд грида равен вьюпорту, содержащий блок
+    // совпадает с самим элементом, свободного хода нет и «липкий» сайдбар
+    // уезжает вместе со страницей. Проверяем поведение, а не декларацию.
+    const sy = await scrollDown(p, 600);
+    near((await rect(p, 'nav.nav')).y, 0, `верх навбара после прокрутки на ${sy}`, 1);
+    await resetScroll(p);
   });
   check('подписи вкладок видны', async p => {
     eq(await isVisible(p, '#nav-day .nav-lbl'), true, 'видимость подписи');
   });
   check('страница начинается после сайдбара и контекста', async p => {
+    // Вкладку задаём явно: у неактивной .page display:none и нулевая геометрия,
+    // так что проверка молча зазеленела бы от чужого showPage в соседнем чеке.
+    await p.evaluate(() => window.showPage('day', document.getElementById('nav-day')));
     const r = await rect(p, '#page-day');
     near(r.x, 504, 'левый край страницы'); // 208 + 296
   });
@@ -105,15 +118,31 @@ suite(1000, 'оболочка 1000', () => {
     near((await rect(p, 'nav.nav')).width, 64, 'ширина рельса');
     eq(await isVisible(p, '#nav-day .nav-lbl'), false, 'видимость подписи');
   });
+  check('затемнение инспектора начинается после рельса и колонки', async p => {
+    await p.evaluate(() => window.openAddExpense());
+    const ov = await rect(p, '#modal-expense');
+    near(ov.x, 344, 'левый край подложки'); // 64 + 280
+    near(ov.width, 1000 - 344, 'ширина подложки');
+    await p.evaluate(() => window.closeModal('modal-expense'));
+  });
 });
 
 suite(1280, 'контекстная колонка', () => {
   check('колонка на месте, 296 px, липкая', async p => {
+    // «Аналитика» — вкладка выше вьюпорта, см. комментарий у проверки сайдбара
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
     eq(await isVisible(p, '#dt-ctx'), true, 'видимость #dt-ctx');
     const r = await rect(p, '#dt-ctx');
     near(r.x, 208, 'левый край колонки');
     near(r.width, 296, 'ширина колонки');
     eq(await cssOf(p, '#dt-ctx', 'position'), 'sticky', 'position колонки');
+    // Липкость — это поведение при прокрутке, а не слово в computed style
+    // (см. комментарий у проверки сайдбара).
+    const sy = await scrollDown(p, 600);
+    near((await rect(p, '#dt-ctx')).y, 0, `верх колонки после прокрутки на ${sy}`, 1);
+    await resetScroll(p);
+    // Дальше сюита работает с «Бюджетом»
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
   });
   check('в колонке та же сумма, что на вкладке «Бюджет»', async p => {
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
@@ -132,9 +161,32 @@ suite(1280, 'контекстная колонка', () => {
     ]);
     eq(ctx, page, 'остаток в колонке против остатка на вкладке');
   });
-  check('в колонке шесть категорий', async p => {
-    const n = await p.evaluate(() => document.querySelectorAll('#dtc-cats .dtc-cat').length);
-    eq(n, 6, 'число строк категорий');
+  check('в колонке только категории с тратами, по убыванию', async p => {
+    const rows = await p.evaluate(() =>
+      [...document.querySelectorAll('#dtc-cats .dtc-cat .dtc-cn')].map(e => e.textContent));
+    // Во фикстуре семь категорий, траты есть в пяти. Ожидания выписаны явно,
+    // а не пересчитаны из DB на месте: иначе проверка повторила бы логику
+    // реализации и согласилась бы с любой её ошибкой.
+    const want = ['Аренда', 'Хотелки', 'Продукты + хозтовары + уход', 'Еда вне дома', 'Одежда'];
+    eq(rows.join(' | '), want.join(' | '), 'строки категорий');
+  });
+  check('колонка обрезает список шестью категориями', async p => {
+    // Потолок в шесть на фикстуре из пяти непустых категорий не виден —
+    // временно подсыпаем трат в обе нулевые, получая семь кандидатов.
+    const rows = await p.evaluate(() => {
+      const mk = currentMonth.y + '-' + String(currentMonth.m + 1).padStart(2, '0');
+      DB.expenses.push(
+        { id: 'tmpA', date: mk + '-11', cat: 5, catId: 'cat0006', amount: 700, comment: '', updatedAt: 2 },
+        { id: 'tmpB', date: mk + '-11', cat: 6, catId: 'cat0007', amount: 300, comment: '', updatedAt: 2 });
+      renderDeskCtx();
+      const out = [...document.querySelectorAll('#dtc-cats .dtc-cat .dtc-cn')].map(e => e.textContent);
+      DB.expenses = DB.expenses.filter(e => e.id !== 'tmpA' && e.id !== 'tmpB');
+      renderDeskCtx();
+      return out;
+    });
+    eq(rows.length, 6, 'число строк категорий при семи кандидатах');
+    if (rows.includes('Подписки')) throw new Error('седьмая по величине категория попала в колонку');
+    if (!rows.includes('Мама')) throw new Error('шестая по величине категория до колонки не доехала');
   });
   check('помесячная шапка бюджета скрыта', async p => {
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
@@ -179,17 +231,78 @@ suite(390, 'месяц на мобиле независим', () => {
   });
 });
 
+suite(1280, 'инспектор 1280', () => {
+  check('затемнение не накрывает сайдбар и колонку', async p => {
+    await p.evaluate(() => window.openAddExpense());
+    const ov = await rect(p, '#modal-expense');
+    near(ov.x, 504, 'левый край подложки'); // 208 + 296
+    near(ov.width, 1280 - 504, 'ширина подложки');
+    const nav = await rect(p, 'nav.nav'), ctx = await rect(p, '#dt-ctx');
+    if (ov.x < nav.x + nav.width - 0.5) throw new Error('подложка заходит на сайдбар');
+    if (ov.x < ctx.x + ctx.width - 0.5) throw new Error('подложка заходит на контекстную колонку');
+    await p.evaluate(() => window.closeModal('modal-expense'));
+  });
+});
+
+suite(1280, 'колонка следует за тратой со «Дня»', () => {
+  check('расход, записанный на вкладке «День», двигает сумму в колонке', async p => {
+    const before = await p.evaluate(() => {
+      window.showPage('day', document.getElementById('nav-day'));
+      return document.getElementById('dtc-spent').textContent.replace(/\s/g, '');
+    });
+    const after = await p.evaluate(() => {
+      window.openAddExpense();
+      document.getElementById('exp-cat').value = '1';
+      window.setMoneyInput('exp-amount', 1234);
+      document.getElementById('exp-date').value = currentDay;
+      window.saveExpense();
+      return {
+        page: currentPage,
+        ctx: document.getElementById('dtc-spent').textContent.replace(/\s/g, ''),
+      };
+    });
+    eq(after.page, 'day', 'активная вкладка');
+    if (after.ctx === before)
+      throw new Error(`сумма в колонке не изменилась: было ${before}, стало ${after.ctx}`);
+    // …и сходится с тем, что покажет «Бюджет», пересчитывающий всё заново
+    const [ctx, page] = await p.evaluate(() => {
+      window.showPage('budget', document.getElementById('nav-budget'));
+      return [document.getElementById('dtc-spent').textContent.replace(/\s/g, ''),
+              document.getElementById('sum-spent').textContent.replace(/\s/g, '')];
+    });
+    eq(ctx, page, 'сумма в колонке против суммы на «Бюджете»');
+  });
+});
+
 suite(1600, 'инспектор 1600', () => {
   check('панель записи встаёт четвёртой колонкой', async p => {
+    // «Аналитика»: вкладка выше вьюпорта, иначе прокручивать нечего и
+    // липкость панели не проверить (см. проверку сайдбара).
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
     await p.evaluate(() => window.openAddExpense());
     const ins = await rect(p, '#modal-expense .sheet');
     near(ins.width, 380, 'ширина инспектора');
     near(ins.x, 1220, 'левый край инспектора', 2); // 1600 − 380
     near(ins.height, 900, 'высота инспектора');
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), true, 'класс insp-open');
+    // Геометрия при нулевом скролле ничего не говорит о липкости панели:
+    // инлайновый position:relative на .sheet глушил sticky, и панель уезжала
+    // вместе со страницей — при scrollY=0 это невидимо.
+    // 400, а не 600: у sticky-панели ход ограничен высотой её содержащего
+    // блока (оверлей-колонка ≈1500 px минус 900 px самой панели), на 600 она
+    // уже упирается в нижнюю границу диапазона и честно отходит на пару
+    // пикселей. Без починки панель уехала бы на все −400.
+    const sy = await scrollDown(p, 400);
+    const ins2 = await rect(p, '#modal-expense .sheet');
+    near(ins2.y, 0, `верх инспектора после прокрутки на ${sy}`, 1);
+    near(ins2.x, 1220, 'левый край инспектора после прокрутки', 2);
+    await resetScroll(p);
   });
   check('рабочая область не перекрыта', async p => {
-    const page = await rect(p, '#page-day');
+    // Именно активная вкладка: у скрытой .page display:none и нулевая
+    // геометрия, сравнение прошло бы вхолостую.
+    const page = await rect(p, '#page-stats');
+    if (!page || page.width === 0) throw new Error('активная вкладка не «Аналитика»');
     const ins = await rect(p, '#modal-expense .sheet');
     if (page.x + page.width > ins.x + 1)
       throw new Error(`страница заходит под инспектор: ${page.x + page.width} > ${ins.x}`);
@@ -198,6 +311,19 @@ suite(1600, 'инспектор 1600', () => {
     await p.keyboard.press('Escape');
     eq(await isVisible(p, '#modal-expense'), false, 'видимость модалки');
     eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'класс insp-open');
+  });
+  check('клик по подложке снимает insp-open и четвёртую колонку', async p => {
+    await p.evaluate(() => window.openAddExpense());
+    eq(await p.evaluate(() => document.body.classList.contains('insp-open')), true, 'insp-open после открытия');
+    // Кликаем событием, а не координатами: при insp-open панель занимает всю
+    // четвёртую колонку, и свободной подложки под курсором может не быть.
+    // target === сам оверлей — ровно то, на что реагирует обработчик подложки.
+    await p.evaluate(() => document.getElementById('modal-expense')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    eq(await isVisible(p, '#modal-expense'), false, 'видимость модалки');
+    eq(await p.evaluate(() => document.body.classList.contains('insp-open')), false, 'класс insp-open');
+    const cols = (await cssOf(p, 'body', 'gridTemplateColumns')).trim().split(/\s+/);
+    eq(cols.length, 3, `число колонок грида (${cols.join(' ')})`);
   });
   check('менеджер открывается диалогом по центру, а не панелью', async p => {
     await p.evaluate(() => window.openCatManager());
@@ -237,16 +363,23 @@ for (const s of SUITES) {
 }
 
 let failed = 0;
-await withPage([...new Set(SUITES.map(s => s.width))], async (page, { width }) => {
-  for (const s of SUITES.filter(s => s.width === width)) {
-    for (const c of byWidth.get(s)) {
-      try {
-        await c.fn(page);
-        results.push(['ok', width, s.title, c.name, '']);
-      } catch (e) {
-        failed++;
-        results.push(['FAIL', width, s.title, c.name, e.message]);
-      }
+// Гигиена состояния: каждая сюита получает СВОЮ страницу. Раньше сюиты одной
+// ширины делили одну и мутировали общее — активную вкладку, currentMonth,
+// DB.expenses, теперь ещё и позицию прокрутки. Порядок объявления случайно
+// совпадал с рабочим, и перестановка сюит молча покрасила бы проверки.
+// Своя страница дешевле дисциплины «не забудь прибраться»: фикстура
+// пересеивается через evaluateOnNewDocument, localStorage/sessionStorage,
+// scrollY и активная вкладка стартуют с нуля. Внутри одной сюиты порядок
+// по-прежнему значим — там чеки обязаны задавать нужную вкладку сами.
+await withPage(SUITES.map(s => s.width), async (page, { width, index }) => {
+  const s = SUITES[index];
+  for (const c of byWidth.get(s)) {
+    try {
+      await c.fn(page);
+      results.push(['ok', width, s.title, c.name, '']);
+    } catch (e) {
+      failed++;
+      results.push(['FAIL', width, s.title, c.name, e.message]);
     }
   }
 });
