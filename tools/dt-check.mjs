@@ -38,10 +38,23 @@ suite(390, 'типографика', () => {
     const ff = await cssOf(p, 'body', 'fontFamily');
     if (!/Golos Text/.test(ff)) throw new Error(`fontFamily = ${ff}`);
   });
-  check('обе гарнитуры реально загрузились', async p => {
-    const miss = await p.evaluate(() =>
-      ['Golos Text', 'JetBrains Mono'].filter(f => !document.fonts.check(`16px "${f}"`)));
-    if (miss.length) throw new Error('не загрузились: ' + miss.join(', '));
+  check('оба вендоренных woff2 реально загрузились', async p => {
+    const faces = await p.evaluate(async () => {
+      // document.fonts.check() бесполезен: возвращает true даже для
+      // несуществующего семейства, потому что учитывает фолбэк. Смотрим сам
+      // FontFaceSet — в нём лежат только лица, объявленные через @font-face,
+      // а status становится 'loaded' лишь после успешной загрузки файла.
+      await Promise.allSettled([
+        document.fonts.load('400 16px "Golos Text"'),
+        document.fonts.load('400 16px "JetBrains Mono"'),
+      ]);
+      return [...document.fonts].map(f => ({ family: f.family, status: f.status }));
+    });
+    for (const fam of ['Golos Text', 'JetBrains Mono']) {
+      const f = faces.find(x => x.family === fam);
+      if (!f) throw new Error(`@font-face для «${fam}» не объявлен. FontFaceSet: ${JSON.stringify(faces)}`);
+      if (f.status !== 'loaded') throw new Error(`«${fam}»: status=${f.status}, ожидался loaded`);
+    }
   });
   check('денежные значения табличные и моноширинные', async p => {
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
