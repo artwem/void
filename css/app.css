@@ -121,7 +121,10 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 /* MODALS */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-end;justify-content:center}
 .overlay.open{display:flex;animation:fadeIn .15s ease}
-.sheet{background:var(--card);border-radius:20px 20px 0 0;padding:20px 16px max(20px,env(safe-area-inset-bottom));width:100%;max-width:430px;max-height:90vh;overflow-y:auto}
+/* position:relative — якорь для абсолютной .close-btn. Раньше стоял инлайном
+   на каждом .sheet, но инлайн бьёт любой селектор и глушил десктопное
+   position:sticky у инспектора (см. @media min-width:1440px). */
+.sheet{position:relative;background:var(--card);border-radius:20px 20px 0 0;padding:20px 16px max(20px,env(safe-area-inset-bottom));width:100%;max-width:430px;max-height:90vh;overflow-y:auto}
 .sheet h2{font-size:17px;font-weight:600;margin-bottom:16px}
 /* 44px тач-зона, визуальный кружок 28px рисует ::before (inset (44-28)/2) */
 .close-btn{position:absolute;right:8px;top:8px;width:44px;height:44px;border:none;background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;z-index:1}
@@ -299,6 +302,12 @@ body.privacy-mode .prv *{color:transparent!important}
 @media (min-width:1000px){
   body{
     max-width:none; margin:0; padding-bottom:0;
+    /* Базовое html,body{height:100%} задаёт body высоту вьюпорта. У грида с
+       фиксированной высотой единственный ряд равен ей, и содержащий блок для
+       position:sticky у сайдбара и колонки совпадает с высотой самих
+       элементов — свободного хода нет, липкость мертва. height:auto
+       возвращает ряду высоту содержимого. */
+    height:auto;
     display:grid; min-height:100vh;
     grid-template-columns:64px 280px minmax(0,1fr);
     grid-template-areas:"nav ctx main";
@@ -388,9 +397,12 @@ body.privacy-mode .prv *{color:transparent!important}
     padding:22px 24px;
   }
 
-  /* insp — правая панель во всю высоту */
+  /* insp — правая панель во всю высоту.
+     Затемнение начинается за сайдбаром и колонкой (64 + 280): по спеке
+     навигация остаётся рабочей при открытой панели. */
   .overlay[data-dt="insp"]{
     justify-content:flex-end; align-items:stretch;
+    left:344px;
     background:rgba(0,0,0,.28);
   }
   .overlay[data-dt="insp"] .sheet{
@@ -410,6 +422,8 @@ body.privacy-mode .prv *{color:transparent!important}
   body{grid-template-columns:208px 296px minmax(0,1fr)}
   .nav-btn{justify-content:flex-start; padding:10px 12px}
   .nav-lbl{display:inline}
+  /* Треки шире — левый край затемнения едет вместе с ними (208 + 296) */
+  .overlay[data-dt="insp"]{left:504px}
 }
 
 @media (min-width:1440px){
