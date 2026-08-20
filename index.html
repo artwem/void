@@ -165,7 +165,7 @@ if ('serviceWorker' in navigator) {
 <div id="page-stats" class="page">
   <div class="hdr"><h1>Аналитика</h1></div>
   <div class="spacer"></div>
-  <div class="chart-wrap">
+  <div class="chart-wrap" id="cw-summary">
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
         <span style="font-size:13px;font-weight:600">Период</span>
@@ -183,7 +183,7 @@ if ('serviceWorker' in navigator) {
       <div id="stats-summary"></div>
     </div>
   </div>
-  <div class="chart-wrap">
+  <div class="chart-wrap" id="cw-daycompare">
     <div class="chart-card">
       <div class="chart-title">День за днём</div>
       <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px">
@@ -202,11 +202,11 @@ if ('serviceWorker' in navigator) {
         </div>
         <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
       </div>
-      <div style="position:relative;height:190px"><canvas id="chartDayCompare"></canvas></div>
+      <div class="chart-box h190"><canvas id="chartDayCompare"></canvas></div>
       <div id="day-compare-summary" style="margin-top:10px"></div>
     </div>
   </div>
-  <div class="chart-wrap">
+  <div class="chart-wrap" id="cw-pie">
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
         <div class="chart-title" style="margin:0">Структура</div>
@@ -221,17 +221,17 @@ if ('serviceWorker' in navigator) {
       <div id="chartPie" style="padding:4px 0"></div>
     </div>
   </div>
-  <div class="chart-wrap">
+  <div class="chart-wrap" id="cw-grouped">
     <div class="chart-card">
       <div class="chart-title">Расходы по группам</div>
-      <div style="position:relative;height:200px"><canvas id="chartGrouped"></canvas></div>
+      <div class="chart-box"><canvas id="chartGrouped"></canvas></div>
     </div>
   </div>
   <div class="chart-wrap" id="income-tags-chart-wrap">
     <div class="chart-card">
       <div class="chart-title">Доходы по тегам</div>
       <div id="income-tags-chart-empty" style="display:none;text-align:center;padding:24px 0;font-size:13px;color:var(--muted)">Нет данных с тегами</div>
-      <div style="position:relative;height:200px"><canvas id="chartIncomeTags"></canvas></div>
+      <div class="chart-box"><canvas id="chartIncomeTags"></canvas></div>
     </div>
   </div>
   <div class="page-end"></div>
@@ -266,13 +266,13 @@ if ('serviceWorker' in navigator) {
           </div>
         </div>
       </div>
-      <div style="position:relative;height:180px"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
+      <div class="chart-box h180"><canvas id="chartAssets" role="img" aria-label="Рост накоплений">График накоплений</canvas></div>
     </div>
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
       <div class="chart-title">Доходы vs Расходы</div>
-      <div style="position:relative;height:180px"><canvas id="chartIncomeVsExp"></canvas></div>
+      <div class="chart-box h180"><canvas id="chartIncomeVsExp"></canvas></div>
     </div>
   </div>
   <div class="chart-wrap">
@@ -281,7 +281,7 @@ if ('serviceWorker' in navigator) {
         <span>Норма накопления</span>
         <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
       </div>
-      <div style="position:relative;height:160px"><canvas id="chartSavingsRate"></canvas></div>
+      <div class="chart-box h160"><canvas id="chartSavingsRate"></canvas></div>
     </div>
   </div>
   <div id="assets-history-wrap" style="display:none;padding:0 16px 8px">
@@ -397,7 +397,7 @@ if ('serviceWorker' in navigator) {
           <span style="display:none;align-items:center;gap:4px" id="calc-legend-real"><span style="width:10px;height:3px;background:var(--green);border-radius:2px;display:inline-block"></span>Реальные ₽</span>
         </div>
       </div>
-      <div style="position:relative;height:200px"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
+      <div class="chart-box"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
     </div>
     <div class="chart-card" style="padding:0;overflow:hidden">
       <div style="padding:12px 14px 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">График</div>

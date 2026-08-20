@@ -36,6 +36,34 @@ suite(390, 'мобильная база', () => {
   });
 });
 
+// Высоты холстов переехали из инлайновых style в классы, чтобы десктопный CSS
+// мог их переопределить. Инлайн бил CSS по специфичности — из-за этого график
+// на широкой карточке оставался приплюснутым. Сторожим, что на мобиле значения
+// остались ровно прежними: переезд обязан быть визуально безоперационным.
+suite(390, 'высоты графиков на мобиле не изменились', () => {
+  check('каждый холст сохранил свою прежнюю высоту', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => {
+      const h = id => {
+        const el = document.getElementById(id);
+        return el ? getComputedStyle(el.parentElement).height : 'НЕТ';
+      };
+      return { day: h('chartDayCompare'), grouped: h('chartGrouped'), tags: h('chartIncomeTags') };
+    });
+    eq(got.day, '190px', 'высота «День за днём»');
+    eq(got.grouped, '200px', 'высота «Расходы по группам»');
+    eq(got.tags, '200px', 'высота «Доходы по тегам»');
+    const assets = await p.evaluate(() => {
+      window.showPage('assets', document.getElementById('nav-assets'));
+      const h = id => getComputedStyle(document.getElementById(id).parentElement).height;
+      return { grow: h('chartAssets'), ive: h('chartIncomeVsExp'), rate: h('chartSavingsRate') };
+    });
+    eq(assets.grow, '180px', 'высота «Рост накоплений»');
+    eq(assets.ive, '180px', 'высота «Доходы vs Расходы»');
+    eq(assets.rate, '160px', 'высота «Норма накопления»');
+  });
+});
+
 suite(390, 'типографика', () => {
   check('body набран Golos Text', async p => {
     const ff = await cssOf(p, 'body', 'fontFamily');
@@ -116,6 +144,27 @@ suite(1280, 'оболочка 1280', () => {
     const anim = await p.evaluate(() =>
       getComputedStyle(document.getElementById('nav-income'), '::before').animationName);
     eq(anim, 'none', 'animation-name у ::before активной вкладки');
+  });
+});
+
+suite(1600, 'раскладка «Аналитики»', () => {
+  check('карточки в две колонки, сводка и «День за днём» во всю ширину', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const cols = (await cssOf(p, '#page-stats', 'gridTemplateColumns')).trim().split(/\s+/);
+    eq(cols.length, 2, `число колонок сетки (${cols.join(' ')})`);
+    const full = await rect(p, '#cw-daycompare');
+    const half = await rect(p, '#cw-pie');
+    const other = await rect(p, '#cw-grouped');
+    if (!(full.width > half.width * 1.8))
+      throw new Error(`«День за днём» не во всю ширину: ${full.width} против ${half.width}`);
+    // Две половинчатые карточки обязаны стоять рядом, а не одна под другой
+    near(half.y, other.y, 'верх соседних карточек', 2);
+    if (other.x <= half.x) throw new Error('карточки не разложились по колонкам');
+  });
+  check('холст на широкой карточке выше мобильного', async p => {
+    const h = await p.evaluate(() =>
+      getComputedStyle(document.getElementById('chartGrouped').parentElement).height);
+    eq(h, '300px', 'высота холста на десктопе');
   });
 });
 

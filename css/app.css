@@ -170,6 +170,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 
 /* STATS */
 .chart-wrap{padding:0 16px;margin-bottom:10px}
+.chart-box{position:relative;height:200px}
+.chart-box.h190{height:190px}
+.chart-box.h180{height:180px}
+.chart-box.h160{height:160px}
 .chart-card{background:var(--card);border-radius:var(--r);padding:14px;border:0.5px solid var(--border)}
 .chart-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
 
@@ -368,6 +372,24 @@ body.privacy-mode .prv *{color:transparent!important}
 
   /* confirm — компактное окно */
   .overlay[data-dt="confirm"] .sheet{max-width:380px}
+
+  /* АНАЛИТИКА: карточки в две колонки.
+     Гутер даёт собственный padding .chart-wrap (16+16), поэтому gap не нужен —
+     иначе между колонками получится 48 px вместо 32. */
+  #page-stats{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
+  /* Сводка и «День за днём» — во всю ширину: первая читается строкой,
+     вторая несёт прогноз и выигрывает от длинной оси дней. */
+  #page-stats > .hdr,
+  #page-stats > .spacer,
+  #page-stats > .page-end,
+  #cw-summary,
+  #cw-daycompare{grid-column:1 / -1}
+  /* Высоты холстов переехали из инлайна в классы именно ради этой строки:
+     на широкой карточке мобильные 190 px выглядят приплюснуто. */
+  #page-stats .chart-box{height:300px}
+  #page-stats #cw-daycompare .chart-box{height:260px}
+  #page-assets .chart-box{height:240px}
+  #page-calc .chart-box{height:280px}
 
   /* ─── конец десктопного блока 1000px ─── */
 }
