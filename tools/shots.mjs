@@ -8,6 +8,10 @@ const OUT = new URL('shots/', import.meta.url);
 
 await mkdir(OUT, { recursive: true });
 await withPage(WIDTHS, async (page, { width }) => {
+  await page.addStyleTag({ content:
+    // fullPage-скриншот перелейаутит страницу и перезапускает CSS-анимации,
+    // из-за чего кадр ловит fadeIn в полёте и выходит выцветшим.
+    '*,*::before,*::after{animation:none!important;transition:none!important}' });
   for (const name of PAGES) {
     await page.evaluate(n => window.showPage(n, document.getElementById('nav-' + n)), name);
     await new Promise(r => setTimeout(r, 350)); // дать Chart.js дорисоваться
