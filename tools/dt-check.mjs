@@ -500,6 +500,64 @@ suite(1600, 'карточка поиска на десктопе во всю ш�
   });
 });
 
+// Знак V.O.I.D. (v1.57.0): один SVG на все места вместо трёх разных
+// логотипов, currentColor вместо захардкоженного чёрного (на тёмных темах
+// прежний знак сливался с фоном), и своё место — сайдбар на десктопе,
+// иконка запуска на телефоне.
+suite(1280, 'знак в сайдбаре', () => {
+  check('виден над вкладками и подписан на широком сайдбаре', async p => {
+    eq(await isVisible(p, '.nav-brand'), true, 'видимость знака');
+    eq(await isVisible(p, '.nav-brand .nav-lbl'), true, 'подпись V.O.I.D.');
+    const brand = await rect(p, '.nav-brand');
+    const first = await rect(p, '#nav-day');
+    if (brand.y + brand.height > first.y + 1)
+      throw new Error('знак не над вкладками: низ ' + (brand.y + brand.height) + ', верх «Дня» ' + first.y);
+  });
+  check('цвет берётся из темы, а не захардкожен', async p => {
+    const fill = t => p.evaluate(th => {
+      window.setTheme(th);
+      return getComputedStyle(document.querySelector('.nav-brand svg circle')).fill;
+    }, t);
+    const light = await fill('light'), dark = await fill('dark');
+    if (light === dark) throw new Error('знак не меняет цвет со сменой темы: ' + light);
+    // В тёмной теме знак обязан быть светлым, иначе сольётся с фоном
+    const [r, g, b] = dark.match(/\d+/g).map(Number);
+    if ((r + g + b) / 3 < 128) throw new Error('в тёмной теме знак тёмный: ' + dark);
+    await p.evaluate(() => window.setTheme('auto'));
+  });
+});
+
+suite(390, 'на телефоне знака в интерфейсе нет', () => {
+  check('ни в навбаре, ни в шапке «Бюджета»', async p => {
+    eq(await isVisible(p, '.nav-brand'), false, 'знак в мобильном навбаре');
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    eq(await p.evaluate(() => !!document.querySelector('#page-budget svg')), false, 'знак в шапке «Бюджета»');
+  });
+});
+
+suite(390, 'иконки приложения', () => {
+  check('фавикон объявлен и это SVG', async p => {
+    const icon = await p.evaluate(() => {
+      const l = document.querySelector('link[rel="icon"]');
+      return l ? { href: l.getAttribute('href'), type: l.getAttribute('type') } : null;
+    });
+    if (!icon) throw new Error('link[rel=icon] отсутствует — вкладка браузера без иконки');
+    eq(icon.type, 'image/svg+xml', 'тип фавикона');
+    if (!/^data:image\/svg\+xml,/.test(icon.href)) throw new Error('фавикон не data-URI: ' + icon.href.slice(0, 40));
+  });
+  check('манифест отдаёт тот же знак, а не старое «₽»', async p => {
+    const icons = await p.evaluate(async () => {
+      const r = await fetch(document.querySelector('link[rel=manifest]').href);
+      return (await r.json()).icons.map(i => i.src);
+    });
+    eq(icons.length, 3, 'число иконок манифеста');
+    for (const src of icons) {
+      if (/text|%E2%82%BD|₽/.test(src)) throw new Error('в манифесте осталась старая иконка с ₽');
+      if (!src.includes('circle')) throw new Error('иконка манифеста без знака: ' + src.slice(0, 60));
+    }
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

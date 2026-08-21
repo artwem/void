@@ -304,6 +304,11 @@ body.privacy-mode .prv *{color:transparent!important}
    класс включается в @media min-width:1000px. */
 .dt-only{display:none}
 
+/* Знак в сайдбаре — только десктоп (в мобильном навбаре ему нет места,
+   и на телефоне бренд живёт на иконке запуска). Правило показа — в блоке
+   @media min-width:1000px. */
+.nav-brand{display:none}
+
 /* Bottom sheet drag handle */
 .sheet::before{content:'';display:block;width:32px;height:4px;background:var(--border2);border-radius:2px;margin:-8px auto 8px}
 
@@ -322,6 +327,15 @@ body.privacy-mode .prv *{color:transparent!important}
     display:grid; min-height:100vh;
     grid-template-columns:64px minmax(0,1fr);
     grid-template-areas:"nav main";
+  }
+
+  /* Знак над вкладками: бренд виден на любой странице, а не только на той,
+     в чью шапку он когда-то попал. Цвет — currentColor от .nav-brand. */
+  .nav-brand{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    color:var(--text); font-size:13px; font-weight:700; letter-spacing:.08em;
+    padding:4px 0 16px; margin-bottom:4px;
+    border-bottom:.5px solid var(--border);
   }
 
   /* НАВБАР → САЙДБАР */
@@ -440,6 +454,7 @@ body.privacy-mode .prv *{color:transparent!important}
 @media (min-width:1200px){
   body{grid-template-columns:208px minmax(0,1fr)}
   .nav-btn{justify-content:flex-start; padding:10px 12px}
+  .nav-brand{justify-content:flex-start; padding-left:12px}
   .nav-lbl{display:inline}
   /* Сайдбар шире — левый край затемнения едет вместе с ним */
   .overlay[data-dt="insp"]{left:208px}

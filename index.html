@@ -28,8 +28,9 @@
 </script>
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cstyle%3Epath,circle{fill:%231a1a18;stroke:%231a1a18}@media(prefers-color-scheme:dark){path,circle{fill:%23f0efe8;stroke:%23f0efe8}}%3C/style%3E%3Ccircle cx='50' cy='50' r='22'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke-width='13'/%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.56.0">
+<link rel="stylesheet" href="css/app.css?v=1.57.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -62,10 +63,7 @@ if ('serviceWorker' in navigator) {
 <div id="page-budget" class="page">
   <div class="hdr">
     <div class="hdr-row">
-      <div style="display:flex;align-items:center;gap:8px"><svg width="26" height="26" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-  <circle cx="100" cy="100" r="95" fill="#000000" stroke="white" stroke-width="10"/>
-</svg>      
-            <h1>V.O.I.D.</h1></div>
+      <h1>Бюджет</h1>
 
     </div>
     <div class="month-nav">
@@ -607,6 +605,10 @@ if ('serviceWorker' in navigator) {
      NAVIGATION BAR
 ═══════════════════════════════════════════════════════════════ -->
 <nav class="nav">
+  <div class="nav-brand" aria-hidden="true">
+    <svg viewBox="0 0 100 100" width="26" height="26"><circle cx="50" cy="50" r="22" fill="currentColor"/><path d="M54.0 12.2A38 38 0 1 1 19.3 72.3" fill="none" stroke="currentColor" stroke-width="13"/><path d="M14.3 63.0A38 38 0 0 1 43.4 12.6" fill="none" stroke="currentColor" stroke-width="13"/></svg>
+    <span class="nav-lbl">V.O.I.D.</span>
+  </div>
   <button class="nav-btn active" onclick="showPage('day',this)" id="nav-day" title="День" aria-label="День">
     <svg viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="14" rx="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v4M15 3v4M3 10h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="7" y="13" width="3" height="3" rx="0.8" fill="currentColor"/></svg>
     <span class="nav-lbl">День</span>
@@ -1246,13 +1248,11 @@ if ('serviceWorker' in navigator) {
   <div class="sheet">
     <button class="close-btn" onclick="closeModal('modal-about')">✕</button>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <svg width="44" height="44" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;cursor:pointer" onclick="_aboutIconTap()">
-  <circle cx="100" cy="100" r="95" fill="#000000" stroke="white" stroke-width="10"/>
-</svg>
+      <svg viewBox="0 0 100 100" width="44" height="44" style="flex-shrink:0;cursor:pointer" onclick="_aboutIconTap()"><circle cx="50" cy="50" r="22" fill="currentColor"/><path d="M54.0 12.2A38 38 0 1 1 19.3 72.3" fill="none" stroke="currentColor" stroke-width="13"/><path d="M14.3 63.0A38 38 0 0 1 43.4 12.6" fill="none" stroke="currentColor" stroke-width="13"/></svg>
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.56.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.57.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
