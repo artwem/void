@@ -395,7 +395,8 @@ body.privacy-mode .prv *{color:transparent!important}
   #page-stats > .spacer,
   #page-stats > .page-end,
   #cw-summary,
-  #cw-daycompare{grid-column:1 / -1}
+  #cw-daycompare,
+  #cw-search{grid-column:1 / -1}
   /* Высоты холстов переехали из инлайна в классы именно ради этой строки:
      на широкой карточке мобильные 190 px выглядят приплюснуто. */
   #page-stats .chart-box{height:300px}
@@ -413,9 +414,10 @@ body.privacy-mode .prv *{color:transparent!important}
   #page-assets > .hdr{grid-column:1 / -1; grid-row:1}
   #page-assets > .total-bar{grid-column:1 / -1; grid-row:2}
   #page-assets > #total-with-deps{grid-column:1 / -1; grid-row:3}
-  #assets-lists{grid-column:1; grid-row:4}
-  #assets-charts{grid-column:2; grid-row:4}
-  #page-assets > .page-end{grid-column:1 / -1; grid-row:5}
+  #page-assets > #total-fx{grid-column:1 / -1; grid-row:4}
+  #assets-lists{grid-column:1; grid-row:5}
+  #assets-charts{grid-column:2; grid-row:5}
+  #page-assets > .page-end{grid-column:1 / -1; grid-row:6}
 
   /* ГОДОВОЙ ОТЧЁТ: свой вход в сайдбаре — значит дублирующие входы
      (кнопка в карточке Аналитики, «‹» в шапке отчёта) на десктопе лишние. */

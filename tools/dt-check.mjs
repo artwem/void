@@ -404,6 +404,102 @@ suite(390, 'модалки на мобиле — шторки', () => {
   });
 });
 
+// «Всего активов» в другой валюте (v1.56.0): одна строка под итогом, курс ЦБ,
+// кэш в localStorage. Сеть в харнессе недетерминирована, поэтому fetch
+// глушится, а курс подкладывается в кэш — проверяем поведение, не API.
+const FX_CACHE = JSON.stringify({ date: '2026-08-21', fetchedAt: 1, rates: { USD: 83.355, EUR: 96.7335, CNY: 12.4057 } });
+suite(390, 'активы в другой валюте', () => {
+  check('с кэшированным курсом строка видна и считает по курсу', async p => {
+    await p.evaluate(fx => {
+      localStorage.setItem('fxRates', fx);
+      localStorage.removeItem('assetsFxCur');
+      window.fetch = () => Promise.reject(new Error('offline'));
+      window.showPage('assets', document.getElementById('nav-assets'));
+    }, FX_CACHE);
+    eq(await isVisible(p, '#total-fx'), true, 'видимость строки валюты');
+    const t = await p.evaluate(() => document.getElementById('total-fx').textContent);
+    // фикстура: 420000 + 310000 = 730000 ₽ / 83.355 = 8757.7 → 8 758 $
+    if (!/8[\s\u00a0]758/.test(t) || !/\$/.test(t)) throw new Error('текст строки: «' + t + '»');
+    if (!/83,36/.test(t) || !/21\.08/.test(t)) throw new Error('нет курса/даты в строке: «' + t + '»');
+  });
+  check('тап переключает валюту по кругу и прячет', async p => {
+    const tap = () => p.evaluate(() => document.getElementById('total-fx').click());
+    const txt = () => p.evaluate(() => document.getElementById('total-fx').textContent);
+    await tap(); if (!/€/.test(await txt())) throw new Error('после 1 тапа не евро: «' + await txt() + '»');
+    await tap(); if (!/¥/.test(await txt())) throw new Error('после 2 тапов не юань: «' + await txt() + '»');
+    await tap(); eq(await isVisible(p, '#total-fx'), false, 'после 3 тапов строка скрыта');
+    // Скрытая строка недоступна для тапа — возвращаемся через сеттер
+    await p.evaluate(() => window.setAssetsFxCur('USD'));
+    if (!/\$/.test(await txt())) throw new Error('после возврата не доллар: «' + await txt() + '»');
+    eq(await p.evaluate(() => localStorage.getItem('assetsFxCur')), 'USD', 'выбор сохранён device-locally');
+  });
+  check('без кэша и без сети строки нет', async p => {
+    await p.evaluate(() => {
+      localStorage.removeItem('fxRates');
+      window.fetch = () => Promise.reject(new Error('offline'));
+      window.renderAssets();
+    });
+    // renderAssets ждёт fetch асинхронно — даём обещанию отвергнуться
+    await new Promise(r => setTimeout(r, 100));
+    eq(await isVisible(p, '#total-fx'), false, 'видимость строки без курса');
+  });
+});
+
+// Поиск по тратам переехал с «Дня» в «Аналитику» (v1.56.0): вкладка «День» —
+// про один день, поиск — по всей истории с ограничением периода. Вместе с ним
+// переехали чипы категорий: на «Дне» они были тем же поиском, только по категории.
+suite(390, 'поиск по тратам живёт в «Аналитике»', () => {
+  check('на «Дне» поля поиска и чипов категорий больше нет', async p => {
+    await p.evaluate(() => window.showPage('day', document.getElementById('nav-day')));
+    eq(await p.evaluate(() => !!document.getElementById('expense-search')), false, 'поле #expense-search на «Дне»');
+    eq(await p.evaluate(() => !!document.querySelector('#page-day #expense-cat-filter')), false, 'чипы #expense-cat-filter на «Дне»');
+  });
+  check('запрос находит записи и считает сумму', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    eq(await isVisible(p, '#exp-search'), true, 'поле поиска в «Аналитике»');
+    await p.evaluate(() => { const i = document.getElementById('exp-search'); i.value = 'ашан'; i.dispatchEvent(new Event('input')); });
+    const t = await p.evaluate(() => document.getElementById('exp-search-result').textContent);
+    // Счётчик — из своего span: в textContent карточки он склеивается с суммой («Найдено: 1» + «5 000₽»)
+    const cnt = await p.evaluate(() => document.querySelector('#exp-search-result span').textContent);
+    if (!/Найдено:\s*1$/.test(cnt)) throw new Error('счётчик: «' + cnt + '»');
+    if (!/5[\s\u00a0]000/.test(t)) throw new Error('сумма: «' + t.slice(0, 120) + '»');
+  });
+  check('период ограничивает выдачу, разбивка по месяцам есть', async p => {
+    // Подсыпаем трату четырёхмесячной давности с тем же комментарием
+    await p.evaluate(() => {
+      const d = new Date(); d.setMonth(d.getMonth() - 4);
+      const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-10';
+      DB.expenses.push({ id: 'eOld', date: ds, cat: 1, catId: 'cat0002', amount: 777, comment: 'Ашан старый', updatedAt: 1 });
+    });
+    const res = () => p.evaluate(() => document.querySelector('#exp-search-result span').textContent);
+    await p.evaluate(() => window.setExpSearchPeriod(3));
+    if (!/Найдено:\s*1\b/.test(await res())) throw new Error('период 3 мес не отсёк старую запись: «' + (await res()).slice(0, 120) + '»');
+    await p.evaluate(() => window.setExpSearchPeriod('all'));
+    const t = await res();
+    if (!/Найдено:\s*2\b/.test(t)) throw new Error('период «всё» не вернул обе: «' + t.slice(0, 120) + '»');
+    // Разбивка по месяцам: две разные суммы на двух разных месяцах
+    const months = await p.evaluate(() => [...document.querySelectorAll('#exp-search-months span')].map(x => x.textContent));
+    if (months.length < 2) throw new Error('разбивки по месяцам нет: ' + JSON.stringify(months));
+    eq(await p.evaluate(() => sessionStorage.getItem('expSearchPeriod')), 'all', 'период сохранён в sessionStorage');
+  });
+  check('тап по дате выдачи уводит на «День» в тот день', async p => {
+    await p.evaluate(() => document.querySelector('#exp-search-result [data-date]').click());
+    eq(await p.evaluate(() => currentPage), 'day', 'активная вкладка');
+    const got = await p.evaluate(() => ({ cur: currentDay, active: document.getElementById('nav-day').classList.contains('active') }));
+    if (!/-10$/.test(got.cur) && !/-\d\d$/.test(got.cur)) throw new Error('currentDay=' + got.cur);
+    eq(got.active, true, 'подсветка вкладки «День»');
+  });
+});
+
+suite(1600, 'карточка поиска на десктопе во всю ширину', () => {
+  check('#cw-search растянута на обе колонки', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const full = await rect(p, '#cw-search');
+    const half = await rect(p, '#cw-pie');
+    if (!(full.width > half.width * 1.8)) throw new Error('поиск не во всю ширину: ' + full.width + ' против ' + half.width);
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

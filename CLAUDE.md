@@ -14,7 +14,9 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**No test suite, no linter.** Manual browser testing is the workflow. Test on Safari (iOS), Chrome (Android), and desktop. A quick parse check for the inline scripts:
+**Тест-раннер есть:** `node tools/dt-check.mjs` — 33 проверки геометрии мобильной и десктопной раскладки на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и фикстуру, `tools/shots.mjs` снимает скриншоты всех вкладок на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
+
+Быстрый парс-чек инлайновых скриптов:
 ```bash
 node -e "const html=require('fs').readFileSync('index.html','utf8');const re=/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g;let m,ok=true;while((m=re.exec(html))){try{new Function(m[1])}catch(e){ok=false;console.log('FAIL:',e.message)}};console.log(ok?'syntax OK':'ERRORS')"
 ```
@@ -92,53 +94,20 @@ Each tab has a `render*()` function called after any data change:
 |-----|----------------|----------------|
 | (nav) | `═══ nav.js ═══` | Tab switching, month/day navigation, sync widget header |
 | Budget | `═══ budget.js ═══` | Categories grouped by color, limits editor (⌀-hints), progress bars |
-| Day | `═══ day.js ═══` | Daily expense list |
+| Day | `═══ day.js ═══` | Daily expense list, quick add, template chips |
 | Income | `═══ income.js ═══` | Income sources, monthly balance, tag filter |
-| Аналитика | `═══ stats.js ═══` | Chart.js graphs, «День за днём», annual report page |
+| Аналитика | `═══ stats.js ═══` | Chart.js graphs, «День за днём», expense search (since v1.56.0 — was on Day), annual report page |
 | Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, history, goals, deposits |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
 | Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore, Excel, notifications, data audit |
 
 **Sub-pages without a navbar tab** (open via buttons, highlight the parent tab's nav button in `showPage`): `page-calc` and `page-deposits` from Assets. `page-report` (annual report: year selector, summary cards, per-month table, expenses-by-category, income-by-tag; `renderReport()` in stats.js section) is the exception since v1.55.0 — on desktop it has its own sidebar button `#nav-report` (`.dt-only`, shown only in the ≥1000 px block), and the mobile entry points (the «Отчёт» button in the Аналитика summary card, the «‹» back button in the report header) are hidden there by `.dt-hide`; `showPage('report')` highlights `#nav-report` when it is visible and falls back to `#nav-stats` on mobile. The report body splits into `#rep-col-a` (assets, «Из чего накоплено», per-month table) and `#rep-col-b` (categories, groups, tags) — two columns on desktop, plain unstyled blocks on mobile, with `#rep-summary` spanning the full width as 4 cards in a row.
 
-**Month-end spend forecast — one engine, two consumers (since v1.49.0).** `_monthForecast(y, m)` (in `═══ stats.js ═══`, right before `function renderStats(){`, with helpers `_specialCatStats`, `_guessSpecialDay`, `_specialForecastByCat`, `_specialForecastCumLine`) is the single source for both the «Прогноз» line/total on «День за днём» and the «прогноз» chip in the Budget header. Returns `null` for a non-current month or a month with nothing spent or planned, otherwise `{cD, daysInMonth, fact, pace, futPlanned, futLine, futLineReg, specRemain, specLine, forecast, total}`:
+**Month-end spend forecast — one engine, two consumers (since v1.49.0).** `_monthForecast(y, m)` (in `═══ stats.js ═══`, right before `function renderStats(){`) is the single source for both the «Прогноз» line/total on «День за днём» and the «прогноз» chip in the Budget header; `_budgetFree(y, m, …, fc)` takes the same `fc`. Formulas, the mean×frequency reserve, what was tried and rejected — skill `void-forecast` (`.claude/skills/void-forecast/SKILL.md`). **Инварианты, которые нельзя нарушать без чтения скилла:** не ослаблять фильтр «≥2 месяцев истории» в `_specialForecastByCat` (смещение переворачивается с −10.7% на +11%); печатаемая сумма прогноза всегда полная (`fc.total`), тумблер «Особые» влияет только на нарисованную линию.
 
-```
-total = fact + futPlanned + pace × (daysInMonth − cD) + specRemain
-fact  = all expenses dated ≤ today (future-dated entries excluded)
-futPlanned = expenses dated > today within the month — entered ahead, not yet due
-pace  = non-special spend / cD          ← today is lived, so it's in the divisor and NOT in the multiplier
-specRemain = Σ unpaid from _specialForecastByCat (per-category expectation over ≤6 prior
-             months: mean amount × frequency, ≥2 months of history required)
-```
+### Deposits & Assets Page — skill `void-assets`
 
-**`futPlanned` (since v1.49.1)** — before it, an expense dated later this month vanished from the forecast entirely: the date filter kept it out of `fact` and out of `pace`, while `_specialForecastByCat` (which reads the whole month) counted it as already paid and zeroed its category's `unpaid`. Rent entered ahead understated the forecast by exactly its own amount. There is no double count: `spent` still spans the whole month, so a future-dated special yields `unpaid = 0` and lives only in `futPlanned`. `futLine`/`futLineReg` are its cumulative-by-day forms so the drawn line steps where the total counts it (Reg = non-special only, for when the «Особые» toggle is off).
-
-**Reserve = mean × frequency, not minimum (since v1.50.0).** The old `Math.min` under-reserved every month: rent over Mar–Jul ran 47411/37314/33000/38580/34073, so `min` gave 33000 against a 38076 mean — 5k short each month, and specials are ~half of monthly spend here. That, not `pace`, was the main bias source: the forecast still ran 6% low on day 26, where `pace` only extrapolates 4 days. Frequency guards the other way — «Хотелки» was special in 2 months of 5 (32788, 17990), so a bare mean would reserve 25389 every month including months with no such purchase; × 2/5 gives ≈10156. **Do not relax the ≥2-months filter**: allowing single-month history makes a one-off purchase reserve forever and flips the bias from −10.7% to +11%. Backtest May+Jun+Jul: mean |error| 13.1% → 10.3%, bias −10.7% → −6.3%. Swapping the `pace` formula was tried and rejected — five variants (day-of-month share, blends, floors) all landed within noise, because the intra-month profile itself scatters 6–11pp month to month.
-
-Before v1.49.0 the two places had independent formulas and never matched: Budget divided by `today−1` but multiplied by days-left *including* today (counting today twice, ~+1 day of pace) and reserved specials as a whole-month minimum, while the chart used the per-category forecast. If no non-special spend exists yet this month, `pace` falls back to the average of the previous 6 months' non-special spend up to the same day-of-month rather than flatlining at zero. `_budgetFree(y, m, totalSpent, totalLimit, fc)` takes the same `fc` so the «особые» reserve row and the «/день» allowance rest on the same numbers (its old whole-month-minimum path survives only as the `fc === null` fallback).
-
-**The drawn line and the printed total are decoupled w.r.t. `dayInclSpecial`** (since v1.38.3): the line is anchored at `selCum[cD-1]` (same point the visible fact line ends at — never jumps away from it) and adds `fc.specLine` steps only when the toggle is on, so with it off the line is pure `fc.pace`, matching the plain fact line next to it. The total below the chart is always `fc.total` — full spend including specials the toggle hides, because real expected spend isn't the same question as what's drawn.
-
-### Deposits (вклады) — in `═══ assets.js ═══`
-
-- `depositValueAt(d, dateStr)` = rounded `_depValueWithRate(d, date, d.rate)`; honors `finalAmount` exactly at/after `endDate`. Principal grows from `openDate`; **each contribution grows from its own date** (before its date it does not exist in the value). `capitalization: 'monthly'` — **discrete accruals** (since v1.29.0): accrual dates = open-day of each month (31st clamps to short months, `_depAccrualDates`), interest per period = body × rate × actual days/365, compounded into body, value flat between dates; `'end'` — body only until endDate, simple interest at close.
-- **Manual accrual corrections** (`d.accruals = {dateStr: amount}`): «График начислений» list in the deposit edit modal (`_renderDepAccrualsList`, monthly only) — past accruals editable (`setDepAccrual`), override replaces the computed interest and subsequent periods compound from the corrected body; ↻ reverts to computed. `_depAccrualRows(d, upto, rate)` is the single engine ({rows, value}) used by both valuation and the UI list.
-- `finalAmount` mode («Сумма в конце» toggle, `_depMode`): user enters the closing sum, annual rate is derived by `_calcDepRate(amount, final, open, end, cap, contribs, accruals)` — closed form for `'end'` without contributions, **bisection** otherwise (monthly has no closed form in the discrete model). Rate re-derives on contribution/accrual add/delete (`_reDeriveDepRate`).
-- Top-ups: «+ Пополнить» on open deposit cards → `openDepContribution`/`saveDepContribution` (validated within `[openDate, endDate]`, sorted, stamps `updatedAt`); edit modal lists contributions with immediate delete. `_depContribsSum(d, date)` = contributions dated ≤ date.
-- **Bank↔deposit transfers**: `_bankAdjust(bankName, date, delta)` edits/creates the bank's asset record on that date (base = `_lastKnownAmount`). Used by optional «Списать из банка» selects in new-deposit and contribution modals (−amount). Keeps period reconciliation clean — always prefer it over hand-written record math. **Deposit close is the exception**: `confirmCloseDeposit` does NOT call `_bankAdjust`/create an asset snapshot — it only pushes an incomes record for the interest portion (value − principal − contributions), tagged; the deposit is soft-deleted and the principal/contributions are not reflected back into any bank.
-- Matured deposits show «↳ Перенести в банк»; open ones «+ Пополнить».
-
-### Assets Page & Series
-
-- **«Всего активов» = banks + live deposits at today** (since v1.22.0), with a «счета X · вклады Y» breakdown line. `_getCurrentAssetsTotal()` stays banks-only (feeds calc/goal prefills where deposit interest would double-count). Bank total = each bank's **most recent non-deleted entry regardless of date** — never filter by a shared "latest date".
-- Live deposits render as read-only rows at the end of «Текущие счета» (blue «вклад» badge, click → deposits page). Zero/no-data banks hide behind a «Показать нулевые счета (N)» toggle (`_showZeroBanks`).
-- **`_buildAssetSeries(customDates?)`** is the single source for chart, history table and audit: per-date `bankSeries` (carry-forward — a bank without a record on a date uses its last known record, applied via a two-pointer walk over sorted bank records so a coarse grid never skips an intervening record) and `depSeries` (deposits from `openDate`, soft-deleted ones counted until their local deletion day `_depDelDay(d)` — closing a deposit doesn't retroactively dent history). With no argument, the date grid is the union of real snapshot dates (banks + investments) — unchanged default. The «банки / +вклады» chart toggle (`setAssetsChartDeps`, device-local `localStorage.assetsChartDeps`) adds `depSeries` to the line; the history table always uses the raw (no-argument) call and ignores both chart toggles, always showing Дата | Счета | Вклады | Всего | Δ.
-- **«снимки / месяц / год» chart scale** (`setAssetsChartScale`, device-local `localStorage.assetsChartScale`, since v1.39.0): coarsens the «Рост накоплений» line only (history table stays raw) via `_coarseAssetDates(scale, rawDates)` — one point per calendar month/year = the FIRST real snapshot of that period (the 1st-of-month snapshot ritual is the clean month-start state; period-END sampling was tried in v1.39.0 and caught mid-month snapshots after money had moved to deposits, producing a sawtooth — reverted in v1.39.1). Only real snapshot dates, no derived dates; periods with no snapshots are skipped entirely.
-- **Snapshot modal semantics** (`openAssetSnapshot` → `openEditAssetDate(date, carryForward)`): editable «Дата снимка» field (max today) allows backdated snapshots; pre-fills carry-forward values flagged «↻ перенесено». **Empty input = no record** (carry-forward continues; amber «∅ записи не будет…» tag), **explicit 0 = real zero record** (green «✕ обнулён этой датой» tag, only when the last record before the date was non-zero); per-row round «0» button. On save, all previous records for the date are tombstoned and non-empty inputs re-added.
-- Data audit (Settings → «Проверка данных», `openDataAudit`): ghost bank records (merge/delete), duplicate bank+date records (keep max `updatedAt`), deposit/snapshot date warnings, and **period reconciliation** — per snapshot period, asset delta vs (incomes − expenses) with running cumulative; mirrored ±X pairs in adjacent periods mean a date shift (harmless), a persistent cumulative shift means unaccounted money.
-- **Кредиты (грейс + сплиты)** — `DB.credits`, информационный блок: грейс-бейдж на строке кредитного банка (тап → `openGraceModal`), секция «Кредиты» со сплитами (`renderCredits`, `openSplitView`, ручные галки оплаты). График платежей сплита генерится в модалке (`_splitRegen`, чипы неделя/2 недели/месяц, тумблер «первая сразу»), строки редактируются до сохранения. `checkCreditNotifications` — грейс ≤3 дн, платёж сплита завтра/просрочен.
-- Notifications: `checkBudgetNotifications` (limit threshold, call after saving an expense), `checkAssetNotification` (1st/16th + stale snapshot >14 days, re-fires every 3 days), `checkDepositNotifications` (closes in ≤3 days or matured; 3-day per-deposit stamp), `checkCreditNotifications` (grace ≤3 days or split payment due tomorrow/overdue, 3-day per-record stamp). All gated by `DB.notifsEnabled` + granted permission.
+Вклады (`depositValueAt`, дискретные начисления, ручные правки `d.accruals`, режим `finalAmount`, пополнения), ряды активов (`_buildAssetSeries`, масштабы графика, семантика снимков, аудит периодов, кредиты) и Excel-экспорт вынесены в `.claude/skills/void-assets/SKILL.md`. **Инварианты, которые нельзя нарушать без чтения скилла:** `_buildAssetSeries()` — единственный источник для графика, истории и аудита; сетка дат графика строится ТОЛЬКО из реальных снимков (производные даты вроде открытия вклада не добавлять); «Всего активов» = банки + живые вклады, а `_getCurrentAssetsTotal()` остаётся только по банкам; переводы банк↔вклад делать через `_bankAdjust()`, а не ручной правкой записей.
 
 ### Sync — `═══ sync.js ═══` + `apps-script/Code.gs`
 
@@ -164,10 +133,6 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 **Updating Apps Script:** edit `apps-script/Code.gs` locally → copy into the Google Apps Script editor → deploy new version. In dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs`.
 
 **Code.gs v10.3:** writes serialized with `LockService`; data file located by ID in `ScriptProperties` (`dataFileId`), falling back to name lookup. **Wipe guard:** a push <30% of the stored file size (file >20 KB) is rejected unless `force:true` — manual «Выгрузить в Drive» sends `force`, auto-sync doesn't. **Daily backup:** at most once per 24h the file is copied to `nto_data.bak.json`.
-
-### Excel Export
-
-Settings → «Экспорт Excel» → `exportExcel()` (settings.js section). Uses **xlsx-js-style 1.2.0** (SheetJS 0.18.5 fork with cell styling), vendored at vendor/xlsx.style.min.js (Chart.js 4.4.1 likewise at vendor/chart.umd.js, both in the SW PRECACHE since v1.40.2 — CDN scripts were the offline white-screen cause). First sheets: **«Сводная YYYY»** per year, newest first (`_excelSummarySheet`) — styled pivot расходы категории×месяцы (category-color fills, zebra, bold totals), доходы теги×месяцы, строка НАКОПЛЕНО (green/red) + норма %, блок АКТИВЫ на конец года. Sheets: По дням YYYY, Шаблон, month sheets, Активы, Вклады (live deposits: body, contributions, rate, dates, value now/at close). For a full backup use «Резервная копия» (JSON dump of entire `DB`) — restorable via «Восстановить из файла».
 
 ### PWA Caching — `sw.js`
 
@@ -203,7 +168,7 @@ Session-persisted UI state uses `sessionStorage`:
 - `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`)
 
 Filter state (module-level variables, reset on tab re-render):
-- `_expCatFilter` (`null` | `Set<number>`) — Day tab category multi-select
+- `_expCatFilter` (`null` | `Set<number>`) — category multi-select of the expense search card in Аналитика (`renderExpenseSearch`, `#cw-search`; period chips `setExpSearchPeriod` → sessionStorage `expSearchPeriod` 1/3/6/12/'all', default 6; result = count+sum, per-month breakdown, date-grouped list, tap on a date → Day tab). Moved from the Day tab in v1.56.0
 - `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter
 
 ### Color Picker Pattern

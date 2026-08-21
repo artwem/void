@@ -29,7 +29,7 @@
 <script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.55.0">
+<link rel="stylesheet" href="css/app.css?v=1.56.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -119,12 +119,6 @@ if ('serviceWorker' in navigator) {
   <div id="qa-comment-row" style="display:none;padding:0 16px 8px">
     <input id="qa-comment" type="text" placeholder="Комментарий (необязательно)" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"/>
   </div>
-  <div style="padding:0 16px 8px">
-    <input id="expense-search" type="search" placeholder="🔍 Поиск по расходам..." autocomplete="off"
-      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"
-      oninput="renderExpenseSearch(this.value)"/>
-  </div>
-  <div id="expense-cat-filter" style="padding:0 16px 8px;display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none"></div>
   <div class="entry-list" id="entry-list"></div>
   <div class="page-end"></div>
 </div>
@@ -206,6 +200,25 @@ if ('serviceWorker' in navigator) {
       <div id="day-compare-summary" style="margin-top:10px"></div>
     </div>
   </div>
+  <div class="chart-wrap" id="cw-search">
+    <div class="chart-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <div class="chart-title" style="margin:0">Поиск по тратам</div>
+        <div id="exp-search-period" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Период поиска">
+          <span id="esp-1" onclick="setExpSearchPeriod(1)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">мес</span>
+          <span id="esp-3" onclick="setExpSearchPeriod(3)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">3</span>
+          <span id="esp-6" onclick="setExpSearchPeriod(6)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">6</span>
+          <span id="esp-12" onclick="setExpSearchPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12</span>
+          <span id="esp-all" onclick="setExpSearchPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+        </div>
+      </div>
+      <input id="exp-search" type="search" placeholder="🔍 Комментарий, категория или сумма" autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:16px;font-family:inherit"
+        oninput="renderExpenseSearch()"/>
+      <div id="expense-cat-filter" style="padding:8px 0 0;display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none"></div>
+      <div id="exp-search-result" class="entry-list" style="margin:8px -12px 0"></div>
+    </div>
+  </div>
   <div class="chart-wrap" id="cw-pie">
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
@@ -253,6 +266,7 @@ if ('serviceWorker' in navigator) {
   <div class="hdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit">⚠ <span id="assets-audit-badge-n"></span></button></div>
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
+  <div id="total-fx" onclick="cycleAssetsFxCur()" title="Тап — сменить валюту" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px;cursor:pointer;user-select:none"></div>
   <div id="assets-charts">
   <div class="chart-wrap">
     <div class="chart-card">
@@ -1238,7 +1252,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.55.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.56.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2096,6 +2110,7 @@ function saveExpense(){
   saveDB();
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
+  else if(currentPage==='stats') renderStats(); // правка из выдачи поиска
   else renderBudget();
   const wasEditing = !!editingExpenseId;
   editingExpenseId = null;
@@ -2115,6 +2130,7 @@ function deleteExpense(){
   }
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
+  else if(currentPage==='stats') renderStats(); // правка из выдачи поиска
   else renderBudget();
   toast('Удалено');
 }
@@ -2265,34 +2281,9 @@ function saveLimits(){
 // ═══ day.js ═══
 
 // ─── RENDER: DAY ────────────────────────────────────────────────────
-let _expCatFilter = null; // null = показываем день; Set<number> = фильтр категорий по всей БД
-
-function _toggleExpCat(i){
-  if(_expCatFilter === null) _expCatFilter = new Set();
-  if(_expCatFilter.has(i)) _expCatFilter.delete(i);
-  else _expCatFilter.add(i);
-  if(_expCatFilter.size === 0) _expCatFilter = null;
-  renderExpenseCatChips();
-  const srch = document.getElementById('expense-search');
-  renderExpenseSearch(srch ? srch.value : '');
-}
-
-function renderExpenseCatChips(){
-  const wrap = document.getElementById('expense-cat-filter');
-  if(!wrap) return;
-  const cats = DB.categories || [];
-  if(!cats.length){ wrap.innerHTML = ''; return; }
-  wrap.innerHTML = '';
-  cats.forEach((name, i) => {
-    const active = _expCatFilter !== null && _expCatFilter.has(i);
-    const color = getCatColor(i);
-    const chip = document.createElement('span');
-    chip.textContent = name;
-    chip.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
-    chip.onclick = () => _toggleExpCat(i);
-    wrap.appendChild(chip);
-  });
-}
+// Поиск по тратам и чипы категорий жили здесь до v1.56.0 — переехали в
+// «Аналитику» (renderExpenseSearch в секции stats.js): вкладка «День» про
+// один день, а поиск — по всей истории с ограничением периода.
 
 function onDayCalChange(val){
   if(!val) return;
@@ -2301,7 +2292,6 @@ function onDayCalChange(val){
 }
 
 function renderDay(){
-  renderExpenseCatChips();
   renderQuickAdd();
   // Шапку обновляем всегда — иначе при активном фильтре висит итог чужого дня
   const d = new Date(currentDay+'T12:00:00');
@@ -2315,13 +2305,6 @@ function renderDay(){
   const specialEntries = allEntries.filter(e=>e.special);
   const total = entries.reduce((s,e)=>s+e.amount,0);
   document.getElementById('day-total').innerHTML = fmtH(total);
-  if(_expCatFilter !== null && _expCatFilter.size > 0){
-    const srch = document.getElementById('expense-search');
-    renderExpenseSearch(srch ? srch.value : '');
-    return;
-  }
-  const srch = document.getElementById('expense-search');
-  if(srch) srch.value = '';
   renderTemplateChips();
   const list = document.getElementById('entry-list');
   list.innerHTML='';
@@ -2415,66 +2398,6 @@ function renderDay(){
     });
   }
 }
-
-function renderExpenseSearch(query){
-  const list = document.getElementById('entry-list');
-  const q = (query||'').trim().toLowerCase();
-  const hasCatFilter = _expCatFilter !== null && _expCatFilter.size > 0;
-  if(!q && !hasCatFilter){
-    renderDay();
-    return;
-  }
-  const all = DB.expenses.filter(e => {
-    if(e._deleted) return false;
-    if(hasCatFilter && !_expCatFilter.has(e.cat)) return false;
-    if(!q) return true;
-    const cat = (DB.categories[e.cat]||'').toLowerCase();
-    const comment = (e.comment||'').toLowerCase();
-    const amount = String(e.amount);
-    return cat.includes(q) || comment.includes(q) || amount.includes(q);
-  });
-  all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
-  list.innerHTML = '';
-  if(!all.length){
-    list.innerHTML = '<div class="empty-day"><div style="font-size:28px">🔍</div><p>Ничего не найдено</p><p>Другой запрос или снимите фильтр</p></div>';
-    return;
-  }
-  // Итог по найденному
-  const totalBar = document.createElement('div');
-  totalBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 16px 4px;font-size:13px';
-  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700">${fmtH(all.reduce((s,e)=>s+e.amount,0))}</span>`;
-  list.appendChild(totalBar);
-  // Group by date
-  let lastDate = null;
-  all.forEach(e => {
-    if(e.date !== lastDate){
-      lastDate = e.date;
-      const d = new Date(e.date+'T12:00:00');
-      const weekdays=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-      const sep = document.createElement('div');
-      sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600;cursor:pointer';
-      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
-      sep.addEventListener('click', ()=>{ document.getElementById('expense-search').value=''; currentDay=e.date; renderDay(); });
-      list.appendChild(sep);
-    }
-    const catName = DB.categories[e.cat]||'Неизвестно';
-    const row = document.createElement('div');
-    row.className = 'entry-row';
-    row.style.cssText = 'cursor:pointer';
-    row.innerHTML = `
-      <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
-      <div class="entry-info">
-        <div class="entry-cat">${esc(catName)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
-        ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
-      </div>
-      <div class="entry-amount">${fmtH(e.amount)}</div>
-      <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
-    `;
-    _makeSwipeable(row, ()=>deleteExpenseById(e.id));
-    list.appendChild(row);
-  });
-}
-
 
 // ─── EXPENSE TEMPLATES ──────────────────────────────────────────────
 let _editingTemplateId = null;
@@ -2629,7 +2552,7 @@ function deleteExpenseById(id){
   const snap = {amount:e.amount, comment:e.comment, _deleted:e._deleted};
   e.amount=0; e.comment=''; e._deleted=true; e.updatedAt=Date.now();
   saveDB();
-  const rerender=()=>{ if(currentPage==='day') renderDay(); else renderBudget(); };
+  const rerender=()=>{ if(currentPage==='day') renderDay(); else if(currentPage==='stats') renderStats(); else renderBudget(); };
   rerender();
   toastUndo('Удалено', ()=>{
     e.amount=snap.amount; e.comment=snap.comment; e._deleted=snap._deleted; e.updatedAt=Date.now();
@@ -3564,6 +3487,130 @@ function _monthForecast(y, m){
   };
 }
 
+// ─── ПОИСК ПО ТРАТАМ ────────────────────────────────────────────────
+// До v1.56.0 жил на «Дне» и искал по всей истории без ограничений. Здесь:
+// период (sessionStorage expSearchPeriod: 1/3/6/12 последних месяцев,
+// включая текущий, или 'all'), чипы категорий (_expCatFilter — тот же
+// фильтр, что был на «Дне»), итог и разбивка по месяцам, список по датам.
+let _expCatFilter = null; // null = без фильтра; Set<number> = позиционные индексы категорий
+
+function _expSearchPeriod(){
+  const v = sessionStorage.getItem('expSearchPeriod');
+  return v === 'all' ? 'all' : ([1,3,6,12].includes(parseInt(v)) ? parseInt(v) : 6);
+}
+function setExpSearchPeriod(n){
+  sessionStorage.setItem('expSearchPeriod', String(n));
+  renderExpenseSearch();
+}
+
+function _toggleExpCat(i){
+  if(_expCatFilter === null) _expCatFilter = new Set();
+  if(_expCatFilter.has(i)) _expCatFilter.delete(i);
+  else _expCatFilter.add(i);
+  if(_expCatFilter.size === 0) _expCatFilter = null;
+  renderExpenseSearch();
+}
+
+function renderExpenseCatChips(){
+  const wrap = document.getElementById('expense-cat-filter');
+  if(!wrap) return;
+  const cats = DB.categories || [];
+  if(!cats.length){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '';
+  cats.forEach((name, i) => {
+    const active = _expCatFilter !== null && _expCatFilter.has(i);
+    const color = getCatColor(i);
+    const chip = document.createElement('span');
+    chip.textContent = name;
+    chip.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;border:1.5px solid '+(active?color:'var(--border2)')+';color:'+(active?color:'var(--text)')+';background:'+(active?color+'18':'transparent');
+    chip.onclick = () => _toggleExpCat(i);
+    wrap.appendChild(chip);
+  });
+}
+
+function renderExpenseSearch(){
+  const list = document.getElementById('exp-search-result');
+  const inp = document.getElementById('exp-search');
+  if(!list || !inp) return;
+  renderExpenseCatChips();
+  const period = _expSearchPeriod();
+  _segActive([...[1,3,6,12].map(n=>['esp-'+n, period===n]), ['esp-all', period==='all']]);
+  const q = (inp.value||'').trim().toLowerCase();
+  const hasCatFilter = _expCatFilter !== null && _expCatFilter.size > 0;
+  list.innerHTML = '';
+  if(!q && !hasCatFilter) return;
+  // Нижняя граница периода: первое число (N−1)-го месяца назад — «3» = текущий и два предыдущих
+  let fromDate = '';
+  if(period !== 'all'){
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (period - 1));
+    fromDate = monthKey(d.getFullYear(), d.getMonth()) + '-01';
+  }
+  const all = DB.expenses.filter(e => {
+    if(e._deleted) return false;
+    if(fromDate && (e.date||'') < fromDate) return false;
+    if(hasCatFilter && !_expCatFilter.has(e.cat)) return false;
+    if(!q) return true;
+    const cat = (DB.categories[e.cat]||'').toLowerCase();
+    const comment = (e.comment||'').toLowerCase();
+    const amount = String(e.amount);
+    return cat.includes(q) || comment.includes(q) || amount.includes(q);
+  });
+  all.sort((a,b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+  if(!all.length){
+    list.innerHTML = '<div class="empty-day" style="padding:16px 0"><div style="font-size:28px">🔍</div><p>Ничего не найдено</p><p>Другой запрос, период или снимите фильтр</p></div>';
+    return;
+  }
+  // Итог по найденному
+  const totalBar = document.createElement('div');
+  totalBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 16px 2px;font-size:13px';
+  totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700">${fmtH(all.reduce((s,e)=>s+e.amount,0))}</span>`;
+  list.appendChild(totalBar);
+  // Разбивка по месяцам — то, чего на «Дне» быть не могло; новые месяцы первыми
+  const byMonth = {};
+  all.forEach(e => { const k = e.date.slice(0,7); byMonth[k] = (byMonth[k]||0) + e.amount; });
+  const months = Object.keys(byMonth).sort().reverse();
+  if(months.length > 1){
+    const mb = document.createElement('div');
+    mb.id = 'exp-search-months';
+    mb.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px 12px;padding:2px 16px 6px;font-size:12px;color:var(--muted)';
+    mb.innerHTML = months.map(k => {
+      const [y, m] = k.split('-').map(Number);
+      const lbl = SHORT_MONTHS[m-1] + (y !== new Date().getFullYear() ? ' '+String(y).slice(2) : '');
+      return `<span>${lbl} <b style="color:var(--text)">${fmtH(byMonth[k])}</b></span>`;
+    }).join('');
+    list.appendChild(mb);
+  }
+  // Список, сгруппированный по датам; тап по дате — на «День» в этот день
+  let lastDate = null;
+  all.forEach(e => {
+    if(e.date !== lastDate){
+      lastDate = e.date;
+      const d = new Date(e.date+'T12:00:00');
+      const weekdays=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+      const sep = document.createElement('div');
+      sep.dataset.date = e.date;
+      sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600;cursor:pointer';
+      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+      sep.addEventListener('click', ()=>{ currentDay=e.date; showPage('day', document.getElementById('nav-day')); });
+      list.appendChild(sep);
+    }
+    const catName = DB.categories[e.cat]||'Неизвестно';
+    const row = document.createElement('div');
+    row.className = 'entry-row';
+    row.innerHTML = `
+      <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
+      <div class="entry-info">
+        <div class="entry-cat">${esc(catName)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
+        ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
+      </div>
+      <div class="entry-amount">${fmtH(e.amount)}</div>
+      <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+    `;
+    _makeSwipeable(row, ()=>deleteExpenseById(e.id));
+    list.appendChild(row);
+  });
+}
+
 function renderStats(){
   const now = new Date();
 
@@ -3582,6 +3629,9 @@ function renderStats(){
 
   // Update period selector active state
   _segActive([6,12,24].map(n=>['sp-'+n, n===statsPeriod]));
+
+  // Поиск по тратам — перерисовываем, чтобы выдача не протухала после правок
+  renderExpenseSearch();
 
   // ── Сводка за период ──────────────────────────────────────────────
   _renderStatsSummary(lastN);
@@ -4531,6 +4581,81 @@ function _coarseAssetDates(scale, rawDates){
   return dates;
 }
 
+// ─── ИТОГ В ДРУГОЙ ВАЛЮТЕ ──────────────────────────────────────────
+// Только отображение сегодняшнего «Всего активов» (v1.56.0): курс ЦБ РФ
+// (cbr-xml-daily.ru, без ключа, CORS открыт), кэш в localStorage.fxRates
+// {date, fetchedAt, rates:{USD,EUR,CNY}} — оффлайн показываем последний
+// известный курс с его датой. История, график, отчёт и синк остаются
+// рублёвыми: это не мультивалютный учёт, а ответ на «сколько это в долларах».
+const FX_CURS = ['USD', 'EUR', 'CNY'];
+const FX_SIGN = { USD: '$', EUR: '€', CNY: '¥' };
+const FX_URL = 'https://www.cbr-xml-daily.ru/daily_json.js';
+let _fxInflight = null;
+
+function _fxCached(){
+  try { const v = JSON.parse(localStorage.getItem('fxRates') || 'null'); return v && v.rates ? v : null; }
+  catch(e){ return null; }
+}
+// Валюта строки: localStorage.assetsFxCur — 'USD'|'EUR'|'CNY'; '' = скрыта; нет ключа = USD
+function _assetsFxCur(){
+  const v = localStorage.getItem('assetsFxCur');
+  if(v === null) return 'USD';
+  return FX_CURS.includes(v) ? v : '';
+}
+function setAssetsFxCur(cur){
+  localStorage.setItem('assetsFxCur', FX_CURS.includes(cur) ? cur : '');
+  _renderFxTotal();
+}
+// Тап по строке: USD → EUR → CNY → скрыть; вернуть — через настройки нельзя,
+// поэтому скрытое состояние не терминальное: следующий цикл начнётся с USD
+// при очистке ключа (setAssetsFxCur('USD') из кода/тестов).
+function cycleAssetsFxCur(){
+  const cur = _assetsFxCur();
+  const i = FX_CURS.indexOf(cur);
+  setAssetsFxCur(i < 0 ? 'USD' : (i === FX_CURS.length - 1 ? '' : FX_CURS[i + 1]));
+}
+// Курс не старше суток — берём кэш; иначе один запрос, результат в кэш.
+// Ошибка сети — оставляем старый кэш (или null), без тостов: строка просто
+// не появится либо покажет курс с прежней датой.
+function _fxRates(){
+  const c = _fxCached();
+  if(c && Date.now() - (c.fetchedAt || 0) < 24*3600*1000) return Promise.resolve(c);
+  if(_fxInflight) return _fxInflight;
+  _fxInflight = fetch(FX_URL).then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(j => {
+      const rates = {};
+      FX_CURS.forEach(k => { const v = j.Valute && j.Valute[k]; if(v && v.Value) rates[k] = v.Value / (v.Nominal || 1); });
+      if(!rates.USD) throw new Error('no USD');
+      const out = { date: String(j.Date || '').slice(0, 10), fetchedAt: Date.now(), rates };
+      localStorage.setItem('fxRates', JSON.stringify(out));
+      return out;
+    })
+    .catch(() => c)
+    .finally(() => { _fxInflight = null; });
+  return _fxInflight;
+}
+let _fxTotalRub = 0; // последний итог активов, переданный из renderAssets
+function _renderFxTotal(totalRub){
+  if(typeof totalRub === 'number') _fxTotalRub = totalRub;
+  const el = document.getElementById('total-fx');
+  if(!el) return;
+  const cur = _assetsFxCur();
+  const draw = fx => {
+    if(!cur || !fx || !fx.rates[cur] || !(_fxTotalRub > 0)){ el.style.display = 'none'; return; }
+    const rate = fx.rates[cur];
+    const val = Math.round(_fxTotalRub / rate);
+    const d = fx.date || '';
+    const dd = d.length >= 10 ? d.slice(8,10) + '.' + d.slice(5,7) : '';
+    el.innerHTML = '≈ <span class="prv">' + val.toLocaleString('ru-RU') + ' ' + FX_SIGN[cur] + '</span>'
+      + ' <span style="opacity:.75">· курс ЦБ ' + rate.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + (dd ? ' на ' + dd : '') + '</span>';
+    el.style.display = 'block';
+  };
+  if(!cur){ el.style.display = 'none'; return; }
+  const c = _fxCached();
+  if(c) draw(c); else el.style.display = 'none';
+  _fxRates().then(fx => { if(fx && fx !== c) draw(fx); });
+}
+
 function renderAssets(){
   const allBanks = getAllBanks();
   const allEntries = DB.assets.filter(a=>!a._deleted);
@@ -4570,6 +4695,7 @@ function renderAssets(){
     const depSumNow = liveDeps.reduce((s,d)=>s + (d.openDate && d.openDate > snapD ? 0 : depositValueAt(d,snapD)),0);
     const invSumNow = liveInvs.reduce((s,v)=>s+invValueAt(v,snapD),0);
     document.getElementById('total-val').innerHTML = fmtH(total + depSumNow + invSumNow);
+    _renderFxTotal(total + depSumNow + invSumNow);
     document.getElementById('total-date').textContent =
       lastSnapDate ? ' на '+lastSnapDate.slice(8,10)+'.'+lastSnapDate.slice(5,7) : '';
     const wdEl = document.getElementById('total-with-deps');
