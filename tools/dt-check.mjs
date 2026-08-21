@@ -544,6 +544,15 @@ suite(390, 'иконки приложения', () => {
     if (!icon) throw new Error('link[rel=icon] отсутствует — вкладка браузера без иконки');
     eq(icon.type, 'image/svg+xml', 'тип фавикона');
     if (!/^data:image\/svg\+xml,/.test(icon.href)) throw new Error('фавикон не data-URI: ' + icon.href.slice(0, 40));
+    const svg = decodeURIComponent(icon.href.replace('data:image/svg+xml,', ''));
+    // v1.57.0 задавал цвета через <style>, а CSS перебивает presentation-атрибут
+    // fill="none" — дуги залились сегментами, и во вкладке была клякса вместо
+    // кольца. Цвета обязаны стоять атрибутами на самих фигурах.
+    if (/<style/.test(svg)) throw new Error('в фавиконе снова <style> — он перебьёт fill="none" у дуг');
+    if (!/fill='none'|fill="none"/.test(svg)) throw new Error('дуги фавикона без fill=none — зальются сегментами');
+    // Плашка: одинаково читается в светлой и тёмной вкладке, не зависит от
+    // того, поддерживает ли браузер @media внутри фавикона.
+    if (!/<rect/.test(svg)) throw new Error('фавикон без плашки-подложки');
   });
   check('манифест отдаёт тот же знак, а не старое «₽»', async p => {
     const icons = await p.evaluate(async () => {
