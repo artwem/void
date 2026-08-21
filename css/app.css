@@ -66,6 +66,12 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 /* CARDS */
 .summary-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 16px}
 .s-card{background:var(--card);border-radius:var(--r);padding:10px 12px;border:0.5px solid var(--border)}
+/* Сводка годового отчёта: 2×2 на мобиле, 4 в ряд на десктопе (см. блок 1000px).
+   Раскладка живёт в CSS, а не в инлайне, чтобы медиазапрос мог её перебить. */
+#rep-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+/* Год отчёта: на мобиле прижат к правому краю шапки, на десктопе шапка
+   во всю ширину экрана и улетевший в угол селект теряет связь с заголовком. */
+#report-year{margin-left:auto}
 .s-lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
 .s-val{font-size:16px;font-weight:600;letter-spacing:-0.3px}
 .s-val.over{color:var(--red)}
@@ -294,6 +300,10 @@ body.privacy-mode .prv *{color:transparent!important}
 .nav-btn.active{color:var(--blue)}
 .nav-btn.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:3px;background:var(--blue);border-radius:0 0 3px 3px;transition:none}
 
+/* Десктоп-онли элементы (сайдбарная кнопка «Отчёт»): на мобиле их нет,
+   класс включается в @media min-width:1000px. */
+.dt-only{display:none}
+
 /* Bottom sheet drag handle */
 .sheet::before{content:'';display:block;width:32px;height:4px;background:var(--border2);border-radius:2px;margin:-8px auto 8px}
 
@@ -406,6 +416,21 @@ body.privacy-mode .prv *{color:transparent!important}
   #assets-lists{grid-column:1; grid-row:4}
   #assets-charts{grid-column:2; grid-row:4}
   #page-assets > .page-end{grid-column:1 / -1; grid-row:5}
+
+  /* ГОДОВОЙ ОТЧЁТ: свой вход в сайдбаре — значит дублирующие входы
+     (кнопка в карточке Аналитики, «‹» в шапке отчёта) на десктопе лишние. */
+  .nav-btn.dt-only{display:flex}
+  .dt-hide{display:none !important}
+
+  /* Отчёт в две колонки: слева цифры (активы, накопления, помесячная
+     таблица), справа разрезы (категории, группы, теги). Обёртки #rep-col-a/b
+     идут в разметке в прежнем порядке, поэтому на мобиле страница не
+     изменилась — там они просто блоки без стилей. */
+  #report-body{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:16px; align-items:start}
+  #rep-summary{grid-column:1 / -1; grid-template-columns:repeat(4,minmax(0,1fr))}
+  #report-year{margin-left:12px}
+  #rep-col-a{grid-column:1; grid-row:2}
+  #rep-col-b{grid-column:2; grid-row:2}
 
   /* ─── конец десктопного блока 1000px ─── */
 }

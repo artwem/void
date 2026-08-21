@@ -184,6 +184,97 @@ suite(1600, 'раскладка «Аналитики»', () => {
   });
 });
 
+// Годовой отчёт получил собственный вход в сайдбаре (v1.55.0). Дублирующие
+// входы — кнопка в карточке «Аналитики» и «‹» в шапке отчёта — на десктопе
+// прячутся классом .dt-hide, на мобиле остаются единственным способом попасть
+// в отчёт, поэтому обе стороны границы проверяются явно.
+suite(1600, 'годовой отчёт: вход и раскладка', () => {
+  check('в сайдбаре своя кнопка, дубли скрыты', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    eq(await isVisible(p, '#nav-report'), true, 'кнопка «Отчёт» в сайдбаре');
+    eq(await isVisible(p, '#cw-summary .dt-hide'), false, 'кнопка «Отчёт» в карточке Аналитики');
+    await p.evaluate(() => document.getElementById('nav-report').click());
+    const shown = await p.evaluate(() => [...document.querySelectorAll('.page')]
+      .filter(el => getComputedStyle(el).display !== 'none').map(el => el.id));
+    eq(shown.join(','), 'page-report', 'видимые страницы');
+    eq(await p.evaluate(() => document.getElementById('nav-report').classList.contains('active')), true,
+       'подсветка кнопки отчёта');
+    eq(await isVisible(p, '#page-report .dt-hide'), false, 'кнопка «назад» в шапке отчёта');
+  });
+  check('цифры слева, разрезы справа, сводка во всю ширину', async p => {
+    const a = await rect(p, '#rep-col-a');
+    const b = await rect(p, '#rep-col-b');
+    if (!a || !b || !a.height || !b.height) throw new Error('колонки отчёта пусты');
+    near(a.y, b.y, 'верх колонок отчёта', 2);
+    if (b.x <= a.x) throw new Error('колонки не разложились: x правой ' + b.x + ', левой ' + a.x);
+    near(a.width, b.width, 'ширины колонок', 2);
+    const sum = await rect(p, '#rep-summary');
+    if (!(sum.width > a.width * 1.8)) throw new Error('сводка не во всю ширину: ' + sum.width);
+    const cols = (await cssOf(p, '#rep-summary', 'gridTemplateColumns')).trim().split(/\s+/);
+    eq(cols.length, 4, 'колонок в сводке отчёта (' + cols.join(' ') + ')');
+  });
+});
+
+suite(390, 'годовой отчёт на мобиле не изменился', () => {
+  check('вход из карточки, сайдбарной кнопки нет, один столбец', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    eq(await isVisible(p, '#nav-report'), false, 'кнопка «Отчёт» в навбаре');
+    eq(await isVisible(p, '#cw-summary .dt-hide'), true, 'кнопка «Отчёт» в карточке Аналитики');
+    await p.evaluate(() => document.querySelector('#cw-summary .dt-hide').click());
+    eq(await isVisible(p, '#page-report .dt-hide'), true, 'кнопка «назад» в шапке отчёта');
+    eq(await p.evaluate(() => document.getElementById('nav-stats').classList.contains('active')), true,
+       'подсветка «Аналитики» при открытом отчёте');
+    eq(await cssOf(p, '#report-body', 'gridTemplateColumns'), 'none', 'сетка тела отчёта');
+    const cols = (await cssOf(p, '#rep-summary', 'gridTemplateColumns')).trim().split(/\s+/);
+    eq(cols.length, 2, 'колонок в сводке отчёта (' + cols.join(' ') + ')');
+    const a = await rect(p, '#rep-col-a');
+    const b = await rect(p, '#rep-col-b');
+    if (b.y <= a.y) throw new Error('колонки встали рядом на мобиле');
+  });
+});
+
+// «День за днём»: на широком экране ось подписывает каждый день, тултип
+// ловится наведением в любую точку (mode:'index'), а не попаданием в
+// невидимую точку линии — при pointRadius 0 дефолтный nearest+intersect молчит.
+suite(1600, '«День за днём» на десктопе', () => {
+  check('ось подписывает каждый день', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => ({
+      ticks: charts.dayCompare.scales.x.ticks.length,
+      labels: charts.dayCompare.data.labels.length,
+      autoSkip: charts.dayCompare.options.scales.x.ticks.autoSkip,
+    }));
+    eq(got.autoSkip, false, 'autoSkip оси дней');
+    eq(got.ticks, got.labels, 'подписей на оси против числа дней');
+  });
+  check('наведение показывает суммы всех линий за день', async p => {
+    const box = await rect(p, '#chartDayCompare');
+    await p.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+    await new Promise(r => setTimeout(r, 120));
+    const tt = await p.evaluate(() => {
+      const t = charts.dayCompare.tooltip;
+      return { n: t.getActiveElements().length, title: (t.title || []).join(''), body: (t.body || []).map(b => b.lines.join('')) };
+    });
+    if (tt.n < 2) throw new Error('тултип поднял ' + tt.n + ' линий — режим index не работает');
+    if (!/[0-9]/.test(tt.title)) throw new Error('в заголовке тултипа нет дня: «' + tt.title + '»');
+    if (!tt.body.some(l => /₽/.test(l))) throw new Error('в тултипе нет сумм: ' + JSON.stringify(tt.body));
+  });
+});
+
+suite(390, 'ось «День за днём» на мобиле не изменилась', () => {
+  check('подписи прорежены autoSkip', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => ({
+      ticks: charts.dayCompare.scales.x.ticks.length,
+      labels: charts.dayCompare.data.labels.length,
+      autoSkip: charts.dayCompare.options.scales.x.ticks.autoSkip,
+    }));
+    eq(got.autoSkip, true, 'autoSkip оси дней');
+    if (got.labels > 10 && got.ticks > 10)
+      throw new Error('подписей ' + got.ticks + ' при ' + got.labels + ' днях — ось не прорежена');
+  });
+});
+
 suite(1000, 'оболочка 1000', () => {
   check('сайдбар схлопнут в рельс 64 px', async p => {
     near((await rect(p, 'nav.nav')).width, 64, 'ширина рельса');
