@@ -408,40 +408,70 @@ suite(390, 'модалки на мобиле — шторки', () => {
 // кэш в localStorage. Сеть в харнессе недетерминирована, поэтому fetch
 // глушится, а курс подкладывается в кэш — проверяем поведение, не API.
 const FX_CACHE = JSON.stringify({ date: '2026-08-21', fetchedAt: 1, rates: { USD: 83.355, EUR: 96.7335, CNY: 12.4057 } });
+// Валюта итога переключалась тапом по самой строке: USD → EUR → CNY → скрыть,
+// и «скрыть» было тупиком — вернуться можно было только из консоли. Заменено
+// сегмент-переключателем ₽ $ € ¥ (v1.58.0): выключенное состояние видимо и
+// обратимо, а сам переключатель существует, даже когда пересчёта нет.
 suite(390, 'активы в другой валюте', () => {
+  const openAssets = (p, fx) => p.evaluate((f, cur) => {
+    if (f) localStorage.setItem('fxRates', f); else localStorage.removeItem('fxRates');
+    if (cur === null) localStorage.removeItem('assetsFxCur'); else localStorage.setItem('assetsFxCur', cur);
+    window.fetch = () => Promise.reject(new Error('offline'));
+    window.showPage('assets', document.getElementById('nav-assets'));
+  }, fx, null);
+  const txt = p => p.evaluate(() => document.getElementById('total-fx-txt').textContent);
+  const active = p => p.evaluate(() => ['RUB', 'USD', 'EUR', 'CNY']
+    .filter(c => document.getElementById('fxc-' + c).style.fontWeight === '600').join(','));
+  const tap = (p, c) => p.evaluate(cur => document.getElementById('fxc-' + cur).click(), c);
+
   check('с кэшированным курсом строка видна и считает по курсу', async p => {
-    await p.evaluate(fx => {
-      localStorage.setItem('fxRates', fx);
-      localStorage.removeItem('assetsFxCur');
-      window.fetch = () => Promise.reject(new Error('offline'));
-      window.showPage('assets', document.getElementById('nav-assets'));
-    }, FX_CACHE);
-    eq(await isVisible(p, '#total-fx'), true, 'видимость строки валюты');
-    const t = await p.evaluate(() => document.getElementById('total-fx').textContent);
+    await openAssets(p, FX_CACHE);
+    eq(await isVisible(p, '#total-fx'), true, 'видимость блока валюты');
+    const t = await txt(p);
     // фикстура: 420000 + 310000 = 730000 ₽ / 83.355 = 8757.7 → 8 758 $
-    if (!/8[\s\u00a0]758/.test(t) || !/\$/.test(t)) throw new Error('текст строки: «' + t + '»');
+    if (!/8[\s ]758/.test(t) || !/\$/.test(t)) throw new Error('текст строки: «' + t + '»');
     if (!/83,36/.test(t) || !/21\.08/.test(t)) throw new Error('нет курса/даты в строке: «' + t + '»');
   });
-  check('тап переключает валюту по кругу и прячет', async p => {
-    const tap = () => p.evaluate(() => document.getElementById('total-fx').click());
-    const txt = () => p.evaluate(() => document.getElementById('total-fx').textContent);
-    await tap(); if (!/€/.test(await txt())) throw new Error('после 1 тапа не евро: «' + await txt() + '»');
-    await tap(); if (!/¥/.test(await txt())) throw new Error('после 2 тапов не юань: «' + await txt() + '»');
-    await tap(); eq(await isVisible(p, '#total-fx'), false, 'после 3 тапов строка скрыта');
-    // Скрытая строка недоступна для тапа — возвращаемся через сеттер
-    await p.evaluate(() => window.setAssetsFxCur('USD'));
-    if (!/\$/.test(await txt())) throw new Error('после возврата не доллар: «' + await txt() + '»');
-    eq(await p.evaluate(() => localStorage.getItem('assetsFxCur')), 'USD', 'выбор сохранён device-locally');
+
+  check('переключатель — четыре ячейки, выбранная подсвечена', async p => {
+    await openAssets(p, FX_CACHE);
+    const cells = await p.evaluate(() => [...document.querySelectorAll('#total-fx-seg > span')]
+      .map(s => s.textContent.trim()));
+    eq(cells.join(''), '₽$€¥', 'состав переключателя');
+    eq(await active(p), 'USD', 'подсвеченная валюта по умолчанию');
   });
-  check('без кэша и без сети строки нет', async p => {
-    await p.evaluate(() => {
-      localStorage.removeItem('fxRates');
-      window.fetch = () => Promise.reject(new Error('offline'));
-      window.renderAssets();
-    });
-    // renderAssets ждёт fetch асинхронно — даём обещанию отвергнуться
-    await new Promise(r => setTimeout(r, 100));
-    eq(await isVisible(p, '#total-fx'), false, 'видимость строки без курса');
+
+  check('выбор ₽ гасит пересчёт, но переключатель остаётся на экране', async p => {
+    await openAssets(p, FX_CACHE);
+    await tap(p, 'RUB');
+    eq(await txt(p), '', 'текст пересчёта после выбора ₽');
+    eq(await active(p), 'RUB', 'подсветка после выбора ₽');
+    eq(await isVisible(p, '#total-fx-seg'), true, 'переключатель виден в рублёвом режиме');
+    // Тупик прошлой версии: из скрытого состояния не было пути назад
+    await tap(p, 'USD');
+    if (!/\$/.test(await txt(p))) throw new Error('возврат к доллару не сработал: «' + await txt(p) + '»');
+  });
+
+  check('выбор валюты меняет и сумму, и подсветку, и переживает перерисовку', async p => {
+    await openAssets(p, FX_CACHE);
+    await tap(p, 'EUR');
+    // 730000 / 96.7335 = 7546.8 → 7 547 €
+    if (!/7[\s ]547/.test(await txt(p)) || !/€/.test(await txt(p)))
+      throw new Error('после выбора евро: «' + await txt(p) + '»');
+    eq(await active(p), 'EUR', 'подсветка после выбора евро');
+    eq(await p.evaluate(() => localStorage.getItem('assetsFxCur')), 'EUR', 'выбор сохранён device-locally');
+    await p.evaluate(() => window.renderAssets());
+    eq(await active(p), 'EUR', 'подсветка после перерисовки вкладки');
+  });
+
+  check('без курса переключатель на месте, вместо суммы — «курс недоступен»', async p => {
+    await openAssets(p, null);
+    await new Promise(r => setTimeout(r, 100)); // даём отвергнуться обещанию fetch
+    eq(await isVisible(p, '#total-fx-seg'), true, 'переключатель без курса');
+    if (!/недоступен/.test(await txt(p))) throw new Error('текст без курса: «' + await txt(p) + '»');
+    // Рублёвый режим ничего не пересчитывает — жаловаться не на что
+    await tap(p, 'RUB');
+    eq(await txt(p), '', 'текст в рублёвом режиме без курса');
   });
 });
 

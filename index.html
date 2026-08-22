@@ -264,7 +264,7 @@ if ('serviceWorker' in navigator) {
   <div class="hdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit">⚠ <span id="assets-audit-badge-n"></span></button></div>
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
-  <div id="total-fx" onclick="cycleAssetsFxCur()" title="Тап — сменить валюту" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px;cursor:pointer;user-select:none"></div>
+  <div id="total-fx" style="display:none;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px"><span id="total-fx-txt"></span><span id="total-fx-seg" style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none"><span id="fxc-RUB" onclick="setAssetsFxCur('RUB')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">₽</span><span id="fxc-USD" onclick="setAssetsFxCur('USD')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">$</span><span id="fxc-EUR" onclick="setAssetsFxCur('EUR')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">€</span><span id="fxc-CNY" onclick="setAssetsFxCur('CNY')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">¥</span></span></div>
   <div id="assets-charts">
   <div class="chart-wrap">
     <div class="chart-card">
@@ -1252,7 +1252,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.57.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.58.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4636,23 +4636,20 @@ function _fxCached(){
   try { const v = JSON.parse(localStorage.getItem('fxRates') || 'null'); return v && v.rates ? v : null; }
   catch(e){ return null; }
 }
-// Валюта строки: localStorage.assetsFxCur — 'USD'|'EUR'|'CNY'; '' = скрыта; нет ключа = USD
+// Валюта строки: localStorage.assetsFxCur — 'USD'|'EUR'|'CNY'; всё прочее
+// (включая 'RUB' из ячейки ₽) = пересчёта нет; нет ключа = USD.
 function _assetsFxCur(){
   const v = localStorage.getItem('assetsFxCur');
   if(v === null) return 'USD';
   return FX_CURS.includes(v) ? v : '';
 }
+// До v1.58.0 валюта переключалась тапом по самой строке по кругу
+// USD → EUR → CNY → скрыть. «Скрыть» оказалось тупиком: строки больше нет,
+// тапать не по чему, в настройках переключателя не было. Теперь выбор делает
+// видимый сегмент-контрол ₽ $ € ¥, где ₽ — обычное состояние, а не выход.
 function setAssetsFxCur(cur){
-  localStorage.setItem('assetsFxCur', FX_CURS.includes(cur) ? cur : '');
+  localStorage.setItem('assetsFxCur', FX_CURS.includes(cur) ? cur : 'RUB');
   _renderFxTotal();
-}
-// Тап по строке: USD → EUR → CNY → скрыть; вернуть — через настройки нельзя,
-// поэтому скрытое состояние не терминальное: следующий цикл начнётся с USD
-// при очистке ключа (setAssetsFxCur('USD') из кода/тестов).
-function cycleAssetsFxCur(){
-  const cur = _assetsFxCur();
-  const i = FX_CURS.indexOf(cur);
-  setAssetsFxCur(i < 0 ? 'USD' : (i === FX_CURS.length - 1 ? '' : FX_CURS[i + 1]));
 }
 // Курс не старше суток — берём кэш; иначе один запрос, результат в кэш.
 // Ошибка сети — оставляем старый кэш (или null), без тостов: строка просто
@@ -4679,21 +4676,27 @@ function _renderFxTotal(totalRub){
   if(typeof totalRub === 'number') _fxTotalRub = totalRub;
   const el = document.getElementById('total-fx');
   if(!el) return;
+  // Нет активов — пересчитывать нечего, прячем и переключатель.
+  if(!(_fxTotalRub > 0)){ el.style.display = 'none'; return; }
+  el.style.display = 'flex';
   const cur = _assetsFxCur();
+  _segActive(['RUB', ...FX_CURS].map(c => ['fxc-' + c, c === (cur || 'RUB')]));
+  const out = document.getElementById('total-fx-txt');
   const draw = fx => {
-    if(!cur || !fx || !fx.rates[cur] || !(_fxTotalRub > 0)){ el.style.display = 'none'; return; }
+    if(!cur){ out.textContent = ''; return; }
+    // Курса нет вовсе (первый запуск без сети) — говорим об этом, а не молчим:
+    // иначе выбранная валюта выглядит как сломанный переключатель.
+    if(!fx || !fx.rates[cur]){ out.textContent = 'курс недоступен'; return; }
     const rate = fx.rates[cur];
     const val = Math.round(_fxTotalRub / rate);
     const d = fx.date || '';
     const dd = d.length >= 10 ? d.slice(8,10) + '.' + d.slice(5,7) : '';
-    el.innerHTML = '≈ <span class="prv">' + val.toLocaleString('ru-RU') + ' ' + FX_SIGN[cur] + '</span>'
+    out.innerHTML = '≈ <span class="prv">' + val.toLocaleString('ru-RU') + ' ' + FX_SIGN[cur] + '</span>'
       + ' <span style="opacity:.75">· курс ЦБ ' + rate.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + (dd ? ' на ' + dd : '') + '</span>';
-    el.style.display = 'block';
   };
-  if(!cur){ el.style.display = 'none'; return; }
   const c = _fxCached();
-  if(c) draw(c); else el.style.display = 'none';
-  _fxRates().then(fx => { if(fx && fx !== c) draw(fx); });
+  draw(c);
+  _fxRates().then(fx => { if(fx !== c) draw(fx); });
 }
 
 function renderAssets(){

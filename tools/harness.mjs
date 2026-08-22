@@ -100,15 +100,6 @@ export const FIXTURE = {
 };
 
 /**
- * Кэш курсов ЦБ для тестов. Кладётся в localStorage.fxRates свежим (fetchedAt
- * ставится в браузере), поэтому _fxRates() отдаёт его без сети: иначе проверки
- * валютной строки зависели бы от доступности cbr-xml-daily.ru и от того,
- * какой сегодня курс. Круглые числа выбраны, чтобы ожидаемые суммы считались
- * в уме: 730 000 ₽ активов фикстуры = 9 125 $ = 8 111 € = 66 364 ¥.
- */
-export const FX_FIXTURE = { date: '2026-08-22', rates: { USD: 80, EUR: 90, CNY: 11 } };
-
-/**
  * Поднимает сервер и браузер, отдаёт страницу в колбэк, всё закрывает.
  * fn(page, { width, index }) вызывается для КАЖДОГО элемента widths —
  * повторы не схлопываются, каждый получает свежую страницу. Так вызывающий
@@ -135,13 +126,12 @@ export async function withPage(widths, fn) {
       await page.emulateMediaFeatures([
         { name: 'prefers-reduced-motion', value: 'no-preference' },
       ]);
-      await page.evaluateOnNewDocument((fx, fxr) => {
+      await page.evaluateOnNewDocument(fx => {
         localStorage.setItem('budgetDB_v2', JSON.stringify(fx));
-        localStorage.setItem('fxRates', JSON.stringify({ ...fxr, fetchedAt: Date.now() }));
         // SW перезагружает страницу по controllerchange — в тестах это помеха.
         // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.
         Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined });
-      }, FIXTURE, FX_FIXTURE);
+      }, FIXTURE);
       await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
       await page.evaluate(() => document.fonts.ready);
       await fn(page, { width, index });
