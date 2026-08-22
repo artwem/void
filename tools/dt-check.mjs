@@ -561,7 +561,10 @@ suite(390, 'на телефоне знака в интерфейсе нет', ()
   check('ни в навбаре, ни в шапке «Бюджета»', async p => {
     eq(await isVisible(p, '.nav-brand'), false, 'знак в мобильном навбаре');
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
-    eq(await p.evaluate(() => !!document.querySelector('#page-budget svg')), false, 'знак в шапке «Бюджета»');
+    // Знак = залитый диск плюс две дуги, единственный <circle> в разметке.
+    // Раньше здесь стояло «любой svg на вкладке», но с v1.58.1 в интерфейсе
+    // появились значки-иконки (карандаш «Лимиты»), и прокси стал ловить их.
+    eq(await p.evaluate(() => !!document.querySelector('#page-budget svg circle')), false, 'знак в шапке «Бюджета»');
   });
 });
 
@@ -666,6 +669,106 @@ suite(390, 'лимиты: подтверждение и отмена', () => {
     if (!got.hadBtn) throw new Error('после сохранения лимитов нет кнопки «Отменить»');
     if (got.before === got.after) throw new Error('подстановка не изменила лимиты — проверка вакуумна');
     eq(got.undone, got.before, 'лимиты после отмены');
+  });
+});
+
+// ✕ ✓ ✎ ⚠ ↻ в Golos Text отсутствуют: как текст они уезжали в системный
+// шрифт — чужое начертание рядом со своим, а ⚠ на iOS ещё и цветная эмодзи
+// вместо значка по теме. Заменены на спрайт <symbol> + <use>: цвет берётся
+// из currentColor, размер — из font-size, от гарнитуры больше не зависят.
+suite(390, 'значки интерфейса — иконки, а не символы шрифта', () => {
+  const GLYPHS = '✕✓✎⚠↻';
+
+  check('спрайт объявлен и содержит все пять знаков', async p => {
+    const ids = await p.evaluate(() =>
+      [...document.querySelectorAll('#ico-sprite symbol')].map(s => s.id).sort().join(','));
+    eq(ids, 'i-check,i-close,i-edit,i-refresh,i-warn', 'символы спрайта');
+    // Спрайт обязан стоять раньше первой ссылки, иначе Safari рисует пустоту
+    const ok = await p.evaluate(() => {
+      const sp = document.getElementById('ico-sprite');
+      const first = document.querySelector('use');
+      return !!sp && !!first && (sp.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    eq(ok, true, 'спрайт стоит до первого <use>');
+  });
+
+  check('крестик каждой модалки — иконка, шрифтового знака не осталось', async p => {
+    const got = await p.evaluate(() => {
+      const btns = [...document.querySelectorAll('.close-btn')];
+      return {
+        n: btns.length,
+        withIcon: btns.filter(b => b.querySelector('use[href="#i-close"]')).length,
+        withGlyph: btns.filter(b => b.textContent.includes('✕')).length,
+      };
+    });
+    if (got.n < 20) throw new Error('модалок с крестиком всего ' + got.n + ' — проверка не о том');
+    eq(got.withIcon, got.n, 'кнопок с иконкой из ' + got.n);
+    eq(got.withGlyph, 0, 'кнопок, где остался символ ✕');
+  });
+
+  check('иконка красится темой, а не своим цветом', async p => {
+    const got = await p.evaluate(() => {
+      const b = document.querySelector('.close-btn');
+      const svg = b.querySelector('svg.ico');
+      return { stroke: getComputedStyle(svg).stroke, color: getComputedStyle(b).color,
+               fill: getComputedStyle(svg).fill };
+    });
+    eq(got.stroke, got.color, 'обводка иконки против цвета кнопки');
+    eq(got.fill, 'none', 'заливка иконки');
+  });
+
+  check('карандаш правки и значок аудита тоже иконки', async p => {
+    const got = await p.evaluate(() => {
+      window.showPage('day', document.getElementById('nav-day'));
+      // Сегодня трат может не быть — открываем день с записью через тот же
+      // путь, что и календарь: currentDay объявлен через let и в window не живёт.
+      window.onDayCalChange(DB.expenses.find(e => !e._deleted).date);
+      const pencil = document.querySelector('#entry-list .entry-del');
+      window.showPage('assets', document.getElementById('nav-assets'));
+      const badge = document.getElementById('assets-audit-badge');
+      return {
+        pencil: pencil ? !!pencil.querySelector('use[href="#i-edit"]') : 'кнопки правки нет',
+        pencilGlyph: pencil ? pencil.textContent.includes('✎') : false,
+        badge: !!badge.querySelector('use[href="#i-warn"]'),
+        badgeGlyph: badge.textContent.includes('⚠'),
+      };
+    });
+    eq(got.pencil, true, 'карандаш в списке трат — иконка');
+    eq(got.pencilGlyph, false, 'символ ✎ остался в кнопке правки');
+    eq(got.badge, true, 'значок аудита — иконка');
+    eq(got.badgeGlyph, false, 'символ ⚠ остался в значке аудита');
+  });
+
+  check('подстановки значков раскрыты, а не выведены текстом', async p => {
+    // ICO.* подставляется и в шаблонные литералы (${ICO.check}), и в склейку
+    // строк ('+ICO.check+'). Перепутать легко: ${…} внутри одинарных кавычек
+    // молча печатается как есть, и ошибку видно только глазами на нужной ветке.
+    const dirty = [];
+    for (const pg of ['day', 'budget', 'income', 'stats', 'assets', 'settings']) {
+      const bad = await p.evaluate(n => {
+        window.showPage(n, document.getElementById('nav-' + n));
+        // Только контейнер вкладки: в body.innerHTML попадает и весь инлайновый
+        // <script>, где эти строки лежат в исходном виде — проверка бы всегда врала.
+        const h = document.getElementById('page-' + n).innerHTML;
+        // Только сырая подстановка: «undefined» в разметке встречается
+        // законно в чужих местах и к значкам отношения не имеет.
+        return h.includes('${ICO.') || h.includes('[object') ? n : null;
+      }, pg);
+      if (bad) dirty.push(bad);
+    }
+    if (dirty.length) throw new Error('сырая подстановка на вкладках: ' + dirty.join(', '));
+  });
+
+  check('в кнопках интерфейса не осталось шрифтовых значков', async p => {
+    const left = await p.evaluate(g => {
+      const out = [];
+      document.querySelectorAll('button, .sec-action').forEach(el => {
+        const own = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+        for (const ch of g) if (own.includes(ch)) out.push(ch + ' @ ' + (el.className || el.id || el.tagName));
+      });
+      return out;
+    }, GLYPHS);
+    if (left.length) throw new Error('осталось ' + left.length + ': ' + left.slice(0, 4).join('; '));
   });
 });
 

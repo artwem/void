@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.57.1">
+<link rel="stylesheet" href="css/app.css?v=1.59.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -54,6 +54,19 @@ if ('serviceWorker' in navigator) {
 </script>
 </head>
 <body>
+
+<!-- Спрайт значков. ✕ ✓ ✎ ⚠ ↻ в Golos Text отсутствуют: как текст они
+     уезжали в системный шрифт — чужое начертание рядом со своим, а ⚠ на iOS
+     приходил цветной эмодзи мимо темы. Обводка и толщина наследуются от
+     .ico через currentColor, поэтому у самих фигур атрибутов нет. Спрайт
+     обязан стоять до первой ссылки <use>. -->
+<svg id="ico-sprite" width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<symbol id="i-close" viewBox="0 0 22 22"><path d="M6.5 6.5l9 9M15.5 6.5l-9 9"/></symbol>
+<symbol id="i-check" viewBox="0 0 22 22"><path d="M4.5 11.6l4.6 4.6L17.5 5.8"/></symbol>
+<symbol id="i-edit" viewBox="0 0 22 22"><path d="M4 18l.9-3.4L14.3 5.2a1.75 1.75 0 012.5 2.5L7.4 17.1 4 18z"/><path d="M12.8 6.7l2.5 2.5"/></symbol>
+<symbol id="i-warn" viewBox="0 0 22 22"><path d="M11 4.2l7.6 13.1H3.4z"/><path d="M11 9.3v3.6"/><path d="M11 15.5h.01"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 22 22"><path d="M18.2 11a7.2 7.2 0 11-2.6-5.6"/><path d="M18.4 3.2v3.4H15"/></symbol>
+</defs></svg>
 
 <!-- ═══════════════════════════════════════════════════════════════
      PAGES  (one <div id="page-*"> per tab)
@@ -85,7 +98,7 @@ if ('serviceWorker' in navigator) {
   <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
     <span class="sec-title">Категории</span>
-    <span class="sec-action" onclick="openLimitEditor()">Лимиты ✎</span>
+    <span class="sec-action" onclick="openLimitEditor()">Лимиты <svg class="ico"><use href="#i-edit"/></svg></span>
   </div>
   <div class="cat-list" id="cat-list"></div>
   <div class="page-end"></div>
@@ -112,7 +125,7 @@ if ('serviceWorker' in navigator) {
   <div style="display:flex;gap:8px;padding:0 16px 6px;align-items:center">
     <select id="qa-cat" style="flex:1;min-width:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"></select>
     <input id="qa-amount" type="text" inputmode="decimal" placeholder="0 ₽" style="width:110px;flex-shrink:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-weight:600;text-align:right;font-family:inherit" oninput="formatMoneyInput(this)" onfocus="document.getElementById('qa-comment-row').style.display='block'"/>
-    <button onclick="quickAddSave(this)" aria-label="Добавить расход" style="width:44px;height:44px;flex-shrink:0;border:none;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:20px;cursor:pointer;font-family:inherit">✓</button>
+    <button onclick="quickAddSave(this)" aria-label="Добавить расход" style="width:44px;height:44px;flex-shrink:0;border:none;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:20px;cursor:pointer;font-family:inherit"><svg class="ico"><use href="#i-check"/></svg></button>
   </div>
   <div id="qa-comment-row" style="display:none;padding:0 16px 8px">
     <input id="qa-comment" type="text" placeholder="Комментарий (необязательно)" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"/>
@@ -261,7 +274,7 @@ if ('serviceWorker' in navigator) {
 
 <!-- PAGE: ASSETS -->
 <div id="page-assets" class="page">
-  <div class="hdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit">⚠ <span id="assets-audit-badge-n"></span></button></div>
+  <div class="hdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit"><svg class="ico"><use href="#i-warn"/></svg> <span id="assets-audit-badge-n"></span></button></div>
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div id="total-fx" style="display:none;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px"><span id="total-fx-txt"></span><span id="total-fx-seg" style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none"><span id="fxc-RUB" onclick="setAssetsFxCur('RUB')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">₽</span><span id="fxc-USD" onclick="setAssetsFxCur('USD')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">$</span><span id="fxc-EUR" onclick="setAssetsFxCur('EUR')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">€</span><span id="fxc-CNY" onclick="setAssetsFxCur('CNY')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">¥</span></span></div>
@@ -520,11 +533,11 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div class="setting-row" id="sync-pull-row" onclick="pullFromSheets()" style="display:none">
-      <span class="setting-label">⬇ Загрузить из Drive</span>
+      <span class="setting-label">↓ Загрузить из Drive</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-push-row" onclick="pushToSheets()" style="display:none">
-      <span class="setting-label">⬆ Сохранить в Drive</span>
+      <span class="setting-label">↑ Сохранить в Drive</span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -655,7 +668,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: ADD/EDIT INCOME -->
 <div class="overlay" data-dt="insp" id="modal-income">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-income')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-income')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="income-modal-title">Добавить доход</h2>
     <div class="fgrp"><label class="flbl">Источник</label><input type="text" id="inc-source" placeholder="Зарплата, Аванс, Кешбек…"/></div>
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="inc-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
@@ -673,7 +686,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: ADD/EDIT EXPENSE -->
 <div class="overlay" data-dt="insp" id="modal-expense">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-expense')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-expense')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="expense-modal-title">Добавить расход</h2>
     <div class="fgrp">
       <label class="flbl">Категория</label>
@@ -699,7 +712,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: ADD/EDIT TEMPLATE -->
 <div class="overlay" data-dt="insp" id="modal-template">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-template')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-template')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="template-modal-title">Новый шаблон</h2>
     <div class="fgrp"><label class="flbl">Название</label><input type="text" id="tmpl-name" placeholder="Метро, Кофе…"/></div>
     <div class="fgrp"><label class="flbl">Категория</label><select id="tmpl-cat"></select></div>
@@ -723,7 +736,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: CATEGORY EXPENSES LIST -->
 <div class="overlay" data-dt="insp" id="modal-cat-expenses">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-cat-expenses')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-cat-expenses')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="cat-exp-title">Расходы</h2>
     <div id="cat-exp-list"></div>
     <div class="btn-row" style="margin-top:12px">
@@ -735,7 +748,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: LIMIT EDITOR -->
 <div class="overlay" data-dt="dialog" id="modal-limits">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-limits')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-limits')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Лимиты</h2>
     <div class="fgrp"><label class="flbl">Месяц</label><select id="limit-month-sel" onchange="loadLimitEditor()"></select></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -760,7 +773,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: GOAL -->
 <div class="overlay" data-dt="insp" id="modal-goal">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-goal')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-goal')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="goal-modal-title" style="margin-bottom:16px">Новая цель</h2>
     <div class="fgrp">
       <label class="flbl">Название</label>
@@ -791,7 +804,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-goal-topup">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-goal-topup')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-goal-topup')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 style="margin-bottom:4px">Пополнить цель</h2>
     <div id="goal-topup-name" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
     <div class="fgrp">
@@ -805,7 +818,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: DEPOSIT -->
 <div class="overlay" data-dt="insp" id="modal-deposit">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-deposit')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-deposit')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="deposit-modal-title" style="margin-bottom:16px">Новый вклад</h2>
     <div class="fgrp">
       <label class="flbl">Название / банк</label>
@@ -873,7 +886,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-dep-contrib">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-dep-contrib')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-dep-contrib')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Пополнить вклад</h2>
     <p id="dep-contrib-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp">
@@ -898,7 +911,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-investment">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-investment')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-investment')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="invest-modal-title" style="margin-bottom:16px">Новый счёт</h2>
     <div class="fgrp">
       <label class="flbl">Название</label>
@@ -936,7 +949,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-inv-snap">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-inv-snap')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-inv-snap')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Обновить стоимость</h2>
     <p id="inv-snap-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp">
@@ -956,7 +969,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-inv-contrib">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-inv-contrib')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-inv-contrib')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="inv-contrib-title">Пополнить счёт</h2>
     <p id="inv-contrib-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp">
@@ -981,7 +994,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="dialog" id="modal-data-audit">
   <div class="sheet" style="max-height:85vh;overflow-y:auto">
-    <button class="close-btn" onclick="closeModal('modal-data-audit')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-data-audit')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 style="margin-bottom:12px">Проверка данных</h2>
     <div id="data-audit-body" style="font-size:13px"></div>
   </div>
@@ -989,7 +1002,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="overlay" data-dt="insp" id="modal-close-deposit">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-close-deposit')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-close-deposit')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Закрыть вклад</h2>
     <p id="close-dep-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp" id="close-dep-tag-grp"><label class="flbl">Тег дохода (проценты)</label><select id="close-dep-tag" class="finp"></select></div>
@@ -1003,7 +1016,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: EDIT ASSET DATE -->
 <div class="overlay" data-dt="dialog" id="modal-asset-edit">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-asset-edit')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-asset-edit')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="asset-edit-title">Редактировать</h2>
     <div class="fgrp"><label class="flbl">Дата снимка</label><input type="date" id="asset-edit-date" class="finp" onchange="if(this.value) openEditAssetDate(this.value, true)"></div>
     <div id="asset-edit-note" style="display:none;font-size:12px;color:var(--muted);background:var(--hint-bg,rgba(128,128,128,.1));padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px">↻ Значения перенесены с прошлой даты — проверьте и поправьте, где изменилось. Пустое поле = записи не будет (история продолжит показывать старое значение). Обнулить счёт — введите 0 или кнопка «0».</div>
@@ -1019,7 +1032,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: BANK MANAGER -->
 <div class="overlay" data-dt="dialog" id="modal-banks">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-banks')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-banks')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Банки</h2>
     <div id="bank-manager-list"></div>
     <div class="fgrp" style="margin-top:12px">
@@ -1041,7 +1054,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: CAT MANAGER -->
 <div class="overlay" data-dt="dialog" id="modal-cats">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-cats')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-cats')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Категории расходов</h2>
     <div id="cat-manager-list"></div>
     <div id="cat-group-summary" style="display:none;padding:0 2px"></div>
@@ -1059,7 +1072,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: TEMPLATES MANAGER -->
 <div class="overlay" data-dt="dialog" id="modal-templates">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-templates')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-templates')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Шаблоны трат</h2>
     <div id="templates-settings-list"></div>
     <div class="btn-row" style="margin-top:8px">
@@ -1072,7 +1085,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: INCOME TAGS MANAGER -->
 <div class="overlay" data-dt="dialog" id="modal-income-tags">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-income-tags')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-income-tags')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Теги доходов</h2>
     <div class="fgrp" style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:8px">
       <label class="flbl" style="margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Порядок списания <span style="cursor:pointer;color:var(--muted)" onclick="toast('Сверху вниз = порядок; без тега — первым')">ⓘ</span></label>
@@ -1093,7 +1106,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: DELETE INCOME TAG — REASSIGN AFFECTED INCOMES -->
 <div class="overlay" data-dt="confirm" id="modal-delete-income-tag">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-delete-income-tag')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-delete-income-tag')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="del-inc-tag-title">Удалить тег</h2>
     <div class="fgrp">
       <label class="setting-row" style="cursor:pointer;gap:8px;margin-bottom:6px">
@@ -1121,7 +1134,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: SCRIPT VIEWER -->
 <div class="overlay" data-dt="dialog" id="modal-script">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-script')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-script')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Apps Script</h2>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.5">Нажмите «Скопировать» или выделите весь текст вручную (Ctrl+A)</p>
     <textarea id="script-code-ta" readonly style="width:100%;height:200px;font-family:monospace;font-size:11px;resize:none;padding:10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--bg);color:var(--text);line-height:1.5"></textarea>
@@ -1135,7 +1148,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: SYNC CHOICE -->
 <div class="overlay" data-dt="dialog" id="modal-sync-choice">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-sync-choice')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-sync-choice')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 style="margin-bottom:6px">Синхронизация</h2>
     <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5">Выберите направление синхронизации с Google Drive</p>
 
@@ -1145,7 +1158,7 @@ if ('serviceWorker' in navigator) {
       cursor:pointer;text-align:left;margin-bottom:10px;
       display:flex;align-items:center;gap:14px;font-family:inherit;
       transition:background .12s;-webkit-tap-highlight-color:transparent">
-      <span style="font-size:24px;flex-shrink:0">⬇</span>
+      <span style="font-size:24px;flex-shrink:0">↓</span>
       <span>
         <div style="font-size:15px;font-weight:600;color:var(--text)">Загрузить из Drive</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Данные из Google Drive → приложение</div>
@@ -1158,7 +1171,7 @@ if ('serviceWorker' in navigator) {
       cursor:pointer;text-align:left;margin-bottom:4px;
       display:flex;align-items:center;gap:14px;font-family:inherit;
       transition:background .12s;-webkit-tap-highlight-color:transparent">
-      <span style="font-size:24px;flex-shrink:0">⬆</span>
+      <span style="font-size:24px;flex-shrink:0">↑</span>
       <span>
         <div style="font-size:15px;font-weight:600;color:var(--text)">Сохранить в Drive</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Данные из приложения → Google Drive</div>
@@ -1175,7 +1188,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: SYNC SETTINGS -->
 <div class="overlay" data-dt="dialog" id="modal-sync">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-sync')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-sync')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Google Drive</h2>
     <div class="fgrp">
       <label class="flbl">URL веб-приложения Apps Script</label>
@@ -1200,20 +1213,20 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: GRACE -->
 <div class="overlay" data-dt="insp" id="modal-grace">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-grace')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-grace')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 style="margin-bottom:16px">Грейс-период</h2>
     <div class="fgrp"><label class="flbl">Кредитка</label><select id="grace-bank" class="finp" onchange="if(!_editGraceId)graceFillFromBank()"></select></div>
     <div class="fgrp"><label class="flbl">Погасить до</label><input type="date" id="grace-end" class="finp"></div>
     <div class="fgrp"><label class="flbl" style="display:flex;justify-content:space-between;align-items:baseline">Сумма к погашению, ₽<span onclick="graceFillFromBank()" style="font-size:12px;color:var(--blue);cursor:pointer;text-transform:none;letter-spacing:0">↙ остаток банка</span></label><input type="text" id="grace-amount" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this)"></div>
     <button class="btn primary" onclick="saveGrace()" style="width:100%;margin-top:8px">Сохранить</button>
-    <button class="btn" id="grace-payoff-btn" onclick="payoffGrace()" style="width:100%;margin-top:8px;display:none;color:var(--green)">✓ Погашено</button>
+    <button class="btn" id="grace-payoff-btn" onclick="payoffGrace()" style="width:100%;margin-top:8px;display:none;color:var(--green)"><svg class="ico"><use href="#i-check"/></svg> Погашено</button>
   </div>
 </div>
 
 <!-- MODAL: SPLIT (создание) -->
 <div class="overlay" data-dt="insp" id="modal-split">
   <div class="sheet" style="max-height:85vh;overflow-y:auto">
-    <button class="close-btn" onclick="closeModal('modal-split')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-split')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="split-modal-title" style="margin-bottom:16px">Новый сплит</h2>
     <div class="fgrp"><label class="flbl">Название</label><input type="text" id="split-name" class="finp" placeholder="Яндекс Сплит — куртка"></div>
     <div class="fgrp"><label class="flbl">Общая сумма, ₽</label><input type="text" id="split-total" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this);_splitRegen()"></div>
@@ -1234,7 +1247,7 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: SPLIT (просмотр/оплата) -->
 <div class="overlay" data-dt="insp" id="modal-split-view">
   <div class="sheet" style="max-height:85vh;overflow-y:auto">
-    <button class="close-btn" onclick="closeModal('modal-split-view')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-split-view')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 id="split-view-title" style="margin-bottom:4px">Сплит</h2>
     <div id="split-view-sub" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
     <div id="split-view-list"></div>
@@ -1246,13 +1259,13 @@ if ('serviceWorker' in navigator) {
 <!-- MODAL: ABOUT -->
 <div class="overlay" data-dt="dialog" id="modal-about">
   <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-about')">✕</button>
+    <button class="close-btn" onclick="closeModal('modal-about')"><svg class="ico"><use href="#i-close"/></svg></button>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <svg viewBox="0 0 100 100" width="44" height="44" style="flex-shrink:0;cursor:pointer" onclick="_aboutIconTap()"><circle cx="50" cy="50" r="22" fill="currentColor"/><path d="M54.0 12.2A38 38 0 1 1 19.3 72.3" fill="none" stroke="currentColor" stroke-width="13"/><path d="M14.3 63.0A38 38 0 0 1 43.4 12.6" fill="none" stroke="currentColor" stroke-width="13"/></svg>
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.58.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.59.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1276,7 +1289,7 @@ if ('serviceWorker' in navigator) {
       <li>Цвета категорий</li>
       <li>URL синхронизации</li>
     </ul>
-    <p style="font-size:12px;color:var(--red);margin-bottom:16px">⚠ Данные на Google Drive не затрагиваются. Действие нельзя отменить.</p>
+    <p style="font-size:12px;color:var(--red);margin-bottom:16px"><svg class="ico"><use href="#i-warn"/></svg> Данные на Google Drive не затрагиваются. Действие нельзя отменить.</p>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-confirm-clear')">Отмена</button>
       <button class="btn danger" onclick="doClearData()">Очистить всё</button>
@@ -1510,6 +1523,15 @@ function readSyncUrlFromCookie(){
 // ─── HELPERS ────────────────────────────────────────────────────────
 function monthKey(y,m){return y+'-'+String(m+1).padStart(2,'0')}
 function fmt(n){return Math.round(n).toLocaleString('ru-RU')+'₽'}
+// Значки для разметки, собираемой в JS, — те же ссылки на спрайт #ico-sprite,
+// что и в статическом HTML. Строки, а не DOM: почти вся разметка тут innerHTML.
+const ICO = {
+  close:   '<svg class="ico"><use href="#i-close"/></svg>',
+  check:   '<svg class="ico"><use href="#i-check"/></svg>',
+  edit:    '<svg class="ico"><use href="#i-edit"/></svg>',
+  warn:    '<svg class="ico"><use href="#i-warn"/></svg>',
+  refresh: '<svg class="ico"><use href="#i-refresh"/></svg>',
+};
 function fmtH(n){return `<span class="prv">${fmt(n)}</span>`;}
 
 function parseMoney(str){
@@ -1973,7 +1995,7 @@ function renderBudget(){
       const parts = [
         '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
         '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' +
-          (ok ? '✓ ' : '⚠ ') + fmtH(Math.abs(dailyAllowance)) + '/день' +
+          (ok ? ICO.check + ' ' : ICO.warn + ' ') + fmtH(Math.abs(dailyAllowance)) + '/день' +
         '</span>',
       ];
       if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
@@ -2388,7 +2410,7 @@ function renderDay(){
             <div class="entry-note">${e.comment ? esc(e.comment) : '<span style="color:var(--muted);font-style:italic">—</span>'}</div>
           </div>
           <div class="entry-amount">${fmtH(e.amount)}</div>
-          <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+          <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
         `;
         _makeSwipeable(row, ()=>deleteExpenseById(e.id));
         list.appendChild(row);
@@ -2405,7 +2427,7 @@ function renderDay(){
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
-        <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+        <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
       `;
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
@@ -2431,7 +2453,7 @@ function renderDay(){
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
-        <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+        <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
       `;
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
@@ -2761,7 +2783,7 @@ function renderIncome(){
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
-      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
+      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
   });
@@ -2820,7 +2842,7 @@ function renderIncomeSearch(query){
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
-      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)">✎</button>
+      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
   });
@@ -3644,7 +3666,7 @@ function renderExpenseSearch(){
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmtH(e.amount)}</div>
-      <button class="entry-del" onclick="editExpense('${e.id}',event)">✎</button>
+      <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     _makeSwipeable(row, ()=>deleteExpenseById(e.id));
     list.appendChild(row);
@@ -4484,7 +4506,7 @@ function renderCredits(){
     row.addEventListener('click', () => openSplitView(c.id));
     const sub = next
       ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">оплачено ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
-      : `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ всё оплачено — можно закрыть</div>`;
+      : `<div style="font-size:11px;color:var(--green);margin-top:2px">${ICO.check} всё оплачено — можно закрыть</div>`;
     row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span class="tag tag-grey">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
     wrap.appendChild(row);
   });
@@ -4578,7 +4600,7 @@ function renderAssetsHistory(rows, showAll){
       btn.textContent = 'Показать все ' + rows.length + ' записей';
       btn.onclick = () => renderAssetsHistory(_assetsHistoryRows, true);
     } else {
-      btn.textContent = 'Скрыть ▲';
+      btn.textContent = 'Скрыть ↑';
       btn.onclick = () => renderAssetsHistory(_assetsHistoryRows, false);
     }
     td.appendChild(btn);
@@ -4781,7 +4803,7 @@ function renderAssets(){
     let freshLine;
     if(hasData){
       const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(data.date+'T12:00:00'))/86400000);
-      if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${ageDays} дн. без обновления</div>`;
+      if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">${ICO.warn} ${ageDays} дн. без обновления</div>`;
       else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:#c98a1b;margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
       else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`;
     } else {
@@ -4828,7 +4850,7 @@ function renderAssets(){
       namePart.style.cssText = 'flex:1;min-width:0';
       const depBadge = ' <span class="tag tag-blue">вклад</span>';
       const subLine = closed
-        ? `<div style="font-size:11px;color:var(--green);margin-top:2px">✓ срок вышел ${_fmtDateRu(d.endDate)}</div>`
+        ? `<div style="font-size:11px;color:var(--green);margin-top:2px">${ICO.check} срок вышел ${_fmtDateRu(d.endDate)}</div>`
         : `<div style="font-size:11px;color:var(--muted);margin-top:2px">до ${_fmtDateRu(d.endDate)} · ${d.rate}%</div>`;
       namePart.innerHTML = `<div class="asset-name">${esc(d.name)}${depBadge}</div>` + subLine;
       const amtSpan = document.createElement('span');
@@ -4870,7 +4892,7 @@ function renderAssets(){
     if(_showZeroBanks) zeroBanks.forEach(name => list.appendChild(_buildBankRow(name)));
     const tglRow = document.createElement('div');
     tglRow.style.cssText = 'padding:8px 0;text-align:center;font-size:12px;color:var(--muted);cursor:pointer;user-select:none';
-    tglRow.textContent = _showZeroBanks ? 'Скрыть нулевые ▲' : 'Показать нулевые счета ('+zeroBanks.length+') ▼';
+    tglRow.textContent = _showZeroBanks ? 'Скрыть нулевые ↑' : 'Показать нулевые счета ('+zeroBanks.length+') ↓';
     tglRow.addEventListener('click', ()=>{ _showZeroBanks = !_showZeroBanks; renderAssets(); });
     list.appendChild(tglRow);
   }
@@ -4995,7 +5017,7 @@ function renderGoals(){
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:13px;font-weight:600;color:${color}">${fmtH(g.saved)}</span>
-          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">✓ Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmtH(g.target)} · ${pct}%</span>`}
+          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">'+ICO.check+' Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmtH(g.target)} · ${pct}%</span>`}
         </div>
         ${paceLine?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${paceLine}</div>`:''}
       </div>
@@ -5368,7 +5390,7 @@ function renderInvestments(){
       </div>
       <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot('${esc(v.id)}')">↻ Обновить</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot('${esc(v.id)}')"><svg class="ico"><use href="#i-refresh"/></svg> Обновить</button>
         <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',1)">+ Пополнить</button>
         <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',-1)">− Вывести</button>
       </div>
@@ -5455,7 +5477,7 @@ function _renderInvSnapsList(v){
   grp.style.display = snaps.length ? '' : 'none';
   list.innerHTML = snaps.slice().reverse().map(ds=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(ds)}</span>
-    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot('${esc(v.id)}','${ds}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot('${esc(v.id)}','${ds}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -5478,7 +5500,7 @@ function _renderInvContribsList(v){
   grp.style.display = cs.length ? '' : 'none';
   list.innerHTML = cs.slice().reverse().map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
-    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution('${esc(v.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution('${esc(v.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -5607,10 +5629,10 @@ function renderDeposits(){
       </div>
       ${contribSum>0?`<div style="font-size:11px;color:var(--muted);margin-top:2px">тело ${fmtH(d.amount)} + пополнения ${fmtH(contribSum)}</div>`:''}
       <div style="font-size:11px;color:var(--muted);margin-top:3px">${closed
-        ? '✓ Срок вышел '+_fmtDateRu(d.endDate)
+        ? ICO.check+' Срок вышел '+_fmtDateRu(d.endDate)
         : 'до '+_fmtDateRu(d.endDate)+' · осталось '+daysLeft+' дн · '+(d.capitalization==='end'?'% в конце':'капитализация')}</div>
       ${closed
-        ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">↳ Перенести в банк</button>`
+        ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">→ Перенести в банк</button>`
         : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>
            <button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">→ в калькулятор</button>`}
     </div>`;
@@ -5790,7 +5812,7 @@ function _renderDepContribsList(d){
   grp.style.display = '';
   list.innerHTML = cs.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
-    <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution('${esc(d.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px">✕</span></span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution('${esc(d.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -5816,7 +5838,7 @@ function _renderDepAccrualsList(d){
       <span style="display:flex;align-items:center;gap:6px">
         <input type="text" inputmode="decimal" value="${val}" onchange="setDepAccrual('${esc(d.id)}','${r.date}',this.value)"
           style="width:90px;text-align:right;padding:4px 6px;font-size:13px;border:1px solid ${r.override?'var(--accent)':'var(--border)'};border-radius:6px;background:var(--card);color:var(--text)">
-        ${r.override?`<span onclick="setDepAccrual('${esc(d.id)}','${r.date}','')" title="Вернуть расчётное" style="cursor:pointer;color:var(--muted);padding:0 2px">↻</span>`:'<span style="width:16px"></span>'}
+        ${r.override?`<span onclick="setDepAccrual('${esc(d.id)}','${r.date}','')" title="Вернуть расчётное" style="cursor:pointer;color:var(--muted);padding:0 2px"><svg class="ico"><use href="#i-refresh"/></svg></span>`:'<span style="width:16px"></span>'}
       </span>
     </div>`;
   }).join('');
@@ -6005,11 +6027,11 @@ function startEditBank(type, i){
   });
   const btnOk = document.createElement('button');
   btnOk.className = 'btn primary small';
-  btnOk.textContent = '✓';
+  btnOk.innerHTML = ICO.check;
   btnOk.onclick = function(){ saveBankName(type, i); };
   const btnCancel = document.createElement('button');
   btnCancel.className = 'btn small';
-  btnCancel.textContent = '✕';
+  btnCancel.innerHTML = ICO.close;
   btnCancel.onclick = renderBankManager;
   row.innerHTML = '';
   row.append(inp, btnOk, btnCancel);
@@ -6168,7 +6190,7 @@ function openEditAssetDate(date, carryForward){
     const lbl = document.createElement('div');
     lbl.style.cssText = 'flex:1;min-width:0';
     lbl.innerHTML = '<div style="font-size:13px;color:'+(credit?'var(--red)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(bankName)+'</div>'
-      + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">↻ перенесено — проверьте</div>' : '');
+      + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">'+ICO.refresh+' перенесено — проверьте</div>' : '');
 
     // Кредитная строка: памятка «это грейс или сплит?» — чисто информационно,
     // открывает существующую модалку создания, в подсчёт сумм не входит
@@ -6217,7 +6239,7 @@ function openEditAssetDate(date, carryForward){
           const z = document.createElement('div');
           z.className = 'zeroed-tag';
           z.style.cssText = 'font-size:10px;color:var(--green)';
-          z.textContent = '✕ обнулён этой датой';
+          z.textContent = '× обнулён этой датой';
           lbl.appendChild(z);
         }
       } else if(empty && prevBefore !== undefined && prevBefore !== 0 && !carried){
@@ -6225,7 +6247,7 @@ function openEditAssetDate(date, carryForward){
         const z = document.createElement('div');
         z.className = 'nodata-tag';
         z.style.cssText = 'font-size:10px;color:#c98a1b';
-        z.textContent = '∅ записи не будет — в истории останется '+fmtShort(prevBefore)+'₽';
+        z.textContent = 'записи не будет — в истории останется '+fmtShort(prevBefore)+'₽';
         lbl.appendChild(z);
       } else {
         inp.style.color = 'var(--text)';
@@ -6431,7 +6453,7 @@ function renderCatManager(){
     const inGroup = colorCount[color] > 1;
     const grpStart = inGroup && (pos === 0 || getCatColor(order[pos-1]) !== color);
     const delBtn = DB.categories.length > 1
-      ? '<button class="btn danger small" onclick="removeCategory('+i+')">✕</button>'
+      ? '<button class="btn danger small" onclick="removeCategory('+i+')"><svg class="ico"><use href="#i-close"/></svg></button>'
       : '';
     const groupDot = inGroup
       ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+color+';margin-left:5px;vertical-align:middle" title="В группе"></span>'
@@ -6619,12 +6641,12 @@ function startEditCat(i){
 
   const btnOk = document.createElement('button');
   btnOk.className = 'btn primary small';
-  btnOk.textContent = '✓';
+  btnOk.innerHTML = ICO.check;
   btnOk.onclick = function(){ saveCatName(i); };
 
   const btnCancel = document.createElement('button');
   btnCancel.className = 'btn small';
-  btnCancel.textContent = '✕';
+  btnCancel.innerHTML = ICO.close;
   btnCancel.onclick = renderCatManager;
 
   row.innerHTML = '';
@@ -6888,7 +6910,7 @@ function renderIncomeTagsList(){
       + '</div>';
     // Клик по имени уже открывает переименование — отдельная кнопка-карандаш
     // дублировала это же действие, убрана.
-    const delBtn = isEmpty ? '' : '<button class="btn danger small" style="flex:0 0 auto" onclick="deleteIncomeTag('+i+')">✕</button>';
+    const delBtn = isEmpty ? '' : '<button class="btn danger small" style="flex:0 0 auto" onclick="deleteIncomeTag('+i+')"><svg class="ico"><use href="#i-close"/></svg></button>';
     return '<div class="setting-row io-row" style="cursor:default;gap:8px" data-tag="'+esc(tag)+'" id="inc-tag-row-'+(isEmpty?'empty':i)+'">'
       + handle + colorCtl + namePart + delBtn
       + '</div>';
@@ -7163,10 +7185,10 @@ function renderDataAudit(){
   if(unseenDeps.length || lostDeps.length || liveDeps.length){
     h += `<div class="s-lbl" style="margin:10px 0 6px">Вклады и даты</div>`;
     if(unseenDeps.length){
-      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${unseenDeps.map(d=>esc(d.name)).join(', ')}: вклад открыт позже последнего снимка счетов (${lastSnap||'—'}). Ни в истории, ни в «Всего активов» он не появится, пока не внесёте снимок счетов свежей датой.</p>`;
+      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">${ICO.warn} ${unseenDeps.map(d=>esc(d.name)).join(', ')}: вклад открыт позже последнего снимка счетов (${lastSnap||'—'}). Ни в истории, ни в «Всего активов» он не появится, пока не внесёте снимок счетов свежей датой.</p>`;
     }
     if(lostDeps.length){
-      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">⚠ ${lostDeps.length} удалённых вкладов без даты удаления — в истории не учитываются.</p>`;
+      h += `<p style="color:var(--red);font-size:12px;margin:0 0 6px">${ICO.warn} ${lostDeps.length} удалённых вкладов без даты удаления — в истории не учитываются.</p>`;
     }
     h += `<p style="color:var(--muted);font-size:12px;margin:0">И история, и «Всего активов» оценивают вклады на дату последнего снимка счетов. Если при открытии вклада вы не уменьшили остаток банка снимком на ту же дату, «Всего» задвоит эти деньги до следующего снимка.</p>`;
   }
@@ -7182,13 +7204,13 @@ function renderDataAudit(){
     if(staleInvs.length){
       h += `<div class="s-lbl" style="margin:10px 0 6px">Инвестиции</div>`;
       staleInvs.forEach(s=>{
-        h += `<p style="color:#c98a1b;font-size:12px;margin:0 0 6px">⚠ «${esc(s.name)}»: снимок стоимости устарел (${s.age} дн.) — прибыль и график считаются по старой цифре.</p>`;
+        h += `<p style="color:#c98a1b;font-size:12px;margin:0 0 6px">${ICO.warn} «${esc(s.name)}»: снимок стоимости устарел (${s.age} дн.) — прибыль и график считаются по старой цифре.</p>`;
       });
     }
   }
 
   if(!ghosts.length && !dups.length && !unseenDeps.length && !lostDeps.length){
-    h += `<div style="color:var(--green);font-weight:600;margin-top:4px">✓ Аномалий в записях не найдено</div>`;
+    h += `<div style="color:var(--green);font-weight:600;margin-top:4px">${ICO.check} Аномалий в записях не найдено</div>`;
   }
 
   // ── Сверка по периодам: дельта активов vs (доходы − расходы) ──
@@ -8115,10 +8137,10 @@ async function testSync(){
   el.textContent = '…';
   try {
     const d = await syncRequest('ping');
-    el.textContent = d.ok ? '✓ Подключено' : '✗ Ошибка';
+    el.innerHTML = d.ok ? ICO.check + ' Подключено' : '× Ошибка';
     toast(d.ok ? 'Подключение успешно!' : 'Ошибка: '+(d.error||'?'));
   } catch(e) {
-    el.textContent = '✗ Недоступно';
+    el.textContent = '× Недоступно';
     toast('Ошибка: ' + e.message);
   }
 }

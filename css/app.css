@@ -130,6 +130,15 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 .sheet{position:relative;background:var(--card);border-radius:20px 20px 0 0;padding:20px 16px max(20px,env(safe-area-inset-bottom));width:100%;max-width:430px;max-height:90vh;overflow-y:auto}
 .sheet h2{font-size:17px;font-weight:600;margin-bottom:16px}
 /* 44px тач-зона, визуальный кружок 28px рисует ::before (inset (44-28)/2) */
+/* Значки интерфейса — ссылки <use> на спрайт #ico-sprite в начале body.
+   Размер в em: значок растёт вместе с текстом кнопки, отдельных правок под
+   каждое место не нужно. Обводка через currentColor — значит цвет берётся
+   из темы, а не из палитры эмодзи, как было у ⚠ на iOS. Свойства обводки
+   наследуются внутрь shadow-дерева <use>, поэтому у фигур в спрайте своих
+   атрибутов нет. */
+.ico{width:1em;height:1em;flex-shrink:0;display:inline-block;vertical-align:-.125em;
+  fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
 .close-btn{position:absolute;right:8px;top:8px;width:44px;height:44px;border:none;background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;z-index:1}
 .close-btn::before{content:"";position:absolute;inset:8px;background:var(--bg);border-radius:50%;z-index:-1}
 

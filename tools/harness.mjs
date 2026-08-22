@@ -92,7 +92,11 @@ export const FIXTURE = {
   banks: ['Сбербанк', 'Т-Банк'],
   creditBanks: ['Альфа-Банк'],
   limits: { [MK]: [36298, 14094, 7988, 2669, 5000, 9000, 1200] },
-  goals: [], templates: [], deposits: [], investments: [], credits: [],
+  // Достигнутая цель: единственная ветка, рисующая «Цель достигнута!». Без неё
+  // проверка «в разметке нет невыполненных ${ICO.…}» не дошла бы до неё —
+  // именно там подстановка однажды оказалась внутри одинарных кавычек.
+  goals: [{ id: 'g01', name: 'Подушка', target: 100000, saved: 100000, deadline: '', color: '#2d7a4f', updatedAt: 1 }],
+  templates: [], deposits: [], investments: [], credits: [],
   incomeTags: ['Оплата труда', 'Проценты'],
   incomeTagColors: { 0: '#185fa5', 1: '#2d7a4f' },
   incomeTagOrder: ['', 'Проценты'],
