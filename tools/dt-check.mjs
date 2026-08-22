@@ -567,6 +567,78 @@ suite(390, 'иконки приложения', () => {
   });
 });
 
+// Массовая подстановка средних в редакторе лимитов однажды стёрла настроенный
+// август целиком: «подставить все» заполняло 17 полей без вопроса, «Сохранить»
+// записывало их без пути назад, а средние выглядят правдоподобно — заметны
+// только выбросы. Сторожим оба барьера: вопрос перед подстановкой и отмену
+// после сохранения.
+suite(390, 'лимиты: подтверждение и отмена', () => {
+  const openEditor = p => p.evaluate(() => {
+    window.showPage('budget', document.getElementById('nav-budget'));
+    window.openLimitEditor();
+    return [...document.querySelectorAll('.limit-edit-input')].map(i => i.value);
+  });
+
+  check('«подставить все» спрашивает, и отказ ничего не меняет', async p => {
+    const before = await openEditor(p);
+    const got = await p.evaluate(() => {
+      let asked = 0;
+      const orig = window.confirm;
+      window.confirm = () => { asked++; return false; };
+      window.applyAllLimitAvgs();
+      window.confirm = orig;
+      return { asked, vals: [...document.querySelectorAll('.limit-edit-input')].map(i => i.value) };
+    });
+    eq(got.asked, 1, 'число вопросов перед массовой подстановкой');
+    eq(got.vals.join('|'), before.join('|'), 'значения полей после отказа');
+  });
+
+  check('согласие подставляет средние и помечает изменённые поля', async p => {
+    await openEditor(p);
+    const got = await p.evaluate(() => {
+      // Поле «Еда вне дома» заранее равно своему ⌀ — подстановка его не меняет,
+      // значит и метки на нём быть не должно: пометка означает «строка уехала».
+      document.getElementById('lim_2').value = '8000';
+      const orig = window.confirm;
+      window.confirm = () => true;
+      window.applyAllLimitAvgs();
+      window.confirm = orig;
+      const inp = [...document.querySelectorAll('.limit-edit-input')];
+      return {
+        rent: inp[0].value,
+        noHistory: inp[5].value,
+        marked: inp.filter(i => i.style.background).length,
+        same: inp[2].style.background || '',
+      };
+    });
+    // Аренда: единственный прошлый месяц с данными даёт ⌀ = 30 000
+    eq(got.rent, '30000', 'подставленное среднее по аренде');
+    eq(got.noHistory, '0', 'категория без трат получает ⌀ = 0');
+    eq(got.marked, 6, 'сколько полей подсвечено как изменённые');
+    eq(got.same, '', 'совпавшее со средним поле не помечено');
+  });
+
+  check('после «Сохранить» отмена возвращает прежние лимиты', async p => {
+    await openEditor(p);
+    const got = await p.evaluate(async () => {
+      const key = document.getElementById('limit-month-sel').value;
+      const before = JSON.stringify(DB.limits[key]);
+      const orig = window.confirm;
+      window.confirm = () => true;
+      window.applyAllLimitAvgs();
+      window.confirm = orig;
+      window.saveLimits();
+      const after = JSON.stringify(DB.limits[key]);
+      const btn = document.querySelector('#toast .toast-undo');
+      if (btn) btn.click();
+      return { before, after, undone: JSON.stringify(DB.limits[key]), hadBtn: !!btn };
+    });
+    if (!got.hadBtn) throw new Error('после сохранения лимитов нет кнопки «Отменить»');
+    if (got.before === got.after) throw new Error('подстановка не изменила лимиты — проверка вакуумна');
+    eq(got.undone, got.before, 'лимиты после отмены');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

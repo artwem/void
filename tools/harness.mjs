@@ -56,6 +56,10 @@ const now = new Date();
 const Y = now.getFullYear(), M = now.getMonth();
 const MK = `${Y}-${String(M + 1).padStart(2, '0')}`;
 const dd = n => `${MK}-${String(n).padStart(2, '0')}`;
+// Месяц назад — нужен подсказкам «⌀ подставить» в редакторе лимитов: они
+// считают среднее по прошлым месяцам и без истории просто не отрисовываются.
+const PY_ = M === 0 ? Y - 1 : Y, PM_ = M === 0 ? 11 : M - 1;
+const pd = n => `${PY_}-${String(PM_ + 1).padStart(2, '0')}-${String(n).padStart(2, '0')}`;
 
 export const FIXTURE = {
   categories: ['Аренда', 'Продукты + хозтовары + уход', 'Еда вне дома', 'Одежда', 'Хотелки', 'Мама', 'Подписки'],
@@ -70,6 +74,12 @@ export const FIXTURE = {
     { id: 'e06', date: dd(8), cat: 4, catId: 'cat0005', amount: 18315, comment: '', updatedAt: 1 },
     // «Мама» (cat 5) и «Подписки» (cat 6) намеренно остаются без трат
     { id: 'e08', date: dd(10), cat: 1, catId: 'cat0002', amount: 5000, comment: 'Ашан', updatedAt: 1 },
+    // Прошлый месяц: ровно один расход на категорию, суммы круглые — среднее
+    // за 3 месяца по единственному месяцу с данными равно самой сумме, так
+    // что ожидаемые «⌀» в проверках считаются без арифметики.
+    { id: 'p01', date: pd(4), cat: 0, catId: 'cat0001', amount: 30000, comment: '', updatedAt: 1 },
+    { id: 'p02', date: pd(6), cat: 1, catId: 'cat0002', amount: 12000, comment: '', updatedAt: 1 },
+    { id: 'p03', date: pd(9), cat: 2, catId: 'cat0003', amount: 8000, comment: '', updatedAt: 1 },
   ],
   incomes: [
     { id: 'i01', date: dd(5), source: 'Зарплата', amount: 180000, tag: 'Оплата труда', updatedAt: 1 },
@@ -88,6 +98,15 @@ export const FIXTURE = {
   incomeTagOrder: ['', 'Проценты'],
   listsMeta: {}, notifsEnabled: false, notifThreshold: 90,
 };
+
+/**
+ * Кэш курсов ЦБ для тестов. Кладётся в localStorage.fxRates свежим (fetchedAt
+ * ставится в браузере), поэтому _fxRates() отдаёт его без сети: иначе проверки
+ * валютной строки зависели бы от доступности cbr-xml-daily.ru и от того,
+ * какой сегодня курс. Круглые числа выбраны, чтобы ожидаемые суммы считались
+ * в уме: 730 000 ₽ активов фикстуры = 9 125 $ = 8 111 € = 66 364 ¥.
+ */
+export const FX_FIXTURE = { date: '2026-08-22', rates: { USD: 80, EUR: 90, CNY: 11 } };
 
 /**
  * Поднимает сервер и браузер, отдаёт страницу в колбэк, всё закрывает.
@@ -116,12 +135,13 @@ export async function withPage(widths, fn) {
       await page.emulateMediaFeatures([
         { name: 'prefers-reduced-motion', value: 'no-preference' },
       ]);
-      await page.evaluateOnNewDocument(fx => {
+      await page.evaluateOnNewDocument((fx, fxr) => {
         localStorage.setItem('budgetDB_v2', JSON.stringify(fx));
+        localStorage.setItem('fxRates', JSON.stringify({ ...fxr, fetchedAt: Date.now() }));
         // SW перезагружает страницу по controllerchange — в тестах это помеха.
         // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.
         Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined });
-      }, FIXTURE);
+      }, FIXTURE, FX_FIXTURE);
       await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
       await page.evaluate(() => document.fonts.ready);
       await fn(page, { width, index });

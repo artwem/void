@@ -2205,13 +2205,42 @@ function setLimitAvgMonths(n){
 }
 
 let _limitAvgs = [];
+// Подстановка среднего помечает поле: «Сохранить» переписывает месяц целиком,
+// и без пометки не видно, какие строки уже не твои. Средние правдоподобны —
+// однажды так молча уехали 14 лимитов из 17, заметили только два выброса.
+function _markLimitInput(inp){
+  inp.style.background = 'var(--amber-bg)';
+  inp.style.borderColor = 'var(--amber)';
+}
+function _applyLimitAvg(i){
+  const inp = document.getElementById('lim_'+i);
+  if(!inp || _limitAvgs[i] == null) return;
+  const changed = String(_limitAvgs[i]) !== String(inp.value).trim();
+  inp.value = _limitAvgs[i];
+  if(changed) _markLimitInput(inp); // метка = «строка больше не твоя»
+}
 function applyAllLimitAvgs(){
-  _limitAvgs.forEach((v,i)=>{
-    if(v === null) return;
-    const inp = document.getElementById('lim_'+i);
-    if(inp) inp.value = v;
-  });
+  const idx = _limitAvgs.map((v,i)=>v===null?-1:i).filter(i=>i>=0);
+  if(!idx.length) return;
+  const n = parseInt(sessionStorage.getItem('limitAvgMonths')) || 3;
+  const sum = idx.reduce((s,i)=>s+_limitAvgs[i],0);
+  const key = document.getElementById('limit-month-sel');
+  const [ky,km] = (key ? key.value : '').split('-').map(Number);
+  const monthName = MONTHS_RU[(km||1)-1] + ' ' + ky;
+  const msg = `Заменить ${idx.length} ${_plural(idx.length,'лимит','лимита','лимитов')}`
+    + ` средними за ${n} мес (${fmt(sum)}/мес)?`
+    + `
+
+Настроенные значения за ${monthName} будут потеряны после «Сохранить».`;
+  if(!confirm(msg)) return;
+  idx.forEach(_applyLimitAvg);
   toast('⌀ подставлены — не забудьте сохранить');
+}
+function _plural(n, one, few, many){
+  const a = Math.abs(n) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b > 1 && b < 5) return few;
+  return b === 1 ? one : many;
 }
 
 function loadLimitEditor(){
@@ -2251,7 +2280,7 @@ function loadLimitEditor(){
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
-      <span class="limit-edit-name">${esc(c)}${avgs[i]!==null?`<span onclick="document.getElementById('lim_${i}').value=${avgs[i]}" style="display:block;font-size:10px;color:var(--blue);cursor:pointer;margin-top:1px">⌀ ${fmt(avgs[i])}/мес — подставить</span>`:''}</span>
+      <span class="limit-edit-name">${esc(c)}${avgs[i]!==null?`<span onclick="_applyLimitAvg(${i})" style="display:block;font-size:10px;color:var(--blue);cursor:pointer;margin-top:1px">⌀ ${fmt(avgs[i])}/мес — подставить</span>`:''}</span>
       <input class="limit-edit-input" type="number" id="lim_${i}" value="${limits[i]||0}" inputmode="decimal"/>
     </div>
   `).join('');
@@ -2270,11 +2299,22 @@ function saveLimits(){
   const newLimits = DB.categories.map((_,i)=>{
     return parseFloat(document.getElementById('lim_'+i).value)||0;
   });
+  // Прежний месяц — под отмену. Ключа могло не быть вовсе (лимиты
+  // подтягивались из прошлого месяца через getLimits) — тогда отмена его
+  // удаляет, а не записывает копию чужого месяца.
+  const had = Object.prototype.hasOwnProperty.call(DB.limits, key);
+  const prev = had ? [...DB.limits[key]] : null;
   DB.limits[key] = newLimits;
   saveDB();
   closeModal('modal-limits');
   renderBudget();
-  toast('Лимиты сохранены');
+  if(had && JSON.stringify(prev) === JSON.stringify(newLimits)){ toast('Лимиты сохранены'); return; }
+  toastUndo('Лимиты сохранены', () => {
+    if(prev) DB.limits[key] = prev; else delete DB.limits[key];
+    saveDB();
+    renderBudget();
+    toast('Возвращены прежние лимиты');
+  });
 }
 
 
