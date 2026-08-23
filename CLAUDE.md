@@ -78,16 +78,15 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 {
   categories:      ['ЖКУ + аренда', ...],    // ordered list
   catIds:          ['k3x9a1b2', ...],         // stable id per category, same position as categories[]
-  catColors:       {0: '#185fa5', ...},       // category index → hex color
+  catColors:       {k3x9a1b2: '#185fa5', ...}, // catId → hex color
   expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],  // point-in-time balance per bank per date
   banks:           ['Сбербанк', ...],         // debit bank names
   creditBanks:     [...],                     // credit bank names (subtracted from net worth)
-  limits:          {'2026-04': [15000, ...]}, // per-category monthly limits, keyed by monthKey()
+  limits:          {'2026-04': {k3x9a1b2: 15000}}, // monthKey() → catId → limit; missing catId = 0
   specPlan:        {'2026-04': {k3x9a1b2: 0}}, // ручная бронь особых: catId → сколько ещё ждём; 0 = «не будет»
   syncUrl:         'https://script.google.com/...',
-  goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
   deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений
   investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод; invValueAt = последний снимок ≤ даты + пополнения после него
@@ -107,6 +106,27 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
 
 **Stable category ids (since v1.18.0):** `DB.catIds[i]` is a permanent id for `DB.categories[i]`. Records (`expenses`, `templates`) carry `catId` (authoritative, survives category deletion/reorder and sync) plus `cat` (derived positional index used by all render/aggregation code). `_ensureCatIds()` migrates old data and runs in `loadDB()`, after `mergePullData()`, in restore and test-data fill. `_reindexCats()` recomputes every record's `cat` from its `catId`; orphaned `catId` falls back to category 0. Any code creating/editing an expense or template MUST set `catId: DB.catIds[cat]`.
 
+**`limits` and `catColors` are keyed by `catId` too (since v1.64.0).** They used to be a
+positional array and an index-keyed map, while `DB.categories` merges LWW as a whole list —
+so after editing categories on two devices, position N meant one category in the list and
+another in the limits, and money was silently attributed to the wrong row. Adding/removing a
+category also rewrote *every* month key, which made the 3-way merge treat all months as
+locally edited and drop the other device's limit edits.
+
+- Read through `getLimits(y, m)` / `getCatColor(i)` only — both still hand out the positional
+  shape all render code expects, so nothing downstream changed. Never index `DB.limits[k]` or
+  `DB.catColors` by position.
+- `_migrateCatKeyed()` (called at the end of `_ensureCatIds()`, so it runs everywhere that
+  does) converts the old shape in place. It is idempotent and detects the shape from the data
+  — array = old limits, all-digit key = old colour index — so no version flag is involved.
+  `_lastSyncedLimits` is migrated alongside, otherwise the merge baseline diverges and every
+  month reads as locally edited.
+- Merge comparisons for `limits`/`specPlan` go through `_canonJSON()`, not `JSON.stringify` —
+  the keys are `catId`s and arrive in different insertion orders from different devices.
+- Suite `лимиты и цвета по catId` in `tools/dt-check.mjs` guards all of this, including the
+  two-devices-add-a-category scenario. The fixture deliberately keeps limits in the old array
+  form so the migration runs on every test pass.
+
 ### Tab Modules
 
 Each tab has a `render*()` function called after any data change:
@@ -118,7 +138,7 @@ Each tab has a `render*()` function called after any data change:
 | Day | `═══ day.js ═══` | Daily expense list, quick add, template chips |
 | Income | `═══ income.js ═══` | Income sources, monthly balance, tag filter |
 | Аналитика | `═══ stats.js ═══` | Chart.js graphs, «День за днём», expense search (since v1.56.0 — was on Day), annual report page |
-| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, history, goals, deposits |
+| Assets | `═══ assets.js ═══` | Bank accounts, credit cards, savings chart, history, deposits, investments |
 | Forecast | `═══ calc.js ═══` | Compound interest / savings forecast calculator |
 | Settings | `═══ settings.js ═══` | Category/bank CRUD, sync, backup/restore, Excel, notifications, data audit |
 
@@ -132,7 +152,7 @@ Each tab has a `render*()` function called after any data change:
 
 ### Deposits & Assets Page — skill `void-assets`
 
-Вклады (`depositValueAt`, дискретные начисления, ручные правки `d.accruals`, режим `finalAmount`, пополнения), ряды активов (`_buildAssetSeries`, масштабы графика, семантика снимков, аудит периодов, кредиты) и Excel-экспорт вынесены в `.claude/skills/void-assets/SKILL.md`. **Инварианты, которые нельзя нарушать без чтения скилла:** `_buildAssetSeries()` — единственный источник для графика, истории и аудита; сетка дат графика строится ТОЛЬКО из реальных снимков (производные даты вроде открытия вклада не добавлять); «Всего активов» = банки + живые вклады, а `_getCurrentAssetsTotal()` остаётся только по банкам; переводы банк↔вклад делать через `_bankAdjust()`, а не ручной правкой записей.
+Вклады (`depositValueAt`, дискретные начисления, ручные правки `d.accruals`, режим `finalAmount`, пополнения), ряды активов (`_buildAssetSeries`, масштабы графика, семантика снимков, аудит периодов, кредиты) и Excel-экспорт вынесены в `.claude/skills/void-assets/SKILL.md`. **Инварианты, которые нельзя нарушать без чтения скилла:** `_buildAssetSeries()` — единственный источник для графика, истории и аудита; сетка дат графика строится ТОЛЬКО из реальных снимков (производные даты вроде открытия вклада не добавлять); «Всего активов» = банки + живые вклады + инвестиции, а `_banksTotal()` остаётся только по банкам; переводы банк↔вклад делать через `_bankAdjust()`, а не ручной правкой записей.
 
 ### Sync — `═══ sync.js ═══` + `apps-script/Code.gs`
 
@@ -142,13 +162,13 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, `specPlan`, plus `listsMeta` (LWW timestamps).
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, `specPlan`, plus `listsMeta` (LWW timestamps).
 
-**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits`, `_lastSyncedSpecPlan` (device-local). `buildPayload()` strips exactly these eight fields plus `_dirty`.
+**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits`, `_lastSyncedSpecPlan` (device-local). `buildPayload()` strips exactly these eight fields plus `_dirty`. Since v1.63.0 `backupDB()` serializes `buildPayload()` too, not raw `DB` — the downloaded copy used to carry `syncToken` (the Apps Script shared secret) into a file people forward to themselves.
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie. `saveSyncUrlEverywhere()` writes to all three.
 
-**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — `_deleted: true`, amount zeroed. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are pushed (other devices must learn of deletes).
+**Tombstones + `updatedAt` (since v1.8.0):** every create/edit/delete on `expenses`, `incomes`, `assets`, `templates`, `deposits` stamps `updatedAt: Date.now()`. Deletes are **soft** — `_deleted: true`, amount zeroed. All render/sum/export paths filter `!_deleted`. `loadDB()` purges tombstones older than 90 days. Tombstones are pushed (other devices must learn of deletes).
 
 **Merge logic (`mergePullData`):**
 - Record arrays: **last-write-wins by `id`** — keep the strictly greater `updatedAt`; ties keep local. Any bulk mutation (category remap, bank/tag rename) MUST stamp `updatedAt` on each mutated record, or the merge reverts them.
@@ -180,7 +200,7 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - `toast(msg, type?)` — 2.2s toast, auto-detects ok/err from message text; `toastUndo(msg, onUndo)` — with an Отменить button
 - `uid()` — short alphanumeric ID for all new entities
 - `renderTemplateChips()` — quick-add template buttons on the Day tab
-- `CAT_COLORS` (16), `GOAL_COLORS` (7), `TEMPLATE_COLORS` (28), `INCOME_TAG_COLORS` (8) — palettes
+- `CAT_COLORS` (16), `TEMPLATE_COLORS` (28), `INCOME_TAG_COLORS` (8) — palettes
 - `_chartColors()` — theme-aware Chart.js colors read from CSS vars at render time; call inside chart creation, not at module level
 
 ### UI State Patterns
@@ -198,4 +218,4 @@ Filter state (module-level variables, reset on tab re-render):
 
 ### Color Picker Pattern
 
-Goals and templates share `renderColorPicker(elementId, palette, selectedColor, callbackName)`. Each entity keeps its own `_selectedXxxColor` module-level variable and a thin `_renderXxxColorPicker()` wrapper. Replicate for any new color-selectable entity.
+Templates use `renderColorPicker(elementId, palette, selectedColor, callbackName)`. Each entity keeps its own `_selectedXxxColor` module-level variable and a thin `_renderXxxColorPicker()` wrapper. Replicate for any new color-selectable entity.

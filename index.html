@@ -331,8 +331,6 @@ if ('serviceWorker' in navigator) {
       Мои инвестиции<span id="invest-btn-count" style="color:var(--muted);font-weight:400"></span>
     </button>
   </div>
-  <div class="sec-hdr" style="margin-top:8px"><span class="sec-title">Цели накоплений</span><span class="sec-action" onclick="openGoalModal()">+ Добавить</span></div>
-  <div id="goals-list" style="padding:0 16px 8px"></div>
   <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
     <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('calc')">
       <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
@@ -534,11 +532,11 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div class="setting-row" id="sync-pull-row" onclick="pullFromSheets()" style="display:none">
-      <span class="setting-label">↓ Загрузить из Drive</span>
+      <span class="setting-label">🔄 Синхронизировать сейчас</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-push-row" onclick="pushToSheets()" style="display:none">
-      <span class="setting-label">↑ Сохранить в Drive</span>
+      <span class="setting-label">⬆️ Выгрузить принудительно</span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -572,14 +570,6 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="setting-row" onclick="openDataAudit()">
       <span class="setting-label">🩺 Проверка данных</span>
-      <span class="setting-chevron">›</span>
-    </div>
-    <div class="setting-row" onclick="doDriveSave()" id="drive-save-row">
-      <span class="setting-label">☁️ Сохранить на Drive</span>
-      <span class="setting-chevron">›</span>
-    </div>
-    <div class="setting-row" onclick="doDriveRestore()" id="drive-restore-row">
-      <span class="setting-label">☁️ Восстановить из Drive</span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -794,51 +784,6 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: ADD ASSET -->
-<!-- MODAL: GOAL -->
-<div class="overlay" data-dt="insp" id="modal-goal">
-  <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-goal')"><svg class="ico"><use href="#i-close"/></svg></button>
-    <h2 id="goal-modal-title" style="margin-bottom:16px">Новая цель</h2>
-    <div class="fgrp">
-      <label class="flbl">Название</label>
-      <input type="text" id="goal-name" class="finp" placeholder="Отпуск, машина, ремонт…">
-    </div>
-    <div class="fgrp">
-      <label class="flbl">Целевая сумма, ₽</label>
-      <input type="text" id="goal-target" class="finp" inputmode="decimal" placeholder="100 000" oninput="formatMoneyInput(this)">
-    </div>
-    <div class="fgrp">
-      <label class="flbl">Уже накоплено, ₽</label>
-      <input type="text" id="goal-saved" class="finp" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this)">
-    </div>
-    <div class="fgrp">
-      <label class="flbl">Срок (необязательно)</label>
-      <input type="month" id="goal-deadline" class="finp">
-    </div>
-    <div class="fgrp">
-      <label class="flbl">Цвет</label>
-      <div id="goal-color-picker" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn danger" id="goal-delete-btn" onclick="deleteGoal()" style="display:none">Удалить</button>
-      <button class="btn primary" onclick="saveGoal()" style="flex:1">Сохранить</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" data-dt="insp" id="modal-goal-topup">
-  <div class="sheet">
-    <button class="close-btn" onclick="closeModal('modal-goal-topup')"><svg class="ico"><use href="#i-close"/></svg></button>
-    <h2 style="margin-bottom:4px">Пополнить цель</h2>
-    <div id="goal-topup-name" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
-    <div class="fgrp">
-      <label class="flbl">Сумма пополнения, ₽</label>
-      <input type="text" id="goal-topup-amount" class="finp" inputmode="decimal" placeholder="10 000" oninput="formatMoneyInput(this)">
-    </div>
-    <button class="btn primary" onclick="saveGoalTopup()" style="width:100%;margin-top:8px">Пополнить</button>
-  </div>
-</div>
-
 <!-- MODAL: DEPOSIT -->
 <div class="overlay" data-dt="insp" id="modal-deposit">
   <div class="sheet">
@@ -1174,7 +1119,7 @@ if ('serviceWorker' in navigator) {
   <div class="sheet">
     <button class="close-btn" onclick="closeModal('modal-sync-choice')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2 style="margin-bottom:6px">Синхронизация</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5">Выберите направление синхронизации с Google Drive</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5">Обе кнопки сначала сливают данные с Drive — ничего не теряется</p>
 
     <button onclick="closeModal('modal-sync-choice');pullFromSheets()" style="
       width:100%;padding:14px 16px;border-radius:var(--r);
@@ -1184,8 +1129,8 @@ if ('serviceWorker' in navigator) {
       transition:background .12s;-webkit-tap-highlight-color:transparent">
       <span style="font-size:24px;flex-shrink:0">↓</span>
       <span>
-        <div style="font-size:15px;font-weight:600;color:var(--text)">Загрузить из Drive</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Данные из Google Drive → приложение</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">Синхронизировать сейчас</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Слить правки Drive и приложения</div>
       </span>
     </button>
 
@@ -1197,8 +1142,8 @@ if ('serviceWorker' in navigator) {
       transition:background .12s;-webkit-tap-highlight-color:transparent">
       <span style="font-size:24px;flex-shrink:0">↑</span>
       <span>
-        <div style="font-size:15px;font-weight:600;color:var(--text)">Сохранить в Drive</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Данные из приложения → Google Drive</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">Выгрузить принудительно</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">То же плюс обход защиты от малого объёма</div>
       </span>
     </button>
 
@@ -1289,7 +1234,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.62.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.64.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1331,7 +1276,6 @@ if ('serviceWorker' in navigator) {
 
 const CAT_COLORS  = ['#378add','#1d9e75','#d85a30','#ba7517','#d4537e','#639922','#534ab7','#e67e22','#185fa5','#993556','#3b6d11','#a32d2d','#0f6e56','#8e44ad','#993c1d','#7f8c8d'];
 const INCOME_TAG_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#378add','#639922'];
-const GOAL_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#7f8c8d'];
 const TEMPLATE_COLORS = [
   '#185fa5','#378add','#5dade2','#2e86ab',
   '#1d9e75','#16a085','#27ae60','#639922','#3b6d11',
@@ -1457,7 +1401,6 @@ function loadDB(){
   if(!DB.incomes) DB.incomes = [];
   if(!DB.categories) DB.categories = [];
   if(!DB.limits) DB.limits = {};
-  if(!DB.goals) DB.goals = [];
   if(!DB.assets) DB.assets = [];
   if(!DB.templates) DB.templates = [];
   if(!DB.deposits) DB.deposits = [];
@@ -1481,7 +1424,7 @@ function loadDB(){
   }
   // Purge tombstones older than 90 days — even slow devices have synced by then
   const _cut = Date.now() - 90*24*3600*1000;
-  ['expenses','incomes','assets','goals','templates','deposits','investments','credits'].forEach(k => {
+  ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(k => {
     if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && (it.updatedAt||0) < _cut));
   });
   _ensureCatIds(); // миграция: раздать id категориям и catId записям
@@ -1561,6 +1504,10 @@ const ICO = {
   refresh: '<svg class="ico"><use href="#i-refresh"/></svg>',
 };
 function fmtH(n){return `<span class="prv">${fmt(n)}</span>`;}
+// Суммы для пуш-уведомлений: их видно на локскрине, где .prv не работает —
+// в приватном режиме прячем цифру, а не всё уведомление (повод открыть апп
+// нужен и без суммы). Названия банков/категорий приватный режим не трогает.
+function fmtN(n){return DB.privacyMode ? '•••' : fmt(n);}
 
 function parseMoney(str){
   return parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
@@ -1628,18 +1575,26 @@ function today(){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
+// Лимиты месяца позиционным массивом (хранятся по catId — см. _migrateCatKeyed).
+// Массив всегда свежий, так что алиасинга с чужим месяцем не бывает by design.
+// Категории, которой в этом месяце ещё не было, соответствует 0.
 function getLimits(y,m){
   const k = monthKey(y,m);
-  if(DB.limits[k]) return DB.limits[k];
-  // fallback: look for most recent prior limits
-  const keys = Object.keys(DB.limits).sort();
-  const prior = keys.filter(k2=>k2<=k).pop();
-  if(prior) return [...DB.limits[prior]];   // copy — avoid aliasing prior month's array
+  const ids = DB.catIds || [];
+  let map = DB.limits[k];
+  if(!map){
+    const keys = Object.keys(DB.limits).sort();
+    const prior = keys.filter(k2=>k2<=k).pop();
+    if(prior) map = DB.limits[prior];
+  }
+  if(map && !Array.isArray(map)) return ids.map(id => map[id] || 0);
+  if(Array.isArray(map)) return [...map];   // ещё не мигрированный месяц (до _ensureCatIds)
   return DB.categories.map((_,i) => DEFAULT_LIMITS[i] || 3000);
 }
 
 function getCatColor(i){
-  if(DB.catColors && DB.catColors[i]) return DB.catColors[i];
+  const id = (DB.catIds||[])[i];
+  if(id && DB.catColors && DB.catColors[id]) return DB.catColors[id];
   return CAT_COLORS[i % CAT_COLORS.length];
 }
 
@@ -1658,7 +1613,59 @@ function _ensureCatIds(){
       r.catId = DB.catIds[i];
     }
   }));
+  _migrateCatKeyed();
   _reindexCats();
+}
+
+// ─── ЛИМИТЫ И ЦВЕТА КАТЕГОРИЙ — КЛЮЧ catId (since v1.64.0) ──────────
+// Раньше limits были позиционным массивом, а catColors — словарём по индексу
+// категории. Список categories мержится LWW целиком, поэтому после правки
+// категорий на двух устройствах позиция N значила одну категорию в списке и
+// другую в лимитах — лимиты и цвета молча разъезжались. Ключ catId это
+// исключает и заодно избавляет add/removeCategory от прохода по всем месяцам
+// (который делал «локально изменёнными» ВСЕ месяцы и убивал 3-way merge).
+//
+// Формат хранения: DB.limits[monthKey] = {catId: сумма}, DB.catColors = {catId: hex}.
+// Наружу lim-код по-прежнему получает позиционный массив — см. getLimits().
+// Конвертер идемпотентен и определяет формат по данным, без флага версии:
+// массив = старые лимиты, чисто цифровой ключ = старый индекс цвета.
+function _migrateCatKeyed(){
+  const ids = DB.catIds || [];
+  if(!ids.length) return;
+
+  const limsToMap = obj => {
+    Object.keys(obj || {}).forEach(k => {
+      const v = obj[k];
+      if(!Array.isArray(v)) return;
+      const map = {};
+      v.forEach((n, i) => { if(ids[i]) map[ids[i]] = n || 0; });
+      obj[k] = map;
+    });
+  };
+  limsToMap(DB.limits);
+  limsToMap(DB._lastSyncedLimits);  // иначе baseline разъедется с limits и все месяцы станут «изменёнными»
+
+  const cc = DB.catColors || {};
+  const known = new Set(ids);
+  let dirty = false;
+  const conv = {};
+  Object.keys(cc).forEach(k => {
+    if(known.has(k)){ conv[k] = cc[k]; return; }          // уже catId живой категории
+    if(/^\d+$/.test(k) && ids[+k]){ conv[ids[+k]] = cc[k]; dirty = true; return; }  // старый индекс
+    dirty = true;                                          // сирота удалённой категории — выбрасываем
+  });
+  if(dirty) DB.catColors = conv;
+}
+
+// Стабильное представление объекта для сравнения в merge: JSON.stringify
+// зависит от порядка вставки ключей, а у limits/specPlan ключи — catId,
+// приходящие с разных устройств в разном порядке. Без сортировки merge
+// считал бы «локально изменённым» любой месяц, просто пришедший иначе.
+function _canonJSON(v){
+  if(v === null || v === undefined) return 'null';
+  if(Array.isArray(v)) return JSON.stringify(v);
+  if(typeof v !== 'object') return JSON.stringify(v);
+  return JSON.stringify(Object.keys(v).sort().map(k => [k, v[k]]));
 }
 
 // Пересчитать производный индекс cat из catId (после merge/удаления категории)
@@ -2005,7 +2012,7 @@ function renderSpecEditor(){
   }).join('');
   const total = _specDraftRows.reduce((s, r) => s + Math.max(0, r.val), 0);
   const tot = document.getElementById('spec-editor-total');
-  if(tot) tot.innerHTML = 'Итого в резерве: <b style="color:var(--text)">' + fmt(total) + '</b>';
+  if(tot) tot.innerHTML = 'Итого в резерве: <b style="color:var(--text)">' + fmtH(total) + '</b>';
 }
 
 function specDraftSet(i, str){
@@ -2284,7 +2291,7 @@ function saveExpense(){
   const amt = parseMoney(document.getElementById('exp-amount').value);
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat  = parseInt(document.getElementById('exp-cat').value);
-  const date = document.getElementById('exp-date').value || today(); // пустая дата = запись-невидимка
+  const date = document.getElementById('exp-date').value || today();
   const comment = document.getElementById('exp-comment').value;
   const special = _selectedExpSpecial ? true : null;
 
@@ -2465,12 +2472,12 @@ function loadLimitEditor(){
   const avgTotal = avgs.reduce((s,v)=>s+(v||0),0);
   const totEl = document.getElementById('limit-avg-total');
   if(totEl) totEl.innerHTML = avgTotal
-    ? '⌀ сумма: <b>'+fmt(avgTotal)+'</b>/мес<br><span onclick="applyAllLimitAvgs()" style="color:var(--blue);cursor:pointer">подставить все</span>'
+    ? '⌀ сумма: <b>'+fmtH(avgTotal)+'</b>/мес<br><span onclick="applyAllLimitAvgs()" style="color:var(--blue);cursor:pointer">подставить все</span>'
     : '';
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
     <div class="limit-edit-row">
-      <span class="limit-edit-name">${esc(c)}${avgs[i]!==null?`<span onclick="_applyLimitAvg(${i})" style="display:block;font-size:10px;color:var(--blue);cursor:pointer;margin-top:1px">⌀ ${fmt(avgs[i])}/мес — подставить</span>`:''}</span>
+      <span class="limit-edit-name">${esc(c)}${avgs[i]!==null?`<span onclick="_applyLimitAvg(${i})" style="display:block;font-size:10px;color:var(--blue);cursor:pointer;margin-top:1px">⌀ ${fmtH(avgs[i])}/мес — подставить</span>`:''}</span>
       <input class="limit-edit-input" type="number" id="lim_${i}" value="${limits[i]||0}" inputmode="decimal"/>
     </div>
   `).join('');
@@ -2486,19 +2493,22 @@ function saveLimits(){
       return;
     }
   }
-  const newLimits = DB.categories.map((_,i)=>{
-    return parseFloat(document.getElementById('lim_'+i).value)||0;
+  const ids = DB.catIds || [];
+  const newLimits = {};
+  DB.categories.forEach((_,i)=>{
+    if(!ids[i]) return;
+    newLimits[ids[i]] = parseFloat(document.getElementById('lim_'+i).value)||0;
   });
   // Прежний месяц — под отмену. Ключа могло не быть вовсе (лимиты
   // подтягивались из прошлого месяца через getLimits) — тогда отмена его
   // удаляет, а не записывает копию чужого месяца.
   const had = Object.prototype.hasOwnProperty.call(DB.limits, key);
-  const prev = had ? [...DB.limits[key]] : null;
+  const prev = had ? {...DB.limits[key]} : null;
   DB.limits[key] = newLimits;
   saveDB();
   closeModal('modal-limits');
   renderBudget();
-  if(had && JSON.stringify(prev) === JSON.stringify(newLimits)){ toast('Лимиты сохранены'); return; }
+  if(had && _canonJSON(prev) === _canonJSON(newLimits)){ toast('Лимиты сохранены'); return; }
   toastUndo('Лимиты сохранены', () => {
     if(prev) DB.limits[key] = prev; else delete DB.limits[key];
     saveDB();
@@ -4493,7 +4503,7 @@ function _splitRenderGenList(){
 
 function _splitGenTotal(){
   const el = document.getElementById('split-gen-total');
-  if(el) el.textContent = 'Итого: ' + fmt(_splitGenPayments.reduce((s,p)=>s+p.amount,0));
+  if(el) el.innerHTML = 'Итого: ' + fmtH(_splitGenPayments.reduce((s,p)=>s+p.amount,0));
 }
 
 // Сдвиг даты платежа сдвигает все последующие на тот же интервал
@@ -4537,12 +4547,6 @@ function _depToCalc(id){
     months: Math.max(1, Math.round(days/30.4375)),
     cap: d.capitalization === 'monthly' ? 'monthly' : 'none'
   });
-}
-
-function _goalToCalc(id){
-  const g = (DB.goals||[]).find(x=>x.id===id && !x._deleted);
-  if(!g) return;
-  openInCalc({ start: g.saved || 0, target: g.target });
 }
 
 let _editSplitId = null;
@@ -4955,8 +4959,9 @@ function renderAssets(){
   Object.entries(byBank).forEach(([name,data])=>{
     total += isCredit(name) ? -data.latest : data.latest;
   });
-  // «Всего активов» = счета + вклады (вклады видны в списке счетов и в
-  // колонке «Всего» истории — шапка должна сходиться с ними)
+  // «Всего активов» = счета + вклады + инвестиции (все три видны в списке
+  // счетов и в колонке «Всего» истории — шапка должна сходиться с ними).
+  // Не путать с _banksTotal(): та считает только счета.
   {
     // Итог и разбивка — на дату последнего снимка счетов, не на сегодня:
     // шапка сходится с последней строкой истории. Вклад, открытый позже
@@ -5095,7 +5100,7 @@ function renderAssets(){
       namePart.style.cssText = 'flex:1;min-width:0';
       const invBadge = ' <span class="tag tag-purple">инвестиции</span>';
       const pcol = profit >= 0 ? 'var(--green)' : 'var(--red)';
-      const subLine = `<div style="font-size:11px;color:${pcol};margin-top:2px">${profit>=0?'+':'−'} ${fmt(Math.abs(profit))}</div>`;
+      const subLine = `<div style="font-size:11px;color:${pcol};margin-top:2px">${profit>=0?'+':'−'} ${fmtH(Math.abs(profit))}</div>`;
       namePart.innerHTML = `<div class="asset-name">${esc(v.name)}${invBadge}</div>` + subLine;
       const amtSpan = document.createElement('span');
       amtSpan.className = 'asset-amount';
@@ -5171,7 +5176,6 @@ function renderAssets(){
     wrap.style.display = 'none';
   }
   renderSavingsCharts();
-  renderGoals();
   renderCredits();
   // Бейдж проблем данных (призраки/дубли/невидимые вклады/старый снимок) — тап открывает аудит
   {
@@ -5185,92 +5189,10 @@ function renderAssets(){
   }
 }
 
-// ─── GOALS ──────────────────────────────────────────────────────────
-let _editingGoalId = null;
-let _selectedGoalColor = GOAL_COLORS[0];
-
-function renderGoals(){
-  const list = document.getElementById('goals-list');
-  if(!list) return;
-  const goals = (DB.goals || []).filter(g=>!g._deleted);
-  if(!goals.length){
-    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет целей — нажмите + чтобы добавить</p>';
-    return;
-  }
-  list.innerHTML = goals.map((g, idx) => {
-    const pct = g.target > 0 ? Math.min(100, Math.round(g.saved / g.target * 100)) : 0;
-    const color = g.color || GOAL_COLORS[0];
-    const remaining = Math.max(0, g.target - g.saved);
-    let deadlineStr = '';
-    if(g.deadline){ const [y,m]=g.deadline.split('-'); deadlineStr=(MONTHS_RU[parseInt(m)-1]||'')+' '+y; }
-    const done = g.saved >= g.target;
-
-    // ── Темп: сколько откладывать в месяц, чтобы успеть к сроку ──
-    let paceLine = '';
-    if(!done){
-      if(g.deadline){
-        const [dy,dm] = g.deadline.split('-').map(Number);
-        const now = new Date();
-        const monthsLeft = (dy - now.getFullYear())*12 + ((dm-1) - now.getMonth());
-        if(monthsLeft < 0){
-          paceLine = `<span style="color:var(--red);font-weight:600">🔴 Срок прошёл · осталось ${fmtH(remaining)}</span>`;
-        } else {
-          const perMonth = Math.ceil(remaining / Math.max(1, monthsLeft));
-          const whenStr = monthsLeft === 0 ? 'в этом месяце' : monthsLeft+' мес';
-          paceLine = `Осталось ${fmtH(remaining)} · ${whenStr} · <span style="color:${color};font-weight:600">${fmtH(perMonth)}/мес</span>`;
-        }
-      } else {
-        paceLine = `Осталось ${fmtH(remaining)}`;
-      }
-    }
-
-    return `<div style="${idx>0?'border-top:1px solid var(--border);':''}padding:12px 0">
-      <div onclick="openGoalModal('${esc(g.id)}')" style="cursor:pointer">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-size:14px;font-weight:600">${esc(g.name)}</span>
-          ${deadlineStr?`<span style="font-size:11px;color:var(--muted)">${esc(deadlineStr)}</span>`:''}
-        </div>
-        <div style="background:var(--border2);border-radius:4px;height:6px;overflow:hidden;margin-bottom:6px">
-          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:600;color:${color}">${fmtH(g.saved)}</span>
-          ${done?'<span style="font-size:11px;color:var(--green);font-weight:600">'+ICO.check+' Цель достигнута!</span>':`<span style="font-size:12px;color:var(--muted)">из ${fmtH(g.target)} · ${pct}%</span>`}
-        </div>
-        ${paceLine?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${paceLine}</div>`:''}
-      </div>
-      ${done?'':`<button class="btn small" style="margin-top:8px" onclick="openGoalTopup('${esc(g.id)}',event)">+ Пополнить</button>
-      <button class="btn small" style="margin-top:8px" onclick="event.stopPropagation();_goalToCalc('${esc(g.id)}')">→ в калькулятор</button>`}
-    </div>`;
-  }).join('');
-}
-
-let _topupGoalId = null;
-function openGoalTopup(id, ev){
-  if(ev) ev.stopPropagation();
-  const g = (DB.goals||[]).find(x=>x.id===id);
-  if(!g) return;
-  _topupGoalId = id;
-  document.getElementById('goal-topup-name').innerHTML = esc(g.name) + ' · накоплено ' + fmtH(g.saved) + ' из ' + fmtH(g.target);
-  document.getElementById('goal-topup-amount').value = '';
-  openModal('modal-goal-topup');
-  setTimeout(()=>{ const i=document.getElementById('goal-topup-amount'); if(i) i.focus(); }, 50);
-}
-
-function saveGoalTopup(){
-  const g = (DB.goals||[]).find(x=>x.id===_topupGoalId);
-  if(!g){ closeModal('modal-goal-topup'); return; }
-  const amt = parseMoney(document.getElementById('goal-topup-amount').value);
-  if(!amt || amt<=0){ toast('Введите сумму'); return; }
-  g.saved = Math.round((g.saved||0) + amt);
-  g.updatedAt = Date.now();
-  saveDB();
-  closeModal('modal-goal-topup');
-  renderGoals();
-  toast('+'+fmt(amt));
-}
-
-function _getCurrentAssetsTotal(){
+// ─── ИТОГИ ПО АКТИВАМ ────────────────────────────────────────────────
+// Только счета (дебет − кредит) на последнюю запись каждого банка.
+// Это НЕ «Всего активов» из шапки: там сверху ещё вклады и инвестиции.
+function _banksTotal(){
   const allBanks = getAllBanks();
   const allEntries = (DB.assets||[]).filter(a=>!a._deleted);
   // Последняя запись каждого банка независимо от даты (см. renderAssets)
@@ -5296,60 +5218,10 @@ function _assetsParts(){
   const invs = (DB.investments||[]).filter(v=>!v._deleted)
     .reduce((s,v)=>s+invValueAt(v,snapD),0);
   return [
-    {key:'banks', label:'счета',      val:_getCurrentAssetsTotal()},
+    {key:'banks', label:'счета',      val:_banksTotal()},
     {key:'deps',  label:'вклады',     val:Math.round(deps)},
     {key:'invs',  label:'инвестиции', val:Math.round(invs)}
   ];
-}
-
-function openGoalModal(id){
-  _editingGoalId = id || null;
-  const g = id ? (DB.goals||[]).find(x=>x.id===id) : null;
-  document.getElementById('goal-modal-title').textContent = g ? 'Редактировать цель' : 'Новая цель';
-  document.getElementById('goal-name').value = g ? g.name : '';
-  setMoneyInput('goal-target', g ? g.target : '');
-  setMoneyInput('goal-saved', g ? g.saved : _getCurrentAssetsTotal());
-  document.getElementById('goal-deadline').value = g&&g.deadline ? g.deadline : '';
-  document.getElementById('goal-delete-btn').style.display = g ? '' : 'none';
-  _selectedGoalColor = g ? (g.color||GOAL_COLORS[0]) : GOAL_COLORS[0];
-  _renderGoalColorPicker();
-  openModal('modal-goal');
-}
-
-function _renderGoalColorPicker(){ renderColorPicker('goal-color-picker', GOAL_COLORS, _selectedGoalColor, 'selectGoalColor'); }
-function selectGoalColor(c){ _selectedGoalColor=c; _renderGoalColorPicker(); }
-
-function saveGoal(){
-  const name = document.getElementById('goal-name').value.trim();
-  const target = parseMoney(document.getElementById('goal-target').value);
-  const saved = parseMoney(document.getElementById('goal-saved').value);
-  const deadline = document.getElementById('goal-deadline').value||'';
-  if(!name){ toast('Введите название'); return; }
-  if(target<=0){ toast('Введите целевую сумму'); return; }
-  if(!DB.goals) DB.goals=[];
-  if(_editingGoalId){
-    const idx=DB.goals.findIndex(g=>g.id===_editingGoalId);
-    if(idx>=0) DB.goals[idx]={...DB.goals[idx],name,target,saved,deadline,color:_selectedGoalColor,_deleted:false,updatedAt:Date.now()};
-  } else {
-    DB.goals.push({id:uid(),name,target,saved,deadline,color:_selectedGoalColor,updatedAt:Date.now()});
-  }
-  saveDB(); closeModal('modal-goal');
-  renderGoals();
-  toast('✓ Сохранено');
-}
-
-function deleteGoal(){
-  if(!_editingGoalId) return;
-  const g=(DB.goals||[]).find(x=>x.id===_editingGoalId);
-  if(g){ g._deleted=true; g.updatedAt=Date.now(); }
-  saveDB(); closeModal('modal-goal');
-  renderGoals();
-  if(g){
-    toastUndo('Цель удалена', ()=>{
-      delete g._deleted; g.updatedAt=Date.now();
-      saveDB(); renderGoals();
-    });
-  }
 }
 
 // ─── DEPOSITS (вклады под процент) ──────────────────────────────────
@@ -6632,10 +6504,6 @@ function renderSettings(){
   if(tmplCount) tmplCount.textContent = (DB.templates||[]).filter(t=>!t._deleted).length + ' шт.';
   const incTagsCount = document.getElementById('income-tags-count-display');
   if(incTagsCount) incTagsCount.textContent = (DB.incomeTags||[]).length + ' шт.';
-  ['drive-save-row','drive-restore-row'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.style.display = hasSyncUrl ? 'flex' : 'none';
-  });
 }
 
 // ─── CAT MANAGER ────────────────────────────────────────────────────
@@ -6719,8 +6587,9 @@ function buildGroupSummary(){
 // Change color of entire group
 function setGroupColor(oldColor, newColor){
   if(!DB.catColors) DB.catColors = {};
+  const ids = DB.catIds || [];
   DB.categories.forEach((_,i) => {
-    if(getCatColor(i) === oldColor) DB.catColors[i] = newColor;
+    if(ids[i] && getCatColor(i) === oldColor) DB.catColors[ids[i]] = newColor;
   });
   touchList('categories'); // catColors мержится по listsMeta.categories — без метки синк откатит
   saveDB();
@@ -6910,12 +6779,14 @@ function addCategory(){
   if(DB.categories.includes(name)){ toast('Уже существует'); return; }
   DB.categories.push(name);
   if(!DB.catIds) DB.catIds = [];
-  DB.catIds.push(uid());
+  const newId = uid();
+  DB.catIds.push(newId);
   touchList('categories');
-  // В прошлые месяцы — лимит 0 (категории тогда не было), с текущего — дефолт
+  // С текущего месяца — дефолтный лимит. В прошлых месяцах ключа просто нет,
+  // getLimits отдаёт для них 0: категории тогда не существовало.
   const curK = monthKey(new Date().getFullYear(), new Date().getMonth());
   Object.keys(DB.limits).forEach(k=>{
-    if(Array.isArray(DB.limits[k])) DB.limits[k].push(k >= curK ? 3000 : 0);
+    if(k >= curK && DB.limits[k] && !Array.isArray(DB.limits[k])) DB.limits[k][newId] = 3000;
   });
   saveDB();
   document.getElementById('new-cat-name').value = '';
@@ -6925,7 +6796,9 @@ function addCategory(){
 
 function setCatColor(i, color){
   if(!DB.catColors) DB.catColors = {};
-  DB.catColors[i] = color;
+  const id = (DB.catIds||[])[i];
+  if(!id) return;
+  DB.catColors[id] = color;
   touchList('categories');
   saveDB();
   renderCatManager();
@@ -6948,15 +6821,11 @@ function removeCategory(i){
   DB.categories.splice(i, 1);
   if(DB.catIds) DB.catIds.splice(i, 1);
   touchList('categories');
-  const newColors = {};
-  Object.entries(DB.catColors||{}).forEach(([k,v]) => {
-    const ki = parseInt(k);
-    if(ki < i) newColors[ki] = v;
-    else if(ki > i) newColors[ki-1] = v;
-  });
-  DB.catColors = newColors;
+  // Лимиты и цвет удалённой категории адресуются её catId — сдвигать соседей
+  // не нужно, достаточно убрать её собственные ключи.
+  if(DB.catColors) delete DB.catColors[deletedId];
   Object.keys(DB.limits).forEach(k=>{
-    if(Array.isArray(DB.limits[k])) DB.limits[k].splice(i, 1);
+    if(DB.limits[k] && !Array.isArray(DB.limits[k])) delete DB.limits[k][deletedId];
   });
   // catId авторитетен: сироты — в первую категорию (со штампом, чтобы разошлось
   // по устройствам); индексы cat пересчитает _reindexCats. Штамп на сдвинутых
@@ -7485,13 +7354,26 @@ function auditMergeGhost(i){
   if(!target || target === name) return;
   const known = getAllBanks();
   const now = Date.now();
-  let n = 0;
+  // Для undo помним прежнее bankName: у legacy-записей его вообще не было,
+  // и вернуть надо именно отсутствие поля, а не строку-призрак.
+  const undone = [];
   (DB.assets||[]).forEach(a=>{
     if(a._deleted) return;
-    if(_auditBankName(a, known) === name){ a.bankName = target; a.updatedAt = now; n++; }
+    if(_auditBankName(a, known) === name){
+      undone.push({rec:a, had:('bankName' in a), prev:a.bankName});
+      a.bankName = target; a.updatedAt = now;
+    }
   });
   saveDB(); renderDataAudit(); renderAssets();
-  toast('✓ '+n+' запис. → '+target);
+  if(!undone.length){ toast('Нечего переносить'); return; }
+  toastUndo(undone.length+' запис. → '+target, ()=>{
+    const ts = Date.now();
+    undone.forEach(({rec, had, prev})=>{
+      if(had) rec.bankName = prev; else delete rec.bankName;
+      rec.updatedAt = ts;
+    });
+    saveDB(); renderDataAudit(); renderAssets();
+  }, 8000);
 }
 
 function auditDeleteGhost(i){
@@ -7499,33 +7381,54 @@ function auditDeleteGhost(i){
   if(name === undefined) return;
   const known = getAllBanks();
   const recs = (DB.assets||[]).filter(a=>!a._deleted && _auditBankName(a, known) === name);
+  if(!recs.length){ toast('Нечего удалять'); return; }
   if(!confirm('Удалить '+recs.length+' записей «'+name+'»? Итог и история пересчитаются.')) return;
   const now = Date.now();
+  // amount зануляется вместе с tombstone — для undo запоминаем суммы
+  const undone = recs.map(a=>({rec:a, amount:a.amount}));
   recs.forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; });
   saveDB(); renderDataAudit(); renderAssets();
-  toast('Записи удалены');
+  toastUndo('Удалено записей: '+recs.length, ()=>{
+    const ts = Date.now();
+    undone.forEach(({rec, amount})=>{ delete rec._deleted; rec.amount = amount; rec.updatedAt = ts; });
+    saveDB(); renderDataAudit(); renderAssets();
+  }, 8000);
 }
 
 function auditFixDups(){
   const known = getAllBanks();
-  const now = Date.now();
   const groups = {};
   (DB.assets||[]).filter(a=>!a._deleted).forEach(a=>{
     const key = _auditBankName(a, known)+'|'+a.date;
     (groups[key] = groups[key]||[]).push(a);
   });
-  let n = 0;
+  // Сначала собираем жертв, потом спрашиваем: кнопка подписана «Исправить»,
+  // из неё не видно, что это удаление записей — счёт в вопросе обязателен.
+  const victims = [];
   Object.values(groups).forEach(g=>{
     if(g.length < 2) return;
     g.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-    g.slice(1).forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; n++; });
+    g.slice(1).forEach(a=>victims.push(a));
   });
+  if(!victims.length){ toast('Дублей нет'); return; }
+  if(!confirm('Удалить '+victims.length+' лишних записей? В каждой паре останется самая свежая по updatedAt, итог и история пересчитаются.')) return;
+  const now = Date.now();
+  const undone = victims.map(a=>({rec:a, amount:a.amount}));
+  victims.forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; });
   saveDB(); renderDataAudit(); renderAssets();
-  toast('✓ Убрано дублей: '+n);
+  toastUndo('Убрано дублей: '+victims.length, ()=>{
+    const ts = Date.now();
+    undone.forEach(({rec, amount})=>{ delete rec._deleted; rec.amount = amount; rec.updatedAt = ts; });
+    saveDB(); renderDataAudit(); renderAssets();
+  }, 8000);
 }
 
 function backupDB(){
-  const json = JSON.stringify(DB, null, 2);
+  // Тот же срез, что уходит на Drive: без syncUrl/syncToken (файл копии часто
+  // пересылают себе в мессенджер — секрет Apps Script там делать нечего) и без
+  // device-local настроек, которые _applyRestoredData всё равно перетирает
+  // текущими значениями устройства.
+  const json = JSON.stringify(buildPayload(), null, 2);
   const a = document.createElement('a');
   a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
   a.download = 'budget_backup_' + today() + '.json';
@@ -7547,7 +7450,7 @@ function _applyRestoredData(d, makeAuthoritative){
   DB.theme = curTheme; DB.privacyMode = curPrivacy;
   if(makeAuthoritative){
     const now = Date.now();
-    ['expenses','incomes','assets','goals','templates','deposits','credits'].forEach(k => {
+    ['expenses','incomes','assets','templates','deposits','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
     ['categories','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(l => touchList(l));
@@ -7648,7 +7551,7 @@ function checkBudgetNotifications(){
       if(stored !== null && spent <= parseFloat(stored)) return;
       localStorage.setItem(key, String(spent));
       new Notification('Бюджет: ' + cat, {
-        body: 'Потрачено ' + fmt(spent) + ' из ' + fmt(limit) + ' (' + Math.round(ratio*100) + '%)',
+        body: 'Потрачено ' + fmtN(spent) + ' из ' + fmtN(limit) + ' (' + Math.round(ratio*100) + '%)',
         icon: './apple-touch-icon.png'
       });
     }
@@ -7696,7 +7599,7 @@ function checkDepositNotifications(){
     localStorage.setItem(stampKey, String(Date.now()));
     new Notification('Вклад: ' + d.name, {
       body: daysLeft > 0
-        ? 'Закрывается через ' + daysLeft + ' дн. (' + _fmtDateRu(d.endDate) + ') — ' + fmt(depositValueAt(d, d.endDate))
+        ? 'Закрывается через ' + daysLeft + ' дн. (' + _fmtDateRu(d.endDate) + ') — ' + fmtN(depositValueAt(d, d.endDate))
         : 'Срок вышел ' + _fmtDateRu(d.endDate) + ' — нажмите «Перенести в банк» на странице вкладов',
       icon: './apple-touch-icon.png'
     });
@@ -7713,8 +7616,8 @@ function checkCreditNotifications(){
       if(dl > 3) return;
       title = 'Кредитка: ' + c.bank;
       body = dl >= 0
-        ? 'Грейс кончается ' + (dl === 0 ? 'сегодня' : 'через ' + dl + ' дн. (' + _fmtDateRu(c.graceEnd) + ')') + ' — погасить ' + fmt(c.payoffAmount)
-        : 'Грейс просрочен с ' + _fmtDateRu(c.graceEnd) + ' — ' + fmt(c.payoffAmount);
+        ? 'Грейс кончается ' + (dl === 0 ? 'сегодня' : 'через ' + dl + ' дн. (' + _fmtDateRu(c.graceEnd) + ')') + ' — погасить ' + fmtN(c.payoffAmount)
+        : 'Грейс просрочен с ' + _fmtDateRu(c.graceEnd) + ' — ' + fmtN(c.payoffAmount);
     } else {
       const p = _splitNextPayment(c);
       if(!p) return;
@@ -7722,8 +7625,8 @@ function checkCreditNotifications(){
       if(dl > 1) return;
       title = 'Сплит: ' + c.name;
       body = dl >= 0
-        ? 'Платёж ' + fmt(p.amount) + (dl === 0 ? ' сегодня' : ' завтра')
-        : 'Платёж ' + fmt(p.amount) + ' просрочен (' + _fmtDateRu(p.date) + ')';
+        ? 'Платёж ' + fmtN(p.amount) + (dl === 0 ? ' сегодня' : ' завтра')
+        : 'Платёж ' + fmtN(p.amount) + ' просрочен (' + _fmtDateRu(p.date) + ')';
     }
     const stampKey = 'notif_credit_' + c.id;
     const stamp = localStorage.getItem(stampKey);
@@ -7949,7 +7852,10 @@ function exportExcel(){
 
   // ── Шаблон ───────────────────────────────────────────────────────────
   const limKeys = Object.keys(DB.limits||{}).sort();
-  const latestLim = limKeys.length ? (DB.limits[limKeys[limKeys.length-1]]||[]) : [];
+  // getLimits — единственная точка чтения: лимиты хранятся по catId, наружу
+  // отдаётся позиционный массив в порядке DB.categories
+  const _limsOf = key => { const [y2,m2] = key.split('-').map(Number); return getLimits(y2, m2-1); };
+  const latestLim = limKeys.length ? _limsOf(limKeys[limKeys.length-1]) : [];
   const limHdr = ['Статья Расходов','Сумма/Мес','Доля Общая','Доля Лимита','Лимиты'];
   const tmplLimTotal = latestLim.reduce((s,v) => s+(v||0), 0);
   const tmplWs = X.utils.aoa_to_sheet([
@@ -7975,8 +7881,7 @@ function exportExcel(){
     if(e.cat >= 0 && e.cat < cats.length) monthCatSpent[k][e.cat] += (e.amount||0);
   });
   [...monthSet].sort().map(key => {
-    const [y2,m2] = key.split('-').map(Number);
-    return [key, DB.limits[key] || getLimits(y2, m2-1)];
+    return [key, _limsOf(key)];
   }).forEach(([key,lim]) => {
     const [yr,mo] = key.split('-').map(Number);
 
@@ -8185,12 +8090,6 @@ function fillTestData(){
     {id:uid(), bank:2, bankName:'Альфа кредит', amount:18000, date:dAgo(0)},
   ];
 
-  DB.goals = [
-    {id:uid(), name:'Отпуск в Турции',       target:150000, saved:45000,  deadline:dAgo(-90).slice(0,7),  color:'#185fa5'},
-    {id:uid(), name:'Новый MacBook',          target:200000, saved:82000,  deadline:dAgo(-180).slice(0,7), color:'#1d9e75'},
-    {id:uid(), name:'Подушка безопасности',  target:500000, saved:165000, deadline:dAgo(-365).slice(0,7), color:'#d85a30'},
-  ];
-
   DB.templates = [
     {id:uid(), name:'🛒', cat:2, amount:2000, comment:'Пятёрочка', color:'#1d9e75'},
     {id:uid(), name:'☕', cat:3, amount:350,  comment:'',          color:'#d85a30'},
@@ -8231,38 +8130,6 @@ function doClearData(){
   toast('Все данные очищены');
 }
 
-
-// ─── GOOGLE DRIVE SAVE / RESTORE ─────────────────────────────────────
-
-async function doDriveSave(){
-  if(!DB.syncUrl){ toast('Нужен URL синхронизации'); return; }
-  toast('Сохраняем на Drive…');
-  try{
-    const result = await syncRequest('push', buildPayload());
-    if(result.error){ toast('Ошибка: ' + result.error); return; }
-    toast('✓ Данные сохранены на Drive');
-  } catch(e){
-    toast('Ошибка соединения');
-  }
-}
-
-async function doDriveRestore(){
-  if(!DB.syncUrl){ toast('Нужен URL синхронизации'); return; }
-  if(!confirm('Восстановить данные из Drive? Текущие данные будут заменены.')) return;
-  toast('Загружаем из Drive…');
-  try{
-    const resp = await fetch(DB.syncUrl + '?action=pull', { redirect: 'follow' });
-    const text = await resp.text();
-    let data = JSON.parse(text);
-    if(typeof data === 'string') data = JSON.parse(data);
-    if(data.error || data.empty){ toast('Ошибка: ' + (data.error || 'файл пуст')); return; }
-    if(!data.expenses && !data.categories){ toast('Неверный формат данных'); return; }
-    _applyRestoredData(data, false); // данные и так с Drive — перештамповка не нужна
-    toast('✓ Данные восстановлены из Drive');
-  } catch(e){
-    toast('Ошибка: файл повреждён или не найден');
-  }
-}
 
 // ═══ sync.js ═══
 
@@ -8379,8 +8246,8 @@ function renderCurrentPage(){
 async function pullFromSheets(){
   if(!DB.syncUrl){ toast('URL не задан'); return; }
   const r = await syncCycle();
-  if(r && r.error) toast('Ошибка загрузки: ' + r.error);
-  else toast('✓ Данные загружены!');
+  if(r && r.error) toast('Ошибка синхронизации: ' + r.error);
+  else toast('✓ Синхронизировано');
 }
 
 // ── Push — выгрузить в Drive (тоже через цикл: сначала merge, потом push) ──
@@ -8388,8 +8255,8 @@ async function pushToSheets(){
   if(!DB.syncUrl){ toast('URL не задан'); return; }
   // force: ручная выгрузка обходит серверную защиту от «подозрительно маленького» payload
   const r = await syncCycle({forcePush:true, force:true});
-  if(r && r.error) toast('Ошибка сохранения: ' + r.error);
-  else toast('✓ Данные сохранены!');
+  if(r && r.error) toast('Ошибка выгрузки: ' + r.error);
+  else toast('✓ Выгружено на Drive');
 }
 
 // ── Виджет статуса синхронизации ──────────────────────────────────────
@@ -9177,7 +9044,7 @@ function mergePullData(d){
 
   // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
   // Pull идёт до push, поэтому при равенстве побеждает локальное (строгое >).
-  ['expenses','incomes','assets','goals','templates','deposits','investments','credits'].forEach(key => {
+  ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(key => {
     if(!d[key]) return;
     const map = new Map();
     (DB[key]||[]).forEach(it => { if(it && it.id != null) map.set(it.id, it); });
@@ -9206,8 +9073,8 @@ function mergePullData(d){
   if(d.limits){
     const base = DB._lastSyncedLimits || {};
     Object.keys(d.limits).forEach(k => {
-      const localChanged = JSON.stringify(DB.limits[k] || null) !== JSON.stringify(base[k] || null);
-      if(!localChanged && JSON.stringify(DB.limits[k] || null) !== JSON.stringify(d.limits[k] || null)){
+      const localChanged = _canonJSON(DB.limits[k] || null) !== _canonJSON(base[k] || null);
+      if(!localChanged && _canonJSON(DB.limits[k] || null) !== _canonJSON(d.limits[k] || null)){
         DB.limits[k] = d.limits[k];
         changed = true;
       }
@@ -9220,8 +9087,8 @@ function mergePullData(d){
     if(!DB.specPlan) DB.specPlan = {};
     const baseS = DB._lastSyncedSpecPlan || {};
     Object.keys(d.specPlan).forEach(k => {
-      const localChanged = JSON.stringify(DB.specPlan[k] || null) !== JSON.stringify(baseS[k] || null);
-      if(!localChanged && JSON.stringify(DB.specPlan[k] || null) !== JSON.stringify(d.specPlan[k] || null)){
+      const localChanged = _canonJSON(DB.specPlan[k] || null) !== _canonJSON(baseS[k] || null);
+      if(!localChanged && _canonJSON(DB.specPlan[k] || null) !== _canonJSON(d.specPlan[k] || null)){
         DB.specPlan[k] = d.specPlan[k];
         changed = true;
       }

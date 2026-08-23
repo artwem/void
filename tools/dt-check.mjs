@@ -1012,6 +1012,129 @@ suite(390, 'ручная бронь особых', () => {
   });
 });
 
+// Лимиты и цвета категорий хранятся по catId (v1.64.0). До этого limits были
+// позиционным массивом, а catColors — словарём по индексу, тогда как сам список
+// categories мержится LWW целиком: после правки категорий на двух устройствах
+// позиция N значила одну категорию в списке и другую в лимитах, и деньги
+// молча приписывались чужой строке. Сторожим и миграцию, и сам сценарий.
+suite(390, 'лимиты и цвета по catId', () => {
+  // Свежая база под каждый чек: чеки одной сюиты делят страницу.
+  const seed = (p, extra = {}) => p.evaluate(ex => {
+    DB.categories = ['A', 'B', 'C'];
+    DB.catIds     = ['i1', 'i2', 'i3'];
+    DB.catColors  = { i1: '#111111', i2: '#222222', i3: '#333333' };
+    DB.expenses = []; DB.templates = [];
+    DB.limits = {}; DB._lastSyncedLimits = {};
+    Object.assign(DB, ex);
+    return true;
+  }, extra);
+
+  check('старый формат конвертируется в ключи catId без потери сумм', async p => {
+    await p.evaluate(() => {
+      DB.categories = ['A', 'B', 'C'];
+      DB.catIds     = ['i1', 'i2', 'i3'];
+      DB.limits     = { '2026-01': [100, 200, 300] };                 // позиционный массив
+      DB.catColors  = { 0: '#111111', 1: '#222222', 2: '#333333' };   // ключ-индекс
+      DB._lastSyncedLimits = { '2026-01': [100, 200, 300] };
+      _ensureCatIds();
+    });
+    const got = await p.evaluate(() => ({
+      lim:  DB.limits['2026-01'],
+      base: DB._lastSyncedLimits['2026-01'],
+      col:  DB.catColors,
+      read: getLimits(2026, 0),
+      c1:   getCatColor(1),
+    }));
+    eq(Array.isArray(got.lim), false, 'лимиты остались массивом');
+    eq(JSON.stringify(got.lim), JSON.stringify({ i1: 100, i2: 200, i3: 300 }), 'лимиты по catId');
+    eq(JSON.stringify(got.base), JSON.stringify({ i1: 100, i2: 200, i3: 300 }), 'baseline мигрирован вместе с лимитами');
+    eq(JSON.stringify(got.col), JSON.stringify({ i1: '#111111', i2: '#222222', i3: '#333333' }), 'цвета по catId');
+    eq(JSON.stringify(got.read), JSON.stringify([100, 200, 300]), 'getLimits отдаёт прежний позиционный массив');
+    eq(got.c1, '#222222', 'цвет второй категории');
+  });
+
+  check('удаление категории не сдвигает лимиты и цвета соседей', async p => {
+    await seed(p, { limits: { '2026-01': { i1: 100, i2: 200, i3: 300 } } });
+    await p.evaluate(() => {
+      window.confirm = () => true;      // removeCategory спрашивает подтверждение
+      removeCategory(1);                // выбрасываем B из середины
+    });
+    const got = await p.evaluate(() => ({
+      cats: DB.categories, read: getLimits(2026, 0),
+      colors: DB.categories.map((_, i) => getCatColor(i)),
+      leftover: Object.keys(DB.limits['2026-01']),
+    }));
+    eq(JSON.stringify(got.cats), JSON.stringify(['A', 'C']), 'список категорий');
+    eq(JSON.stringify(got.read), JSON.stringify([100, 300]), 'лимиты поехали за своими категориями');
+    eq(JSON.stringify(got.colors), JSON.stringify(['#111111', '#333333']), 'цвета поехали за своими категориями');
+    eq(JSON.stringify(got.leftover), JSON.stringify(['i1', 'i3']), 'ключ удалённой категории убран');
+  });
+
+  check('добавление категории не делает все месяцы «локально изменёнными»', async p => {
+    // Раньше addCategory дописывал элемент в КАЖДЫЙ месяц, поэтому 3-way merge
+    // считал локально изменёнными все месяцы разом и молча выбрасывал чужие
+    // правки лимитов за прошлые месяцы.
+    await p.evaluate(() => {
+      const n = new Date();
+      const cur  = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
+      const prev = (n.getMonth() ? n.getFullYear() : n.getFullYear() - 1) + '-' +
+                   String(n.getMonth() ? n.getMonth() : 12).padStart(2, '0');
+      DB.categories = ['A', 'B', 'C'];
+      DB.catIds     = ['i1', 'i2', 'i3'];
+      DB.catColors  = { i1: '#111111', i2: '#222222', i3: '#333333' };
+      DB.expenses = []; DB.templates = [];
+      DB.limits = { [cur]: { i1: 100, i2: 200, i3: 300 }, [prev]: { i1: 10, i2: 20, i3: 30 } };
+      DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits));
+      window._tPrev = prev; window._tCur = cur;
+      document.getElementById('new-cat-name').value = 'Такси';
+      addCategory();
+      mergePullData({ limits: { [prev]: { i1: 11, i2: 22, i3: 33 } } });
+    });
+    const got = await p.evaluate(() => {
+      const [py, pm] = window._tPrev.split('-').map(Number);
+      return { prev: getLimits(py, pm - 1), curKeys: Object.keys(DB.limits[window._tCur]).length };
+    });
+    eq(JSON.stringify(got.prev.slice(0, 3)), JSON.stringify([11, 22, 33]), 'чужие лимиты нетронутого месяца приняты');
+    eq(got.prev[3], 0, 'новой категории в прошлом месяце лимита нет');
+    eq(got.curKeys, 4, 'в текущем месяце у новой категории лимит появился');
+  });
+
+  check('две категории, добавленные на разных устройствах, не путают лимиты', async p => {
+    // Тот самый разъезд: список категорий побеждает удалённый целиком, а лимиты
+    // раньше оставались локальным массивом — позиция 4 значила «Такси» в одном
+    // и «Спорт» в другом, и лимит такси показывался у спорта.
+    await seed(p, { limits: { '2026-01': { i1: 100, i2: 200, i3: 300, i4: 3000 } },
+                    _lastSyncedLimits: { '2026-01': { i1: 100, i2: 200, i3: 300 } } });
+    await p.evaluate(() => {
+      DB.categories = ['A', 'B', 'C', 'Такси'];
+      DB.catIds     = ['i1', 'i2', 'i3', 'i4'];
+      DB.listsMeta  = { categories: 1000 };
+      mergePullData({
+        categories: ['A', 'B', 'C', 'Спорт'],
+        catIds:     ['i1', 'i2', 'i3', 'r5'],
+        catColors:  { i1: '#111111', i2: '#222222', i3: '#333333', r5: '#555555' },
+        listsMeta:  { categories: 2000 },              // удалённый список свежее — он и побеждает
+        limits:     { '2026-01': { i1: 100, i2: 200, i3: 300, r5: 777 } },
+      });
+    });
+    const got = await p.evaluate(() => ({ cats: DB.categories, read: getLimits(2026, 0) }));
+    eq(got.cats[3], 'Спорт', 'победил удалённый список категорий');
+    if (got.read[3] === 3000) throw new Error('лимит «Такси» приписан категории «Спорт» — позиции разъехались');
+    eq(JSON.stringify(got.read.slice(0, 3)), JSON.stringify([100, 200, 300]), 'лимиты прежних категорий на месте');
+  });
+
+  check('порядок ключей не выдаёт нетронутый месяц за изменённый', async p => {
+    // Ключи limits/specPlan — catId, и с разных устройств они приходят в разном
+    // порядке. JSON.stringify зависит от порядка вставки, поэтому сравнение
+    // «локально менялось?» врало бы на ровном месте.
+    await seed(p, { limits: { '2026-01': { i3: 300, i1: 100, i2: 200 } },
+                    _lastSyncedLimits: { '2026-01': { i1: 100, i2: 200, i3: 300 } } });
+    await p.evaluate(() => mergePullData({ limits: { '2026-01': { i1: 111, i2: 222, i3: 333 } } }));
+    const got = await p.evaluate(() => getLimits(2026, 0));
+    eq(JSON.stringify(got), JSON.stringify([111, 222, 333]), 'месяц признан нетронутым, удалённые лимиты приняты');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
