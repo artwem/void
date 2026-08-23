@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.61.0">
+<link rel="stylesheet" href="css/app.css?v=1.62.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -770,6 +770,29 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- MODAL: SPECIAL RESERVE EDITOR -->
+<div class="overlay" data-dt="dialog" id="modal-spec">
+  <div class="sheet">
+    <button class="close-btn" onclick="closeModal('modal-spec')"><svg class="ico"><use href="#i-close"/></svg></button>
+    <h2>Ожидаемые особые</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.45">
+      Прогноз берёт их из истории категории и держит эти деньги в резерве — на них
+      уменьшается дневной остаток. Что в этом месяце уже не случится — обнулите,
+      деньги вернутся в бюджет.
+    </p>
+    <div id="spec-editor-rows"></div>
+    <div id="spec-editor-total" style="font-size:13px;color:var(--muted);padding:10px 0 2px;text-align:right"></div>
+    <div class="btn-row">
+      <button class="btn small" style="white-space:nowrap" onclick="specDraftAllPaid()">Всё оплачено</button>
+      <button class="btn small" style="white-space:nowrap" onclick="specDraftReset()">Вернуть прогноз</button>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn" onclick="closeModal('modal-spec')">Отмена</button>
+      <button class="btn primary" onclick="saveSpecPlan()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ADD ASSET -->
 <!-- MODAL: GOAL -->
 <div class="overlay" data-dt="insp" id="modal-goal">
@@ -1266,7 +1289,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.61.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.62.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1930,45 +1953,90 @@ function _dayEnvelope(){
 // брони: галочка «ждём / не будет» и правка суммы по каждой категории.
 // Разворот держим в sessionStorage, как остальные UI-состояния.
 function _oblRowHtml(f, list){
-  const open = sessionStorage.getItem('oblOpen') === '1';
   const remain = Math.max(0, f.reserve - f.specSpent);
-  let h = '<div onclick="toggleOblExpand()" style="display:flex;gap:8px;align-items:baseline;cursor:pointer">' +
+  const clickable = list.length > 0;
+  // Вся строка — одна тап-зона, без слова «править»: строкой ниже висит
+  // «Лимиты ✎» у секции категорий, и две ссылки правки в двух сантиметрах
+  // друг от друга читались как одно и то же действие.
+  return '<div' + (clickable ? ' onclick="openSpecEditor()"' : '') +
+    ' style="display:flex;gap:8px;align-items:baseline' + (clickable ? ';cursor:pointer' : '') + '">' +
     '<span>особые ' + fmtH(f.reserve) + '</span>' +
     '<span style="color:var(--hint)">оплачено ' + fmtH(f.specSpent) +
-      (remain > 0 ? ' · ждём ещё ' + fmtH(remain) : ' · резерв выбран') + '</span>';
-  if(list.length) h += '<span style="margin-left:auto;color:var(--blue)">' + (open ? 'скрыть' : 'править') + '</span>';
-  h += '</div>';
-  if(!open || !list.length) return h;
-
-  const rows = list.slice().sort((a, b) => b.unpaid - a.unpaid).map(it => {
-    const id = DB.catIds[it.cat] || '';
-    const on = it.unpaid > 0;
-    const nameStyle = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' +
-      (on ? '' : ';color:var(--hint);text-decoration:line-through');
-    // appearance:auto инлайном — глобальный appearance:none в теме прячет
-    // системный чекбокс, и остаётся пустой квадрат без галочки.
-    return '<div style="display:flex;align-items:center;gap:8px">' +
-      '<input type="checkbox"' + (on ? ' checked' : '') +
-        ' data-cid="' + id + '" onchange="toggleSpecPlan(this.dataset.cid,this.checked)"' +
-        ' style="appearance:auto;-webkit-appearance:auto;width:15px;height:15px;flex-shrink:0;margin:0">' +
-      '<span style="' + nameStyle + '">' + esc(DB.categories[it.cat] || '—') + '</span>' +
-      '<input type="text" inputmode="decimal" value="' + Math.round(it.unpaid).toLocaleString('ru-RU') + '"' +
-        ' data-cid="' + id + '" oninput="formatMoneyInput(this)" onchange="setSpecPlan(this.dataset.cid,this.value)"' +
-        ' style="width:88px;text-align:right;padding:4px 6px;border-radius:var(--r-sm);' +
-        'border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit">' +
-      '</div>';
-  }).join('');
-
-  return h + '<div style="display:flex;flex-direction:column;gap:5px;padding:7px 0 2px">' + rows +
-    '<div class="btn-row" style="margin-top:2px">' +
-      '<button class="btn small" style="white-space:nowrap" onclick="specPlanAllPaid()">всё оплачено</button>' +
-      '<button class="btn small" style="white-space:nowrap" onclick="specPlanReset()">вернуть прогноз</button>' +
-    '</div></div>';
+      (remain > 0 ? ' · ждём ' + fmtH(remain) : ' · резерв выбран') + '</span>' +
+    (clickable ? '<span style="margin-left:auto;color:var(--muted);font-size:15px;line-height:1">›</span>' : '') +
+    '</div>';
 }
 
-function toggleOblExpand(){
-  sessionStorage.setItem('oblOpen', sessionStorage.getItem('oblOpen') === '1' ? '0' : '1');
+// Редактор ожидаемых особых. Правки живут в черновике _specDraftRows и уходят
+// в DB только по «Сохранить» — как в редакторе лимитов, чтобы «Отмена» была
+// настоящей отменой. auto — цифра прогноза без оверрайдов: по ней работает
+// «Вернуть прогноз», и по совпадению с ней saveSpecPlan решает, писать оверрайд
+// или стереть его. Значение, равное авто, оверрайдом быть не должно — иначе
+// прогноз замёрз бы на сегодняшней цифре и перестал реагировать на новые траты.
+let _specDraftRows = [];
+
+function openSpecEditor(){
+  const {y, m} = currentMonth;
+  const fc = _monthForecast(y, m);
+  const auto = it => Math.round(it.autoUnpaid != null ? it.autoUnpaid : it.unpaid);
+  _specDraftRows = ((fc && fc.forecast) || [])
+    .map(it => ({cat: it.cat, catId: DB.catIds[it.cat] || '', auto: auto(it), val: Math.round(it.unpaid)}))
+    .filter(r => r.catId)
+    .sort((a, b) => b.auto - a.auto);
+  renderSpecEditor();
+  openModal('modal-spec');
+}
+
+function renderSpecEditor(){
+  const box = document.getElementById('spec-editor-rows');
+  if(!box) return;
+  box.innerHTML = _specDraftRows.map((r, i) => {
+    const off = r.val <= 0;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)">' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' +
+        (off ? ';color:var(--hint)' : '') + '">' + esc(DB.categories[r.cat] || '—') + '</span>' +
+      '<input type="text" inputmode="decimal" class="finp" data-i="' + i + '"' +
+        ' value="' + r.val.toLocaleString('ru-RU') + '" oninput="formatMoneyInput(this)"' +
+        ' onchange="specDraftSet(this.dataset.i,this.value)"' +
+        ' style="width:100px;text-align:right;padding:7px 8px;font-size:15px">' +
+      '<button class="btn small" style="white-space:nowrap;min-width:84px" data-i="' + i + '"' +
+        ' onclick="specDraftToggle(this.dataset.i)">' + (off ? 'вернуть' : 'не будет') + '</button>' +
+      '</div>';
+  }).join('');
+  const total = _specDraftRows.reduce((s, r) => s + Math.max(0, r.val), 0);
+  const tot = document.getElementById('spec-editor-total');
+  if(tot) tot.innerHTML = 'Итого в резерве: <b style="color:var(--text)">' + fmt(total) + '</b>';
+}
+
+function specDraftSet(i, str){
+  const r = _specDraftRows[Number(i)];
+  if(!r) return;
+  r.val = Math.max(0, Math.round(parseMoney(str)));
+  renderSpecEditor();
+}
+
+// «не будет» / «вернуть» — парная кнопка одной строки, поэтому возвращает она
+// ровно то, что погасила (r.prev), а не прогнозную цифру: иначе вписанная
+// вручную сумма молча терялась бы при случайном нажатии. Сброс к прогнозу —
+// отдельная кнопка «Вернуть прогноз».
+function specDraftToggle(i){
+  const r = _specDraftRows[Number(i)];
+  if(!r) return;
+  if(r.val > 0){ r.prev = r.val; r.val = 0; }
+  else { r.val = (r.prev > 0) ? r.prev : r.auto; }
+  renderSpecEditor();
+}
+
+function specDraftAllPaid(){ _specDraftRows.forEach(r => { r.val = 0; }); renderSpecEditor(); }
+function specDraftReset(){ _specDraftRows.forEach(r => { r.val = r.auto; }); renderSpecEditor(); }
+
+function saveSpecPlan(){
+  const mk = monthKey(currentMonth.y, currentMonth.m);
+  _specDraftRows.forEach(r => _specPlanWrite(r.catId, r.val === r.auto ? null : r.val, mk));
+  saveDB();
+  closeModal('modal-spec');
   renderBudget();
+  toast('Резерв особых сохранён');
 }
 
 function _specPlanWrite(catId, val, mk){
@@ -1978,34 +2046,6 @@ function _specPlanWrite(catId, val, mk){
   if(val == null) delete DB.specPlan[mk][catId];
   else DB.specPlan[mk][catId] = Math.max(0, Math.round(val));
   if(!Object.keys(DB.specPlan[mk]).length) delete DB.specPlan[mk];
-}
-
-function _specPlanSet(catId, val){
-  _specPlanWrite(catId, val, monthKey(currentMonth.y, currentMonth.m));
-  saveDB();
-  renderBudget();
-}
-
-// Галочку вернули — возвращаем авторасчёт, а не прежнее число: снимали бронь
-// целиком, а вписать свою сумму всегда можно полем рядом.
-function toggleSpecPlan(catId, on){ _specPlanSet(catId, on ? null : 0); }
-function setSpecPlan(catId, str){ _specPlanSet(catId, parseMoney(str)); }
-
-function specPlanAllPaid(){
-  const {y, m} = currentMonth, mk = monthKey(y, m);
-  const fc = _monthForecast(y, m);
-  ((fc && fc.forecast) || []).forEach(it => _specPlanWrite(DB.catIds[it.cat], 0, mk));
-  saveDB();
-  renderBudget();
-  toast('Бронь особых снята');
-}
-
-function specPlanReset(){
-  const mk = monthKey(currentMonth.y, currentMonth.m);
-  if(DB.specPlan) delete DB.specPlan[mk];
-  saveDB();
-  renderBudget();
-  toast('Прогноз особых восстановлен');
 }
 
 function renderBudget(){
@@ -3569,14 +3609,14 @@ function _applySpecPlan(y, m, forecast){
   if(!ids.length) return forecast;
   const out = forecast.map(f => {
     const id = DB.catIds[f.cat];
-    return (id && ov[id] != null) ? {...f, unpaid: Math.max(0, ov[id]), manual: true} : f;
+    return (id && ov[id] != null) ? {...f, unpaid: Math.max(0, ov[id]), manual: true, autoUnpaid: f.unpaid} : f;
   });
   // Оверрайд на категорию, которую прогноз в этом месяце уже не называет,
   // остаётся отдельной строкой — иначе снятую бронь нечем вернуть в авто.
   ids.forEach(id => {
     const ci = DB.catIds.indexOf(id);
     if(ci < 0 || out.some(f => f.cat === ci)) return;
-    out.push({cat: ci, unpaid: Math.max(0, ov[id]), guessDay: null, manual: true});
+    out.push({cat: ci, unpaid: Math.max(0, ov[id]), guessDay: null, manual: true, autoUnpaid: 0});
   });
   return out;
 }

@@ -28,6 +28,20 @@ suite(390, 'мобильная база', () => {
     const r = await rect(p, 'nav.nav');
     near(r.y + r.height, 900, 'низ навбара', 2); // высота вьюпорта в харнессе
   });
+  check('двойной тап не зумит: touch-action стоит на элементах, а не только на body', async p => {
+    // touch-action не наследуется. Пока правило висело только на html,body,
+    // Safari гасил double-tap-to-zoom по голому фону, но зумил по любой
+    // карточке, кнопке или строке — то есть по всему, куда реально тычут.
+    const got = await p.evaluate(() => {
+      const sel = ['.s-card', 'nav.nav button', '.day-total', '#cat-list'];
+      return sel.map(s => {
+        const el = document.querySelector(s);
+        return s + '=' + (el ? getComputedStyle(el).touchAction : 'НЕТ');
+      });
+    });
+    const bad = got.filter(x => !x.endsWith('=manipulation'));
+    if (bad.length) throw new Error('без touch-action: ' + bad.join(', '));
+  });
   check('индикатор активной вкладки анимируется мобильной пилюлей', async p => {
     await p.evaluate(() => window.showPage('income', document.getElementById('nav-income')));
     const anim = await p.evaluate(() =>
@@ -905,42 +919,42 @@ suite(390, 'ручная бронь особых', () => {
     const env = _dayEnvelopeFrom(y, m, f, dl);
     return { reserve: Math.round(f.reserve), remain: Math.round(fc ? fc.specRemain : 0),
       total: fc && fc.total, left: env && env.left,
-      rows: [...document.querySelectorAll('#budget-obl-row input[type=checkbox]')].length };
+      rows: [...document.querySelectorAll('#spec-editor-rows input[type=text]')].length };
   });
 
-  check('редактор раскрывается и показывает забронированные категории', async p => {
+  check('тап по строке особых открывает редактор со списком брони', async p => {
     await setup(p);
     const g = await state(p);
     if (!(g.remain > 0)) throw new Error('прогноз ничего не забронировал: remain=' + g.remain);
-    if (!(g.rows > 0)) throw new Error('строк в редакторе: ' + g.rows);
-  });
-
-  check('снятая галочка убирает бронь категории и поднимает дневной остаток', async p => {
-    const before = await state(p);
-    const drop = await p.evaluate(() => {
-      const box = document.querySelector('#budget-obl-row input[type=checkbox]');
-      const cid = box.dataset.cid;
-      const было = _monthForecast(new Date().getFullYear(), new Date().getMonth())
-        .forecast.find(f => DB.catIds[f.cat] === cid).unpaid;
-      box.checked = false;
-      box.dispatchEvent(new Event('change'));
-      return Math.round(было);
+    // Кликаем именно по строке: отдельной ссылки «править» быть не должно —
+    // рядом «Лимиты ✎», и две ссылки правки спорили бы друг с другом.
+    const words = await p.evaluate(() => document.getElementById('budget-obl-row').textContent);
+    if (/править|скрыть/.test(words)) throw new Error('в строке остался глагол правки: «' + words + '»');
+    const rows = await p.evaluate(() => {
+      document.querySelector('#budget-obl-row div').click();
+      return document.querySelectorAll('#spec-editor-rows input[type=text]').length;
     });
-    const after = await state(p);
-    eq(after.remain, before.remain - drop, 'остаток брони после снятия галочки');
-    if (!(after.left > before.left)) throw new Error('дневной остаток не вырос: ' + before.left + ' → ' + after.left);
+    if (!(rows > 0)) throw new Error('строк в редакторе: ' + rows);
+    eq(await isVisible(p, '#modal-spec'), true, 'модалка открыта');
   });
 
-  check('правка суммы в поле заменяет расчётную бронь', async p => {
+  check('«Отмена» не пишет правку в базу, «Сохранить» — пишет', async p => {
     const before = await state(p);
-    await p.evaluate(() => {
-      const inp = [...document.querySelectorAll('#budget-obl-row input[type=text]')]
-        .find(i => Number(i.value.replace(/[^0-9]/g, '')) > 0);
+    const draft = () => p.evaluate(() => {
+      const inp = document.querySelector('#spec-editor-rows input[type=text]');
       inp.value = '1 000';
       inp.dispatchEvent(new Event('change'));
     });
-    const after = await state(p);
-    if (!(after.remain < before.remain)) throw new Error('бронь не уменьшилась: ' + before.remain + ' → ' + after.remain);
+    await draft();
+    await p.evaluate(() => window.closeModal('modal-spec'));
+    const cancelled = await state(p);
+    eq(cancelled.remain, before.remain, 'бронь после «Отмены»');
+    await p.evaluate(() => window.openSpecEditor());
+    await draft();
+    await p.evaluate(() => window.saveSpecPlan());
+    const saved = await state(p);
+    if (!(saved.remain < before.remain)) throw new Error('бронь не уменьшилась: ' + before.remain + ' → ' + saved.remain);
+    if (!(saved.left > before.left)) throw new Error('дневной остаток не вырос: ' + before.left + ' → ' + saved.left);
     const stored = await p.evaluate(() => {
       const n = new Date();
       return Object.values(DB.specPlan[monthKey(n.getFullYear(), n.getMonth())] || {});
@@ -948,13 +962,31 @@ suite(390, 'ручная бронь особых', () => {
     if (!stored.includes(1000)) throw new Error('в DB.specPlan нет 1000: ' + JSON.stringify(stored));
   });
 
-  check('«всё оплачено» обнуляет бронь, «вернуть прогноз» её восстанавливает', async p => {
-    await p.evaluate(() => window.specPlanAllPaid());
+  check('кнопка строки гасит бронь и возвращает её обратно', async p => {
+    await p.evaluate(() => window.openSpecEditor());
+    const g = await p.evaluate(() => {
+      const btn = document.querySelector('#spec-editor-rows button');
+      const was = document.querySelector('#spec-editor-rows input[type=text]').value;
+      btn.click();
+      const off = { label: document.querySelector('#spec-editor-rows button').textContent,
+        val: document.querySelector('#spec-editor-rows input[type=text]').value };
+      document.querySelector('#spec-editor-rows button').click();
+      return { was, off, back: document.querySelector('#spec-editor-rows input[type=text]').value };
+    });
+    eq(g.off.val, '0', 'сумма после «не будет»');
+    eq(g.off.label, 'вернуть', 'подпись кнопки в погашенном состоянии');
+    eq(g.back, g.was, 'сумма вернулась к расчётной');
+  });
+
+  check('«Всё оплачено» обнуляет черновик, «Вернуть прогноз» восстанавливает авто', async p => {
+    await p.evaluate(() => { window.specDraftAllPaid(); window.saveSpecPlan(); });
     const paid = await state(p);
-    eq(paid.remain, 0, 'остаток брони после «всё оплачено»');
-    await p.evaluate(() => window.specPlanReset());
+    eq(paid.remain, 0, 'остаток брони после «Всё оплачено»');
+    await p.evaluate(() => { window.openSpecEditor(); window.specDraftReset(); window.saveSpecPlan(); });
     const back = await state(p);
     if (!(back.remain > 0)) throw new Error('прогноз не вернулся: remain=' + back.remain);
+    // Совпавшее с авто значение не должно оставаться оверрайдом — иначе прогноз
+    // замёрзнет на сегодняшней цифре и перестанет реагировать на новые траты.
     const clean = await p.evaluate(() => {
       const n = new Date();
       return !(DB.specPlan || {})[monthKey(n.getFullYear(), n.getMonth())];
