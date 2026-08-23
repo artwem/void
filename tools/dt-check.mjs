@@ -772,6 +772,100 @@ suite(390, 'значки интерфейса — иконки, а не симв
   });
 });
 
+// Дневной конверт: «Остаток на сегодня» на вкладке «День» и первая строка шапки
+// «Бюджета». Абсолютную сумму не проверяем — она зависит от даты прогона и от
+// резерва особых; стережём поведение конверта, ради которого он и делался:
+// знаменатель дня («из N ₽») в течение дня стоит на месте, а остаток тает ровно
+// на сумму траты. Порядок чеков значим — они накапливают траты в DB.
+suite(390, 'остаток на сегодня', () => {
+  const read = p => p.evaluate(() => {
+    const box = document.getElementById('day-envelope');
+    const nums = t => (t.replace(/[   ](?=\d)/g, '').match(/-?\d+/g) || []).map(Number);
+    const sub = nums(box.querySelector('.day-env-sub').textContent);
+    return {
+      lbl: box.querySelector('.day-env-lbl').textContent,
+      val: nums(box.querySelector('.day-env-val').textContent)[0],
+      cls: box.querySelector('.day-env-val').className,
+      cap: sub[0], spent: sub[1],
+    };
+  });
+  const addToday = (p, e) => p.evaluate(ex => {
+    DB.expenses.push(Object.assign({ date: today(), catId: 'cat0002', cat: 1, comment: '', updatedAt: 1 }, ex));
+    renderDay();
+  }, e);
+
+  check('на сегодняшней дате блок виден, остаток = потолок дня минус траты дня', async p => {
+    // Базовая фикстура сидит в перерасходе (лимит 76 249 против 88 200 трат),
+    // а конверт надо проверять и в зелёной ветке — поднимаем лимиты на этой
+    // странице. Своя страница у каждой сюиты, чужие проверки это не задевает.
+    await p.evaluate(() => {
+      const now = new Date();
+      DB.limits[monthKey(now.getFullYear(), now.getMonth())] = DB.categories.map(() => 30000);
+      saveDB();
+      window.showPage('day', document.getElementById('nav-day'));
+    });
+    eq(await isVisible(p, '#day-envelope'), true, 'видимость блока');
+    const g = await read(p);
+    eq(g.lbl, 'Остаток на сегодня', 'подпись');
+    eq(g.val, g.cap - g.spent, 'остаток = «из N» − «потрачено»');
+  });
+
+  check('трата уменьшает остаток ровно на себя, потолок дня не прыгает', async p => {
+    const before = await read(p);
+    await addToday(p, { id: 'eEnv1', amount: 1000 });
+    const after = await read(p);
+    eq(after.cap, before.cap, 'потолок дня после траты');
+    eq(after.spent, before.spent + 1000, '«потрачено» после траты');
+    eq(after.val, before.val - 1000, 'остаток после траты');
+  });
+
+  check('особая трата не съедает день целиком, а размазывается по остатку месяца', async p => {
+    // Аренда, оплаченная сегодня, не должна обнулять дневной конверт — она живёт
+    // в резерве особых (_budgetFree). Но если особых потрачено больше, чем было
+    // зарезервировано, свободных денег в месяце реально меньше: превышение
+    // делится на оставшиеся дни. Здесь резерв уже выбран, поэтому 9 000 ₽ снимают
+    // с сегодняшнего остатка ровно 9000/дней_до_конца, а не все 9 000.
+    const before = await read(p);
+    const daysLeft = await p.evaluate(() => {
+      const n = new Date();
+      return new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate() - n.getDate() + 1;
+    });
+    await addToday(p, { id: 'eEnv2', amount: 9000, catId: 'cat0001', cat: 0, special: true });
+    const after = await read(p);
+    eq(after.spent, before.spent, '«потрачено сегодня» не считает особые');
+    near(before.val - after.val, Math.round(9000 / daysLeft), 'просадка остатка от особой траты', 1);
+  });
+
+  check('перерасход подписан словом и покрашен красным', async p => {
+    const before = await read(p);
+    await addToday(p, { id: 'eEnv3', amount: before.val + 340 });
+    const g = await read(p);
+    eq(g.lbl, 'Перерасход', 'подпись при перерасходе');
+    eq(g.cls.includes('over'), true, 'класс .over: ' + g.cls);
+    eq(g.val, 340, 'величина перерасхода');
+  });
+
+  check('в шапке «Бюджета» ровно та же цифра', async p => {
+    const day = await read(p);
+    const bud = await p.evaluate(() => {
+      window.showPage('budget', document.getElementById('nav-budget'));
+      const row = document.getElementById('budget-days-row');
+      const head = row.firstElementChild.textContent;
+      return { head, num: Number((head.replace(/[   ](?=\d)/g, '').match(/-?\d+/) || [0])[0]) };
+    });
+    eq(bud.head.includes('Перерасход сегодня'), true, 'подпись в шапке: «' + bud.head + '»');
+    eq(bud.num, day.val, 'сумма в шапке «Бюджета» и на «Дне»');
+  });
+
+  check('на не-сегодняшней дате блока нет', async p => {
+    await p.evaluate(() => {
+      window.showPage('day', document.getElementById('nav-day'));
+      window.changeDay(-1);
+    });
+    eq(await isVisible(p, '#day-envelope'), false, 'блок на вчерашней дате');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

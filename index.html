@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.59.0">
+<link rel="stylesheet" href="css/app.css?v=1.60.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -93,7 +93,7 @@ if ('serviceWorker' in navigator) {
     <div class="s-card"><div class="s-lbl">Лимит</div><div class="s-val" id="sum-limit">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
-  <div id="budget-days-row" style="display:none;padding:4px 16px 4px;font-size:12px;color:var(--muted);gap:12px;flex-wrap:wrap"></div>
+  <div id="budget-days-row" style="display:none;flex-direction:column;align-items:flex-start;padding:4px 16px 4px;font-size:12px;color:var(--muted);gap:2px"></div>
   <div id="budget-obl-row" style="display:none;padding:0 16px 8px;font-size:11px;color:var(--hint);gap:10px;flex-wrap:wrap"></div>
   <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
@@ -120,6 +120,7 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="day-total" id="day-total">0 ₽</div>
   <div class="day-total-lbl">расходы за день</div>
+  <div class="day-env" id="day-envelope" style="display:none"></div>
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
   <!-- Быстрый ввод: категория+сумма+✓ одной строкой; комментарий подъезжает при фокусе -->
   <div style="display:flex;gap:8px;padding:0 16px 6px;align-items:center">
@@ -1265,7 +1266,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.59.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.60.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1888,6 +1889,39 @@ function _budgetFree(y, m, totalSpent, totalLimit, fc){
   return {specSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
 }
 
+// Дневной конверт (v1.60.0): сколько ещё можно потратить сегодня, чтобы уложиться
+// в месячные лимиты. Потолок дня = (остаток переменного бюджета + потраченное
+// сегодня) / оставшиеся дни ВКЛЮЧАЯ сегодня. Сегодняшние траты уже вычтены из
+// varLeft, поэтому знаменатель («из 2 266 ₽») в течение дня не прыгает — тает
+// только «осталось». Особые (аренда, ЖКУ) в конверт не входят: они вынуты в
+// резерв в _budgetFree, иначе день оплаты аренды обнулял бы дневной остаток.
+// Один расчёт на два места: строка Бюджета зовёт _dayEnvelopeFrom с уже
+// посчитанными f/daysLeft, вкладка «День» — _dayEnvelope(), которая считает всё
+// сама (там нет ни fc, ни лимитов под рукой).
+function _dayEnvelopeFrom(y, m, f, daysLeft){
+  if(!f || f.varLimit <= 0 || daysLeft <= 0) return null;
+  const todayStr = today();
+  let spentToday = 0;
+  getMonthExpenses(y, m).forEach(e => { if(!e.special && e.date === todayStr) spentToday += e.amount; });
+  const cap = Math.round((f.varLeft + spentToday) / daysLeft);
+  return {cap, spentToday, left: cap - spentToday, daysLeft};
+}
+
+function _dayEnvelope(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const limits = getLimits(y, m);
+  let totalLimit = 0;
+  DB.categories.forEach((_, i) => { totalLimit += limits[i] || 0; });
+  if(totalLimit <= 0) return null;
+  let totalSpent = 0;
+  getMonthExpenses(y, m).forEach(e => { totalSpent += e.amount; });
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const daysLeft = daysInMonth - now.getDate() + 1;
+  const f = _budgetFree(y, m, totalSpent, totalLimit, _monthForecast(y, m));
+  return _dayEnvelopeFrom(y, m, f, daysLeft);
+}
+
 function renderBudget(){
   const {y,m} = currentMonth;
   document.getElementById('month-label').textContent = MONTHS_RU[m]+' '+y;
@@ -1988,25 +2022,33 @@ function renderBudget(){
       const daysGone = today - 1;
       const fc = _monthForecast(y, m);
       const f = _budgetFree(y, m, totalSpent, totalLimit, fc);
-      const dailyAllowance = (daysLeft > 0 && f.varLimit > 0) ? Math.round(f.varLeft / daysLeft) : 0;
+      // Главная цифра — та же, что «Остаток на сегодня» на вкладке «День»
+      // (общий _dayEnvelopeFrom). До v1.60.0 здесь стояла норма varLeft/daysLeft:
+      // формально то же деление, но она не убывала по мере трат дня и читалась
+      // как «столько надо тратить», а не «столько ещё осталось».
+      const env = _dayEnvelopeFrom(y, m, f, daysLeft);
       // Темп — тот же, что в прогнозе: неособые / прожитых дней ВКЛЮЧАЯ сегодня.
       const dailySpent = fc ? Math.round(fc.pace) : (daysGone > 0 ? Math.round(f.varSpent / daysGone) : 0);
-      const ok = f.varLimit > 0 && f.varLeft >= 0;
-      const parts = [
-        '<span>📅 ' + daysLeft + ' дн. до конца месяца</span>',
-        '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' +
-          (ok ? ICO.check + ' ' : ICO.warn + ' ') + fmtH(Math.abs(dailyAllowance)) + '/день' +
-        '</span>',
-      ];
-      if(daysGone > 0) parts.push('<span>факт ' + fmtH(dailySpent) + '/день</span>');
-      if(fc && daysGone > 0){
-        // Ровно то же число, что «Прогноз на конец месяца» в «День за днём»
-        const projected = fc.total;
-        const projColor = projected > totalLimit && totalLimit > 0 ? 'var(--red)' : 'var(--muted)';
-        parts.push('<span style="color:'+projColor+'">прогноз ' + fmtH(projected) + '</span>');
+      let html = '';
+      if(env){
+        const envOver = env.left < 0;
+        html += '<div style="display:flex;align-items:baseline;gap:6px">' +
+          '<span>' + (envOver ? 'Перерасход сегодня' : 'Остаток на сегодня') + '</span>' +
+          '<span style="font-size:15px;font-weight:700;color:' + (envOver ? 'var(--red)' : 'var(--green)') + '">' +
+            fmtH(Math.abs(env.left)) + '</span></div>';
       }
+      const sub = ['осталось ' + daysLeft + ' дн.'];
+      if(daysGone > 0) sub.push('факт ' + fmtH(dailySpent) + '/день');
+      if(fc && daysGone > 0){
+        // Ровно то же число, что «Прогноз на конец месяца» в «День за днём»;
+        // «из лимита» рядом — иначе цифру не с чем сравнить.
+        const projOver = fc.total > totalLimit && totalLimit > 0;
+        sub.push('<span style="color:' + (projOver ? 'var(--red)' : 'inherit') + '">прогноз ' +
+          fmtH(fc.total) + ' из ' + fmtH(totalLimit) + '</span>');
+      }
+      html += '<div style="font-size:11px;color:var(--hint)">' + sub.join(' · ') + '</div>';
       daysRow.style.display = 'flex';
-      daysRow.innerHTML = parts.join('');
+      daysRow.innerHTML = html;
       if(oblRow){
         if(f.reserve > 0){
           oblRow.style.display = 'flex';
@@ -2353,6 +2395,25 @@ function onDayCalChange(val){
   renderDay();
 }
 
+// Блок «Остаток на сегодня» под итогом дня. Показывается только для сегодняшней
+// даты: на прошедшем или будущем дне цифра относилась бы не к тому дню, который
+// открыт на экране. При исчерпанном месячном лимите потолок дня уходит в минус —
+// тогда вместо «из N ₽» пишем прямым текстом, что лимит месяца кончился.
+function _renderDayEnvelope(){
+  const box = document.getElementById('day-envelope');
+  if(!box) return;
+  const env = (currentDay === today()) ? _dayEnvelope() : null;
+  if(!env){ box.style.display = 'none'; return; }
+  const over = env.left < 0;
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="day-env-lbl">' + (over ? 'Перерасход' : 'Остаток на сегодня') + '</div>' +
+    '<div class="day-env-val ' + (over ? 'over' : 'ok') + '">' + fmtH(Math.abs(env.left)) + '</div>' +
+    '<div class="day-env-sub">' + (env.cap > 0
+      ? 'из ' + fmtH(env.cap) + ' · потрачено ' + fmtH(env.spentToday)
+      : 'лимит месяца исчерпан · потрачено сегодня ' + fmtH(env.spentToday)) + '</div>';
+}
+
 function renderDay(){
   renderQuickAdd();
   // Шапку обновляем всегда — иначе при активном фильтре висит итог чужого дня
@@ -2367,6 +2428,7 @@ function renderDay(){
   const specialEntries = allEntries.filter(e=>e.special);
   const total = entries.reduce((s,e)=>s+e.amount,0);
   document.getElementById('day-total').innerHTML = fmtH(total);
+  _renderDayEnvelope();
   renderTemplateChips();
   const list = document.getElementById('entry-list');
   list.innerHTML='';
