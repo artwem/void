@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.60.0">
+<link rel="stylesheet" href="css/app.css?v=1.61.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -1266,7 +1266,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.60.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.61.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1354,7 +1354,9 @@ let DB = {
   incomeTags: [],
   incomeTagColors: {},
   listsMeta: {},          // имя списка → updatedAt: LWW-merge для categories/banks/tags
-  _lastSyncedLimits: {}   // снимок limits на момент последнего синка — baseline 3-way merge (device-local)
+  specPlan: {},           // "YYYY-MM" → {catId: сколько ещё ждём особых}; 0 = «этого не будет»
+  _lastSyncedLimits: {},  // снимок limits на момент последнего синка — baseline 3-way merge (device-local)
+  _lastSyncedSpecPlan: {} // то же для specPlan
 };
 
 let currentMonth = {y:0,m:0};
@@ -1440,6 +1442,8 @@ function loadDB(){
   if(!DB.credits) DB.credits = [];
   if(!DB.listsMeta) DB.listsMeta = {};
   if(!DB._lastSyncedLimits) DB._lastSyncedLimits = {};
+  if(!DB.specPlan) DB.specPlan = {};
+  if(!DB._lastSyncedSpecPlan) DB._lastSyncedSpecPlan = {};
   // privacyMode — device-local, не синкается
   DB.privacyMode = localStorage.getItem('privacyMode') === '1';
   if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
@@ -1922,6 +1926,88 @@ function _dayEnvelope(){
   return _dayEnvelopeFrom(y, m, f, daysLeft);
 }
 
+// Строка «особые» — свёрнутая сводка резерва, по тапу раскрывается в редактор
+// брони: галочка «ждём / не будет» и правка суммы по каждой категории.
+// Разворот держим в sessionStorage, как остальные UI-состояния.
+function _oblRowHtml(f, list){
+  const open = sessionStorage.getItem('oblOpen') === '1';
+  const remain = Math.max(0, f.reserve - f.specSpent);
+  let h = '<div onclick="toggleOblExpand()" style="display:flex;gap:8px;align-items:baseline;cursor:pointer">' +
+    '<span>особые ' + fmtH(f.reserve) + '</span>' +
+    '<span style="color:var(--hint)">оплачено ' + fmtH(f.specSpent) +
+      (remain > 0 ? ' · ждём ещё ' + fmtH(remain) : ' · резерв выбран') + '</span>';
+  if(list.length) h += '<span style="margin-left:auto;color:var(--blue)">' + (open ? 'скрыть' : 'править') + '</span>';
+  h += '</div>';
+  if(!open || !list.length) return h;
+
+  const rows = list.slice().sort((a, b) => b.unpaid - a.unpaid).map(it => {
+    const id = DB.catIds[it.cat] || '';
+    const on = it.unpaid > 0;
+    const nameStyle = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' +
+      (on ? '' : ';color:var(--hint);text-decoration:line-through');
+    // appearance:auto инлайном — глобальный appearance:none в теме прячет
+    // системный чекбокс, и остаётся пустой квадрат без галочки.
+    return '<div style="display:flex;align-items:center;gap:8px">' +
+      '<input type="checkbox"' + (on ? ' checked' : '') +
+        ' data-cid="' + id + '" onchange="toggleSpecPlan(this.dataset.cid,this.checked)"' +
+        ' style="appearance:auto;-webkit-appearance:auto;width:15px;height:15px;flex-shrink:0;margin:0">' +
+      '<span style="' + nameStyle + '">' + esc(DB.categories[it.cat] || '—') + '</span>' +
+      '<input type="text" inputmode="decimal" value="' + Math.round(it.unpaid).toLocaleString('ru-RU') + '"' +
+        ' data-cid="' + id + '" oninput="formatMoneyInput(this)" onchange="setSpecPlan(this.dataset.cid,this.value)"' +
+        ' style="width:88px;text-align:right;padding:4px 6px;border-radius:var(--r-sm);' +
+        'border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:14px;font-family:inherit">' +
+      '</div>';
+  }).join('');
+
+  return h + '<div style="display:flex;flex-direction:column;gap:5px;padding:7px 0 2px">' + rows +
+    '<div class="btn-row" style="margin-top:2px">' +
+      '<button class="btn small" style="white-space:nowrap" onclick="specPlanAllPaid()">всё оплачено</button>' +
+      '<button class="btn small" style="white-space:nowrap" onclick="specPlanReset()">вернуть прогноз</button>' +
+    '</div></div>';
+}
+
+function toggleOblExpand(){
+  sessionStorage.setItem('oblOpen', sessionStorage.getItem('oblOpen') === '1' ? '0' : '1');
+  renderBudget();
+}
+
+function _specPlanWrite(catId, val, mk){
+  if(!catId) return;
+  if(!DB.specPlan) DB.specPlan = {};
+  if(!DB.specPlan[mk]) DB.specPlan[mk] = {};
+  if(val == null) delete DB.specPlan[mk][catId];
+  else DB.specPlan[mk][catId] = Math.max(0, Math.round(val));
+  if(!Object.keys(DB.specPlan[mk]).length) delete DB.specPlan[mk];
+}
+
+function _specPlanSet(catId, val){
+  _specPlanWrite(catId, val, monthKey(currentMonth.y, currentMonth.m));
+  saveDB();
+  renderBudget();
+}
+
+// Галочку вернули — возвращаем авторасчёт, а не прежнее число: снимали бронь
+// целиком, а вписать свою сумму всегда можно полем рядом.
+function toggleSpecPlan(catId, on){ _specPlanSet(catId, on ? null : 0); }
+function setSpecPlan(catId, str){ _specPlanSet(catId, parseMoney(str)); }
+
+function specPlanAllPaid(){
+  const {y, m} = currentMonth, mk = monthKey(y, m);
+  const fc = _monthForecast(y, m);
+  ((fc && fc.forecast) || []).forEach(it => _specPlanWrite(DB.catIds[it.cat], 0, mk));
+  saveDB();
+  renderBudget();
+  toast('Бронь особых снята');
+}
+
+function specPlanReset(){
+  const mk = monthKey(currentMonth.y, currentMonth.m);
+  if(DB.specPlan) delete DB.specPlan[mk];
+  saveDB();
+  renderBudget();
+  toast('Прогноз особых восстановлен');
+}
+
 function renderBudget(){
   const {y,m} = currentMonth;
   document.getElementById('month-label').textContent = MONTHS_RU[m]+' '+y;
@@ -2050,10 +2136,10 @@ function renderBudget(){
       daysRow.style.display = 'flex';
       daysRow.innerHTML = html;
       if(oblRow){
-        if(f.reserve > 0){
-          oblRow.style.display = 'flex';
-          oblRow.innerHTML = '<span>особые ' + fmtH(f.reserve) + '</span>' +
-            '<span>' + (f.specSpent >= f.specPlan ? 'факт' : 'резерв') + '</span>';
+        const specList = (fc && fc.forecast) || [];
+        if(f.reserve > 0 || specList.length){
+          oblRow.style.display = 'block';
+          oblRow.innerHTML = _oblRowHtml(f, specList);
         } else oblRow.style.display = 'none';
       }
     } else {
@@ -3465,6 +3551,36 @@ function _guessSpecialDay(days){
 // Фильтр «≥2 месяца» ослаблять нельзя: с ним разовая покупка резервируется
 // вечно и смещение переворачивается с −10.7% на +11%.
 // Бэктест май+июнь+июль: средняя |ошибка| 13.1% → 10.3%, смещение −10.7% → −6.3%.
+// Ручные правки брони особых (v1.61.0). Прогноз резервирует под ещё не
+// оплаченные особые сумму по истории категории — но он не знает, что аренда
+// в этом месяце уже закрыта целиком, а «Мама» больше не планируется. Тогда
+// зарезервированные деньги висят мёртвым грузом: месячный остаток есть, а
+// дневного нет. DB.specPlan[monthKey][catId] заменяет расчётную сумму: 0 —
+// «этого в этом месяце не будет».
+//
+// Точка применения одна — _monthForecast, поэтому правка одинаково меняет и
+// линию «Прогноз» в «День за днём», и «прогноз … из лимита» в шапке Бюджета,
+// и резерв в _budgetFree, а значит «Остаток на сегодня» в обоих местах.
+function _specPlanFor(y, m){ return (DB.specPlan || {})[monthKey(y, m)] || {}; }
+
+function _applySpecPlan(y, m, forecast){
+  const ov = _specPlanFor(y, m);
+  const ids = Object.keys(ov);
+  if(!ids.length) return forecast;
+  const out = forecast.map(f => {
+    const id = DB.catIds[f.cat];
+    return (id && ov[id] != null) ? {...f, unpaid: Math.max(0, ov[id]), manual: true} : f;
+  });
+  // Оверрайд на категорию, которую прогноз в этом месяце уже не называет,
+  // остаётся отдельной строкой — иначе снятую бронь нечем вернуть в авто.
+  ids.forEach(id => {
+    const ci = DB.catIds.indexOf(id);
+    if(ci < 0 || out.some(f => f.cat === ci)) return;
+    out.push({cat: ci, unpaid: Math.max(0, ov[id]), guessDay: null, manual: true});
+  });
+  return out;
+}
+
 function _specialForecastByCat(curExps, histMonthsExps){
   const curMap = _specialCatStats(curExps);
   // Пустые месяцы (данных ещё нет) не должны разбавлять частоту: категория,
@@ -3601,7 +3717,7 @@ function _monthForecast(y, m){
     if(paces.length) pace = paces.reduce((s, v) => s + v, 0) / paces.length;
   }
 
-  const forecast = _specialForecastByCat(exps, histMonths);
+  const forecast = _applySpecPlan(y, m, _specialForecastByCat(exps, histMonths));
   const specLine = _specialForecastCumLine(forecast, cD, daysInMonth, daysInMonth);
   const specRemain = specLine[daysInMonth - 1] || 0;
   return {
@@ -8981,6 +9097,7 @@ async function _syncCycleRun(opts){
     if(_dirtyGen === genAtStart){
       DB._dirty = false;
       DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits || {}));
+      DB._lastSyncedSpecPlan = JSON.parse(JSON.stringify(DB.specPlan || {}));
     }
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
     const ts = new Date().toISOString();
@@ -9006,7 +9123,8 @@ function buildPayload(){
   delete payload.notifThreshold;
   delete payload.theme;         // тема — настройка устройства
   delete payload.privacyMode;  // приватный режим — настройка устройства
-  delete payload._lastSyncedLimits; // baseline 3-way merge — у каждого устройства свой
+  delete payload._lastSyncedLimits;  // baseline 3-way merge — у каждого устройства свой
+  delete payload._lastSyncedSpecPlan;
   delete payload._dirty;
   return payload;
 }
@@ -9051,6 +9169,20 @@ function mergePullData(d){
       const localChanged = JSON.stringify(DB.limits[k] || null) !== JSON.stringify(base[k] || null);
       if(!localChanged && JSON.stringify(DB.limits[k] || null) !== JSON.stringify(d.limits[k] || null)){
         DB.limits[k] = d.limits[k];
+        changed = true;
+      }
+    });
+  }
+
+  // specPlan: тот же 3-way, что у limits, со своим baseline. Ключи — catId,
+  // так что правка переживает переименование и перестановку категорий.
+  if(d.specPlan){
+    if(!DB.specPlan) DB.specPlan = {};
+    const baseS = DB._lastSyncedSpecPlan || {};
+    Object.keys(d.specPlan).forEach(k => {
+      const localChanged = JSON.stringify(DB.specPlan[k] || null) !== JSON.stringify(baseS[k] || null);
+      if(!localChanged && JSON.stringify(DB.specPlan[k] || null) !== JSON.stringify(d.specPlan[k] || null)){
+        DB.specPlan[k] = d.specPlan[k];
         changed = true;
       }
     });

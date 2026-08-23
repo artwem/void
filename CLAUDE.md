@@ -14,7 +14,7 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**Тест-раннер есть:** `node tools/dt-check.mjs` — 63 проверки геометрии мобильной и десктопной раскладки на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и фикстуру, `tools/shots.mjs` снимает скриншоты всех вкладок на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
+**Тест-раннер есть:** `node tools/dt-check.mjs` — 68 проверок геометрии мобильной и десктопной раскладки на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и фикстуру, `tools/shots.mjs` снимает скриншоты всех вкладок на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
 
 Быстрый парс-чек инлайновых скриптов:
 ```bash
@@ -85,6 +85,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   banks:           ['Сбербанк', ...],         // debit bank names
   creditBanks:     [...],                     // credit bank names (subtracted from net worth)
   limits:          {'2026-04': [15000, ...]}, // per-category monthly limits, keyed by monthKey()
+  specPlan:        {'2026-04': {k3x9a1b2: 0}}, // ручная бронь особых: catId → сколько ещё ждём; 0 = «не будет»
   syncUrl:         'https://script.google.com/...',
   goals:           [{id, name, target, saved, deadline, color}, ...],
   templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
@@ -127,6 +128,8 @@ Each tab has a `render*()` function called after any data change:
 
 **Дневной конверт «Остаток на сегодня» (since v1.60.0).** `_dayEnvelopeFrom(y, m, f, daysLeft)` (в `═══ budget.js ═══`, сразу за `_budgetFree`) — единственный источник цифры для двух мест: плашки `#day-envelope` на вкладке «День» (`_renderDayEnvelope()`, обёртка `_dayEnvelope()` считает `f`/`daysLeft` сама) и первой строки `#budget-days-row` в шапке «Бюджета». Потолок дня = `(f.varLeft + потрачено_сегодня) / daysLeft`, остаток = потолок − потрачено сегодня. **Инварианты:** знаменатель («из N ₽») в течение дня не меняется — сегодняшние траты уже вычтены из `varLeft`, поэтому прибавка их обратно даёт ту же величину; особые в «потрачено сегодня» не входят (они в резерве `_budgetFree`), но превышение резерва честно размазывается по оставшимся дням; на не-сегодняшней дате плашки нет вовсе. До v1.60.0 в шапке «Бюджета» стояла норма `varLeft / daysLeft` — то же деление, но она не убывала по мере трат дня и читалась как «столько надо тратить».
 
+**Ручная бронь особых (since v1.61.0).** Строка «особые» в шапке Бюджета раскрывается в редактор: галочка «ждём / не будет» и правка суммы по каждой категории, плюс «всё оплачено» и «вернуть прогноз». Хранится в `DB.specPlan[monthKey][catId]`, применяется одной точкой в `_monthForecast` через `_applySpecPlan`, синкается 3-way как `limits` (baseline `_lastSyncedSpecPlan`). Подробности и мотивация — скилл `void-forecast`.
+
 ### Deposits & Assets Page — skill `void-assets`
 
 Вклады (`depositValueAt`, дискретные начисления, ручные правки `d.accruals`, режим `finalAmount`, пополнения), ряды активов (`_buildAssetSeries`, масштабы графика, семантика снимков, аудит периодов, кредиты) и Excel-экспорт вынесены в `.claude/skills/void-assets/SKILL.md`. **Инварианты, которые нельзя нарушать без чтения скилла:** `_buildAssetSeries()` — единственный источник для графика, истории и аудита; сетка дат графика строится ТОЛЬКО из реальных снимков (производные даты вроде открытия вклада не добавлять); «Всего активов» = банки + живые вклады, а `_getCurrentAssetsTotal()` остаётся только по банкам; переводы банк↔вклад делать через `_bankAdjust()`, а не ручной правкой записей.
@@ -139,9 +142,9 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, plus `listsMeta` (LWW timestamps).
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `goals`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, `specPlan`, plus `listsMeta` (LWW timestamps).
 
-**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits` (device-local). `buildPayload()` strips exactly these seven fields plus `_dirty`.
+**What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits`, `_lastSyncedSpecPlan` (device-local). `buildPayload()` strips exactly these eight fields plus `_dirty`.
 
 **`syncUrl` multi-source loading:** iOS PWA has isolated localStorage from Safari. On load, `syncUrl` is read from `localStorage` → `sessionStorage` → cookie. `saveSyncUrlEverywhere()` writes to all three.
 

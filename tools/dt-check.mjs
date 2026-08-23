@@ -866,6 +866,120 @@ suite(390, 'остаток на сегодня', () => {
   });
 });
 
+// Ручная бронь особых: прогноз резервирует под ещё не оплаченные особые сумму
+// по истории категории, и этот резерв съедает дневной конверт. Редактор в строке
+// «особые» позволяет сказать «этого в этом месяце не будет». Фикстура даёт такую
+// бронь сама: в прошлом месяце особая «Аренда» на 30 000, в этом — на 36 407,
+// плюс двухточечная история нужна _specialForecastByCat, поэтому подсыпаем
+// позапрошлый месяц прямо здесь.
+suite(390, 'ручная бронь особых', () => {
+  const setup = p => p.evaluate(() => {
+    const n = new Date();
+    const mk = (y, m) => y + '-' + String(m + 1).padStart(2, '0');
+    // Две точки истории по «Хотелкам» (cat 4) — иначе категория не попадёт
+    // в прогноз: одна точка закономерностью не считается.
+    // Две забронированные категории: одну гасит чек с галочкой, второй правит
+    // сумму следующий чек. С одной строкой второй проверке нечего было бы найти.
+    for (const k of [1, 2]) {
+      const d = new Date(n.getFullYear(), n.getMonth() - k, 12);
+      const key = mk(d.getFullYear(), d.getMonth()) + '-12';
+      DB.expenses.push({ id: 'sp' + k, date: key,
+        cat: 4, catId: 'cat0005', amount: 12000, comment: '', special: true, updatedAt: 1 });
+      DB.expenses.push({ id: 'sq' + k, date: key,
+        cat: 2, catId: 'cat0003', amount: 6000, comment: '', special: true, updatedAt: 1 });
+    }
+    DB.limits[mk(n.getFullYear(), n.getMonth())] = DB.categories.map(() => 30000);
+    saveDB();
+    sessionStorage.setItem('oblOpen', '1');
+    window.showPage('budget', document.getElementById('nav-budget'));
+  });
+  const state = p => p.evaluate(() => {
+    const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+    const limits = getLimits(y, m);
+    let tl = 0, ts = 0;
+    DB.categories.forEach((_, i) => { tl += limits[i] || 0; });
+    getMonthExpenses(y, m).forEach(e => { ts += e.amount; });
+    const fc = _monthForecast(y, m);
+    const f = _budgetFree(y, m, ts, tl, fc);
+    const dl = new Date(y, m + 1, 0).getDate() - n.getDate() + 1;
+    const env = _dayEnvelopeFrom(y, m, f, dl);
+    return { reserve: Math.round(f.reserve), remain: Math.round(fc ? fc.specRemain : 0),
+      total: fc && fc.total, left: env && env.left,
+      rows: [...document.querySelectorAll('#budget-obl-row input[type=checkbox]')].length };
+  });
+
+  check('редактор раскрывается и показывает забронированные категории', async p => {
+    await setup(p);
+    const g = await state(p);
+    if (!(g.remain > 0)) throw new Error('прогноз ничего не забронировал: remain=' + g.remain);
+    if (!(g.rows > 0)) throw new Error('строк в редакторе: ' + g.rows);
+  });
+
+  check('снятая галочка убирает бронь категории и поднимает дневной остаток', async p => {
+    const before = await state(p);
+    const drop = await p.evaluate(() => {
+      const box = document.querySelector('#budget-obl-row input[type=checkbox]');
+      const cid = box.dataset.cid;
+      const было = _monthForecast(new Date().getFullYear(), new Date().getMonth())
+        .forecast.find(f => DB.catIds[f.cat] === cid).unpaid;
+      box.checked = false;
+      box.dispatchEvent(new Event('change'));
+      return Math.round(было);
+    });
+    const after = await state(p);
+    eq(after.remain, before.remain - drop, 'остаток брони после снятия галочки');
+    if (!(after.left > before.left)) throw new Error('дневной остаток не вырос: ' + before.left + ' → ' + after.left);
+  });
+
+  check('правка суммы в поле заменяет расчётную бронь', async p => {
+    const before = await state(p);
+    await p.evaluate(() => {
+      const inp = [...document.querySelectorAll('#budget-obl-row input[type=text]')]
+        .find(i => Number(i.value.replace(/[^0-9]/g, '')) > 0);
+      inp.value = '1 000';
+      inp.dispatchEvent(new Event('change'));
+    });
+    const after = await state(p);
+    if (!(after.remain < before.remain)) throw new Error('бронь не уменьшилась: ' + before.remain + ' → ' + after.remain);
+    const stored = await p.evaluate(() => {
+      const n = new Date();
+      return Object.values(DB.specPlan[monthKey(n.getFullYear(), n.getMonth())] || {});
+    });
+    if (!stored.includes(1000)) throw new Error('в DB.specPlan нет 1000: ' + JSON.stringify(stored));
+  });
+
+  check('«всё оплачено» обнуляет бронь, «вернуть прогноз» её восстанавливает', async p => {
+    await p.evaluate(() => window.specPlanAllPaid());
+    const paid = await state(p);
+    eq(paid.remain, 0, 'остаток брони после «всё оплачено»');
+    await p.evaluate(() => window.specPlanReset());
+    const back = await state(p);
+    if (!(back.remain > 0)) throw new Error('прогноз не вернулся: remain=' + back.remain);
+    const clean = await p.evaluate(() => {
+      const n = new Date();
+      return !(DB.specPlan || {})[monthKey(n.getFullYear(), n.getMonth())];
+    });
+    eq(clean, true, 'оверрайды месяца стёрты');
+  });
+
+  check('бронь не уезжает в payload как device-local и переживает merge', async p => {
+    const g = await p.evaluate(() => {
+      const n = new Date(), mk = monthKey(n.getFullYear(), n.getMonth());
+      // Локальная правка после «синка»: baseline пуст, значит удалённое значение
+      // для этого месяца применяться не должно — иначе своя бронь гибнет.
+      DB._lastSyncedSpecPlan = {};
+      DB.specPlan = { [mk]: { cat0005: 0 } };
+      const p = buildPayload();
+      mergePullData({ specPlan: { [mk]: { cat0005: 7777 } } });
+      return { inPayload: !!p.specPlan, baselineStripped: p._lastSyncedSpecPlan === undefined,
+        kept: DB.specPlan[mk].cat0005 };
+    });
+    eq(g.inPayload, true, 'specPlan уходит в payload');
+    eq(g.baselineStripped, true, '_lastSyncedSpecPlan вырезан из payload');
+    eq(g.kept, 0, 'локальная правка пережила merge');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
