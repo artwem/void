@@ -1144,11 +1144,11 @@ suite(390, 'средние и период графиков', () => {
     return b ? (b.textContent.match(/\d/g) || []).join('') : null;
   }, sel);
 
-  check('на «Накоплениях» свой период, по умолчанию год', async p => {
+  check('на «Накоплениях» свой период, по умолчанию полгода', async p => {
     await p.evaluate(() => window.showPage('assets', document.getElementById('nav-assets')));
-    eq(await p.evaluate(() => savingsPeriodMode), '12', 'режим периода по умолчанию');
+    eq(await p.evaluate(() => savingsPeriodMode), '6', 'режим периода по умолчанию');
     // Ряда чипов два (у обоих графиков), правят они один период — подсветка общая.
-    const on = await p.evaluate(() => ['svp-12','svp2-12','svp-6','svp2-6']
+    const on = await p.evaluate(() => ['svp-6','svp2-6','svp-12','svp2-12']
       .map(id => document.getElementById(id).style.fontWeight));
     eq(on.join(','), '600,600,,', 'подсвечены оба ряда чипов и только активный период');
   });

@@ -1248,7 +1248,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.65.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.65.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3490,8 +3490,8 @@ function _chartColors(){
   };
 }
 
-let savingsPeriodMode = localStorage.getItem('savingsPeriod') || '12';
-if(!_PERIOD_MODES.includes(savingsPeriodMode)) savingsPeriodMode = '12';
+let savingsPeriodMode = localStorage.getItem('savingsPeriod') || '6';
+if(!_PERIOD_MODES.includes(savingsPeriodMode)) savingsPeriodMode = '6';
 function setSavingsPeriod(v){
   savingsPeriodMode = String(v);
   localStorage.setItem('savingsPeriod', savingsPeriodMode);

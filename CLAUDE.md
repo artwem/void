@@ -212,7 +212,7 @@ Session-persisted UI state uses `sessionStorage`:
   в начале `renderStats()` (для `'all'` — `_dataMonthsSpan()`: от самой ранней траты/дохода до
   текущего месяца, потолок 240). Присваивать `statsPeriod` напрямую нельзя — только
   `setStatsPeriod(6|12|24|'all')`
-- `savingsPeriod` (**localStorage**, device-local, по умолчанию `'12'`) — период графиков «Доходы vs
+- `savingsPeriod` (**localStorage**, device-local, по умолчанию `'6'`) — период графиков «Доходы vs
   Расходы» и «Норма накопления» на «Накоплениях» (`savingsPeriodMode`, `setSavingsPeriod()`, те же
   четыре режима). До v1.65.0 эти два графика молча жили на `statsPeriod` с «Аналитики», где
   переключателя из «Активов» не видно. Чипов два ряда (у каждого графика свой), период у них один —
