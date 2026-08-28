@@ -1135,6 +1135,85 @@ suite(390, 'лимиты и цвета по catId', () => {
   });
 });
 
+// Средние за месяц и период графиков. Две отдельные истории, но обе про одно:
+// цифра под графиком обязана отвечать ровно за тот набор данных, который на
+// графике нарисован — за выбранный период и за невыключенные ряды легенды.
+suite(390, 'средние и период графиков', () => {
+  const bDigits = (p, sel) => p.evaluate(s => {
+    const b = document.querySelector(s + ' b');
+    return b ? (b.textContent.match(/\d/g) || []).join('') : null;
+  }, sel);
+
+  check('на «Накоплениях» свой период, по умолчанию год', async p => {
+    await p.evaluate(() => window.showPage('assets', document.getElementById('nav-assets')));
+    eq(await p.evaluate(() => savingsPeriodMode), '12', 'режим периода по умолчанию');
+    // Ряда чипов два (у обоих графиков), правят они один период — подсветка общая.
+    const on = await p.evaluate(() => ['svp-12','svp2-12','svp-6','svp2-6']
+      .map(id => document.getElementById(id).style.fontWeight));
+    eq(on.join(','), '600,600,,', 'подсвечены оба ряда чипов и только активный период');
+  });
+
+  check('среднее считается по завершённым месяцам, текущий не в счёт', async p => {
+    // Фикстура: прошлый месяц — 50 000 ₽ расходов и ни рубля дохода,
+    // текущий — 88 207 ₽ и 207 550 ₽. «Всё» = два месяца, завершён один.
+    await p.evaluate(() => setSavingsPeriod('all'));
+    eq(await p.evaluate(() => charts.incVsExp.data.labels.length), 2, 'месяцев на графике');
+    const txt = await p.evaluate(() => document.getElementById('inc-exp-avg').textContent);
+    const bs = await p.evaluate(() => [...document.querySelectorAll('#inc-exp-avg b')]
+      .map(b => (b.textContent.match(/\d/g) || []).join('')));
+    eq(bs.join('|'), '0|50000', 'средние доход и расход: ' + txt);
+  });
+
+  check('«всё» берёт весь доступный период, а не фиксированное число', async p => {
+    eq(await p.evaluate(() => _dataMonthsSpan()), 2, 'месяцев в данных фикстуры');
+    await p.evaluate(() => { DB.expenses.push({id:'old1', date:'2025-01-10', cat:0, catId:'cat0001', amount:100, updatedAt:1}); saveDB(); });
+    eq(await p.evaluate(() => _dataMonthsSpan()) > 12, true, 'старая трата растянула период');
+    await p.evaluate(() => { DB.expenses = DB.expenses.filter(e => e.id !== 'old1'); saveDB(); });
+  });
+
+  check('период «Накоплений» не трогает период «Аналитики»', async p => {
+    await p.evaluate(() => { setSavingsPeriod(6); setStatsPeriod(24); });
+    eq(await p.evaluate(() => localStorage.getItem('savingsPeriod')), '6', 'период накоплений device-local');
+    eq(await p.evaluate(() => charts.incVsExp.data.labels.length), 6, 'график накоплений остался на 6 мес');
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    eq(await p.evaluate(() => charts.grouped.data.labels.length), 24, 'аналитика на 24 мес');
+  });
+
+  check('выключение ряда в легенде пересчитывает среднее и подписи над столбцами', async p => {
+    await p.evaluate(() => setStatsPeriod(6));
+    // Из шести месяцев завершены пять, траты есть только в прошлом: 50 000 ₽.
+    eq(await bDigits(p, '#grouped-avg'), '10000', 'среднее по всем группам');
+    const hidden = await p.evaluate(() => {
+      const c = charts.grouped;
+      const i = c.data.datasets.findIndex(d => d.label.startsWith('Аренда'));
+      c.options.plugins.legend.onClick.call(c.legend, {}, c.legend.legendItems[i], c.legend);
+      return { i, prev: _stackVisTotals(c)[c.data.labels.length - 2], n: c.data.datasets.length };
+    });
+    eq(hidden.prev, 20000, 'подпись над столбцом прошлого месяца без «Аренды»');
+    eq(await bDigits(p, '#grouped-avg'), '4000', 'среднее пересчиталось под выбор');
+    const txt = await p.evaluate(() => document.getElementById('grouped-avg').textContent);
+    eq(/выбрано 4 из 5/.test(txt), true, 'подписано, сколько рядов осталось: ' + txt);
+  });
+
+  check('среднее по тегам дохода живёт по тем же правилам', async p => {
+    await p.evaluate(() => {
+      const d = new Date(); let m = d.getMonth() - 1, y = d.getFullYear();
+      if (m < 0) { m += 12; y--; }
+      const mk = y + '-' + String(m + 1).padStart(2, '0');
+      DB.incomes.push({id:'pi1', date: mk + '-05', source:'Зарплата', amount:60000, tag:'Оплата труда', updatedAt:1});
+      DB.incomes.push({id:'pi2', date: mk + '-06', source:'Вклад', amount:20000, tag:'Проценты', updatedAt:1});
+      saveDB(); renderStats();
+    });
+    eq(await bDigits(p, '#income-tags-avg'), '16000', 'среднее по всем тегам (80 000 за 5 завершённых мес.)');
+    await p.evaluate(() => {
+      const c = charts.incomeTags;
+      const i = c.data.datasets.findIndex(d => d.label === 'Проценты');
+      c.options.plugins.legend.onClick.call(c.legend, {}, c.legend.legendItems[i], c.legend);
+    });
+    eq(await bDigits(p, '#income-tags-avg'), '12000', 'среднее без «Процентов»');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

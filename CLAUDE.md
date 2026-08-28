@@ -207,10 +207,27 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 
 Session-persisted UI state uses `sessionStorage`:
 - `expViewMode` (`'cats'`|`'groups'`), `pieViewMode` — breakdown views in Аналитика
-- `statsPeriod` — months shown in Аналитика charts
+- `statsPeriod` — период графиков Аналитики. Хранится РЕЖИМ (`'6'`|`'12'`|`'24'`|`'all'`) в
+  `statsPeriodMode`; `statsPeriod` — производное число месяцев, пересчитывается `_periodMonths()`
+  в начале `renderStats()` (для `'all'` — `_dataMonthsSpan()`: от самой ранней траты/дохода до
+  текущего месяца, потолок 240). Присваивать `statsPeriod` напрямую нельзя — только
+  `setStatsPeriod(6|12|24|'all')`
+- `savingsPeriod` (**localStorage**, device-local, по умолчанию `'12'`) — период графиков «Доходы vs
+  Расходы» и «Норма накопления» на «Накоплениях» (`savingsPeriodMode`, `setSavingsPeriod()`, те же
+  четыре режима). До v1.65.0 эти два графика молча жили на `statsPeriod` с «Аналитики», где
+  переключателя из «Активов» не видно. Чипов два ряда (у каждого графика свой), период у них один —
+  `renderSavingsCharts()` подсвечивает оба ряда (`svp-*` и `svp2-*`)
 - `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Affects the fact/average lines and the drawn «Прогноз» line; the printed «Прогноз на конец месяца» total always includes specials (see the forecast section above)
 - `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
 - `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`)
+
+**Средние за месяц (v1.65.0).** Под «Доходы vs Расходы» (`#inc-exp-avg`), «Расходы по группам»
+(`#grouped-avg`) и «Доходы по тегам» (`#income-tags-avg`) печатается «⌀ в месяц». Везде считается
+по ЗАВЕРШЁННЫМ месяцам — текущий отбрасывается (`lastN.slice(0,-1)`), иначе неполный месяц занижает
+цифру; то же правило теперь у «Норма сб.». Для стэк-графиков суммы берёт `_stackVisTotals(chart)` —
+только видимые ряды, поэтому выключение статьи в легенде (`_stackLegendClick`) пересчитывает и
+среднее, и подписи над столбцами, и проценты в тултипе. `charts.grouped`/`charts.incomeTags` после
+`destroy()` обнуляются: `_renderStackAvg` не должен лезть в уничтоженный график.
 
 Filter state (module-level variables, reset on tab re-render):
 - `_expCatFilter` (`null` | `Set<number>`) — category multi-select of the expense search card in Аналитика (`renderExpenseSearch`, `#cw-search`; period chips `setExpSearchPeriod` → sessionStorage `expSearchPeriod` 1/3/6/12/'all', default 6; result = count+sum, per-month breakdown, date-grouped list, tap on a date → Day tab). Moved from the Day tab in v1.56.0

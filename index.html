@@ -176,10 +176,11 @@ if ('serviceWorker' in navigator) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
         <span style="font-size:13px;font-weight:600">Период</span>
         <div style="display:flex;align-items:center;gap:8px">
-          <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 10px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
-            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
-            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 10px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">24 мес</span>
+          <div style="display:flex;flex-shrink:0;white-space:nowrap;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 8px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
+            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
+            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span>
+            <span id="sp-all" onclick="setStatsPeriod('all')" title="Весь доступный период" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
           </div>
           <button onclick="showPage('report')" class="dt-hide" aria-label="Годовой отчёт" title="Годовой отчёт" style="display:flex;align-items:center;gap:5px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:3px 9px;cursor:pointer;font-family:inherit">
             <svg width="14" height="14" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Отчёт
@@ -248,13 +249,15 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap" id="cw-grouped">
     <div class="chart-card">
-      <div class="chart-title">Расходы по группам</div>
+      <div class="chart-title" style="margin-bottom:4px">Расходы по группам</div>
+      <div id="grouped-avg" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
       <div class="chart-box"><canvas id="chartGrouped"></canvas></div>
     </div>
   </div>
   <div class="chart-wrap" id="income-tags-chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">Доходы по тегам</div>
+      <div class="chart-title" style="margin-bottom:4px">Доходы по тегам</div>
+      <div id="income-tags-avg" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
       <div id="income-tags-chart-empty" style="display:none;text-align:center;padding:24px 0;font-size:13px;color:var(--muted)">Нет данных с тегами</div>
       <div class="chart-box"><canvas id="chartIncomeTags"></canvas></div>
     </div>
@@ -298,15 +301,26 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title">Доходы vs Расходы</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <div class="chart-title" style="margin-bottom:0">Доходы vs Расходы</div>
+        <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="svp-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+          </div>
+      </div>
+      <div id="inc-exp-avg" style="font-size:12px;color:var(--muted);margin:6px 0 8px;min-height:15px"></div>
       <div class="chart-box h180"><canvas id="chartIncomeVsExp"></canvas></div>
     </div>
   </div>
   <div class="chart-wrap">
     <div class="chart-card">
-      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:baseline">
-        <span>Норма накопления</span>
-        <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+        <div class="chart-title" style="margin-bottom:0">Норма накопления</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
+          <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="svp2-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp2-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp2-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp2-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+          </div>
+        </div>
       </div>
       <div class="chart-box h160"><canvas id="chartSavingsRate"></canvas></div>
     </div>
@@ -1234,7 +1248,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.64.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.65.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3399,7 +3413,23 @@ function _renderStatsSummary(lastN){
 }
 
 // ─── RENDER: STATS ──────────────────────────────────────────────────
-let statsPeriod = parseInt(sessionStorage.getItem('statsPeriod') || '6') || 6;
+// Период аналитики: хранится РЕЖИМ ('6'|'12'|'24'|'all'), statsPeriod — производное
+// число месяцев. 'all' пересчитывается на каждом рендере: данные прирастают.
+const _PERIOD_MODES = ['6','12','24','all'];
+let statsPeriodMode = sessionStorage.getItem('statsPeriod') || '6';
+if(!_PERIOD_MODES.includes(statsPeriodMode)) statsPeriodMode = '6';
+let statsPeriod = statsPeriodMode === 'all' ? 12 : +statsPeriodMode;
+// Сколько месяцев покрывают данные: от самой ранней траты/дохода до текущего включительно.
+function _dataMonthsSpan(){
+  let min = null;
+  const scan = arr => (arr||[]).forEach(r=>{ if(r._deleted || !r.date) return; if(!min || r.date < min) min = r.date; });
+  scan(DB.expenses); scan(DB.incomes);
+  if(!min) return 6;
+  const now = new Date();
+  const n = (now.getFullYear() - +min.slice(0,4))*12 + (now.getMonth()+1 - +min.slice(5,7)) + 1;
+  return Math.max(1, Math.min(n, 240));
+}
+function _periodMonths(mode){ return mode === 'all' ? _dataMonthsSpan() : +mode; }
 let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
 // Особые расходы влияют только на график «День за днём» (там — переключатель).
 // В остальной аналитике учитываются как обычные расходы — _statsExps не фильтрует.
@@ -3417,8 +3447,9 @@ let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
 function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
 
 function setStatsPeriod(n){
-  statsPeriod = n;
-  sessionStorage.setItem('statsPeriod', n);
+  statsPeriodMode = String(n);
+  sessionStorage.setItem('statsPeriod', statsPeriodMode);
+  statsPeriod = _periodMonths(statsPeriodMode);
   // Сбрасываем селект Структуры — он перестроится под новый период
   const ps = document.getElementById('pie-month-sel');
   if(ps) ps.innerHTML = '';
@@ -3459,13 +3490,24 @@ function _chartColors(){
   };
 }
 
+let savingsPeriodMode = localStorage.getItem('savingsPeriod') || '12';
+if(!_PERIOD_MODES.includes(savingsPeriodMode)) savingsPeriodMode = '12';
+function setSavingsPeriod(v){
+  savingsPeriodMode = String(v);
+  localStorage.setItem('savingsPeriod', savingsPeriodMode);
+  renderSavingsCharts();
+}
+
 function renderSavingsCharts(){
   const incEl = document.getElementById('chartIncomeVsExp');
   const rateEl = document.getElementById('chartSavingsRate');
   if(!incEl && !rateEl) return;
+  const per = _periodMonths(savingsPeriodMode);
+  // Два ряда чипов (у обоих графиков) правят один и тот же период — подсвечиваем оба.
+  _segActive([].concat(..._PERIOD_MODES.map(k=>[['svp-'+k, k===savingsPeriodMode],['svp2-'+k, k===savingsPeriodMode]])));
   const now = new Date();
   const lastN = [];
-  for(let i=statsPeriod-1;i>=0;i--){
+  for(let i=per-1;i>=0;i--){
     let m=now.getMonth()-i, y=now.getFullYear();
     if(m<0){m+=12;y--;}
     const exps = _statsExps(getMonthExpenses(y,m));
@@ -3473,7 +3515,20 @@ function renderSavingsCharts(){
     const totalInc = (DB.incomes||[])
       .filter(inc=>!inc._deleted && inc.date && inc.date.startsWith(monthKey(y,m)))
       .reduce((s,inc)=>s+inc.amount,0);
-    lastN.push({label:SHORT_MONTHS[m]+(statsPeriod>6?"'"+String(y).slice(2):''), totalExp, totalInc});
+    lastN.push({label:SHORT_MONTHS[m]+(per>6?"'"+String(y).slice(2):''), totalExp, totalInc});
+  }
+
+  // Средние считаем по ЗАВЕРШЁННЫМ месяцам: текущий ещё неполный и занижал бы обе цифры.
+  const done = lastN.length>1 ? lastN.slice(0,-1) : lastN;
+  const avgTitle = 'Среднее за ' + done.length + ' мес.' + (lastN.length>1 ? ', текущий месяц не в счёт' : '');
+  const avgIncExpEl = document.getElementById('inc-exp-avg');
+  if(avgIncExpEl){
+    if(done.length){
+      const ai = Math.round(done.reduce((s,x)=>s+x.totalInc,0)/done.length);
+      const ae = Math.round(done.reduce((s,x)=>s+x.totalExp,0)/done.length);
+      avgIncExpEl.innerHTML = '⌀ в месяц: доход <b style="color:var(--green)">'+fmtH(ai)+'</b> · расход <b style="color:var(--red)">'+fmtH(ae)+'</b>';
+      avgIncExpEl.title = avgTitle;
+    } else avgIncExpEl.textContent = '';
   }
 
   // ── Доходы vs Расходы ──────────────────────────────────────────────
@@ -3515,13 +3570,14 @@ function renderSavingsCharts(){
   // ── Норма накопления ───────────────────────────────────────────────
   if(rateEl){
     const savingsRates = lastN.map(x=>x.totalInc>0 ? Math.round((x.totalInc-x.totalExp)/x.totalInc*100) : null);
-    const validRates = savingsRates.filter(v=>v!==null);
+    const validRates = savingsRates.slice(0, done.length).filter(v=>v!==null);
     const avgRate = validRates.length ? Math.round(validRates.reduce((s,v)=>s+v,0)/validRates.length) : null;
     const avgEl = document.getElementById('savings-rate-avg');
     if(avgEl){
       if(avgRate!==null){
         avgEl.textContent = 'Норма сб. '+avgRate+'%';
         avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
+        avgEl.title = avgTitle;
       } else {
         avgEl.textContent = '';
       }
@@ -3901,8 +3957,38 @@ function renderExpenseSearch(){
   });
 }
 
+// Стэк-графики «по группам» / «по тегам»: суммы считаем ТОЛЬКО по видимым рядам,
+// чтобы выключение статьи в легенде честно пересчитывало и подписи над столбцами,
+// и среднее за месяц.
+function _stackVisTotals(chart){
+  const dss = chart.data.datasets;
+  return chart.data.labels.map((_,idx)=>dss.reduce((s,ds,di)=>s+(chart.isDatasetVisible(di)?(ds.data[idx]||0):0),0));
+}
+function _renderStackAvg(chart, elId, color){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  if(!chart){ el.textContent=''; return; }
+  const totals = _stackVisTotals(chart);
+  // Текущий месяц неполный — в среднее не берём (как на «Накоплениях»).
+  const done = totals.length>1 ? totals.slice(0,-1) : totals;
+  if(!done.length){ el.textContent=''; return; }
+  const avg = Math.round(done.reduce((s,v)=>s+v,0)/done.length);
+  const dss = chart.data.datasets;
+  const vis = dss.filter((_,di)=>chart.isDatasetVisible(di)).length;
+  const part = vis<dss.length ? ' <span style="opacity:.65">выбрано '+vis+' из '+dss.length+'</span>' : '';
+  el.innerHTML = '⌀ в месяц: <b style="color:'+color+'">'+fmtH(avg)+'</b>'+part;
+  el.title = 'Среднее за '+done.length+' мес.'+(totals.length>1?', текущий месяц не в счёт':'');
+}
+function _stackLegendClick(elId, color){
+  return function(e, item, legend){
+    Chart.defaults.plugins.legend.onClick.call(this, e, item, legend);
+    _renderStackAvg(legend.chart, elId, color);
+  };
+}
+
 function renderStats(){
   const now = new Date();
+  statsPeriod = _periodMonths(statsPeriodMode);
 
   // Build lastN months data
   const lastN = [];
@@ -3918,7 +4004,7 @@ function renderStats(){
   }
 
   // Update period selector active state
-  _segActive([6,12,24].map(n=>['sp-'+n, n===statsPeriod]));
+  _segActive(_PERIOD_MODES.map(k=>['sp-'+k, k===statsPeriodMode]));
 
   // Поиск по тратам — перерисовываем, чтобы выдача не протухала после правок
   renderExpenseSearch();
@@ -4307,10 +4393,9 @@ function renderStats(){
     };
   }).filter(ds=>ds.data.some(v=>v>0)); // skip empty groups
 
-  if(charts.grouped) charts.grouped.destroy();
+  if(charts.grouped){ charts.grouped.destroy(); charts.grouped = null; }
   if(groupDatasets.length){
-    // Итог за месяц — подпись над каждым стэком
-    const grpTotals = lastN.map((_,idx)=>groupDatasets.reduce((s,ds)=>s+(ds.data[idx]||0),0));
+    // Итог за месяц — подпись над каждым стэком (по видимым рядам)
     const grpTotalLabels = {
       id:'grpTotalLabels',
       afterDatasetsDraw(chart){
@@ -4321,7 +4406,7 @@ function renderStats(){
         ctx.fillStyle=_chartColors().muted;
         ctx.textAlign='center';
         ctx.textBaseline='bottom';
-        grpTotals.forEach((t,idx)=>{
+        _stackVisTotals(chart).forEach((t,idx)=>{
           if(t<=0) return;
           ctx.fillText(fmtShort(t)+'₽', x.getPixelForValue(idx), y.getPixelForValue(t)-3);
         });
@@ -4338,13 +4423,14 @@ function renderStats(){
         plugins:{
           legend:{
             display:true, position:'bottom',
-            labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}
+            labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6},
+            onClick:_stackLegendClick('grouped-avg','var(--red)')
           },
           tooltip:{
             callbacks:{
               label:v=>{
                 const idx=v.dataIndex;
-                const total=groupDatasets.reduce((s,ds)=>s+(ds.data[idx]||0),0);
+                const total=_stackVisTotals(v.chart)[idx];
                 const pct=total>0?Math.round(v.raw/total*100):0;
                 return v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))+(pct?' ('+pct+'%)':'');
               }
@@ -4359,8 +4445,10 @@ function renderStats(){
     });
   }
 
+  _renderStackAvg(charts.grouped || null, 'grouped-avg', 'var(--red)');
+
   // ── 7. Доходы по тегам ────────────────────────────────────────────
-  if(charts.incomeTags) charts.incomeTags.destroy();
+  if(charts.incomeTags){ charts.incomeTags.destroy(); charts.incomeTags = null; }
   {
     const tags = DB.incomeTags || [];
     const tagDatasets = tags.map((tag, ti) => {
@@ -4385,8 +4473,7 @@ function renderStats(){
     if(active.length){
       if(emptyEl) emptyEl.style.display = 'none';
       if(canvasEl) canvasEl.style.display = 'block';
-      // Итог за месяц — подпись над каждым стэком
-      const incTotals = lastN.map((_,idx)=>active.reduce((s,ds)=>s+(ds.data[idx]||0),0));
+      // Итог за месяц — подпись над каждым стэком (по видимым рядам)
       const incTotalLabels = {
         id:'incTotalLabels',
         afterDatasetsDraw(chart){
@@ -4397,7 +4484,7 @@ function renderStats(){
           ctx.fillStyle=_chartColors().muted;
           ctx.textAlign='center';
           ctx.textBaseline='bottom';
-          incTotals.forEach((t,idx)=>{
+          _stackVisTotals(chart).forEach((t,idx)=>{
             if(t<=0) return;
             ctx.fillText(fmtShort(t)+'₽', x.getPixelForValue(idx), y.getPixelForValue(t)-3);
           });
@@ -4412,7 +4499,7 @@ function renderStats(){
           responsive:true, maintainAspectRatio:false,
           layout:{padding:{top:16}},
           plugins:{
-            legend:{display:true, position:'bottom', labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}},
+            legend:{display:true, position:'bottom', labels:{color:_chartColors().muted, font:{size:9}, boxWidth:8, padding:6}, onClick:_stackLegendClick('income-tags-avg','var(--green)')},
             tooltip:{callbacks:{label:v=>v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
           },
           scales:{
@@ -4421,7 +4508,9 @@ function renderStats(){
           }
         }
       });
-    } else {
+    }
+    _renderStackAvg(charts.incomeTags || null, 'income-tags-avg', 'var(--green)');
+    if(!active.length){
       if(emptyEl) emptyEl.style.display = 'block';
       if(canvasEl) canvasEl.style.display = 'none';
     }
