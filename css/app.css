@@ -205,6 +205,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .chart-card{background:var(--card);border-radius:var(--r);padding:14px;border:0.5px solid var(--border)}
 .chart-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
 
+/* Своя легенда стэк-графиков («Расходы по группам», «Доходы по тегам»).
+   Встроенная легенда Chart.js рисуется внутри канваса и даёт тап-зону высотой
+   в строку шрифта (~11px) — на телефоне палец промахивался и выключал соседнюю
+   категорию. Здесь это обычные HTML-чипы с полноценной высотой нажатия. */
+.stack-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.stack-legend:empty{display:none}
+.sl-chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:7px 12px;border:0.5px solid var(--border);border-radius:18px;background:var(--card);font-size:12px;color:var(--text);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.sl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.sl-chip.off{opacity:.45}
+.sl-chip.off .sl-label{text-decoration:line-through}
+
 /* ASSETS */
 .asset-row{background:var(--card);border-radius:var(--r);padding:10px 14px;border:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .asset-name{font-size:14px;font-weight:500}

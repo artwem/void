@@ -1179,6 +1179,24 @@ suite(390, 'средние и период графиков', () => {
     eq(await p.evaluate(() => charts.grouped.data.labels.length), 24, 'аналитика на 24 мес');
   });
 
+  check('легенда стэк-графиков — HTML-чипы с пальцевой тап-зоной', async p => {
+    await p.evaluate(() => setStatsPeriod(6));
+    // Встроенную легенду Chart.js рисует внутри канваса: хитбокс высотой в строку
+    // шрифта (~11px). Она должна быть выключена у обоих стэк-графиков.
+    eq(await p.evaluate(() => [charts.grouped, charts.incomeTags]
+      .map(c => c.options.plugins.legend.display).join(',')), 'false,false', 'встроенная легенда выключена');
+    const box = await p.evaluate(() => ['grouped-legend','income-tags-legend'].map(id => {
+      const chips = [...document.querySelectorAll('#' + id + ' .sl-chip')];
+      const rs = chips.map(c => c.getBoundingClientRect());
+      return { id, n: chips.length, minH: Math.min(...rs.map(r => r.height)), minW: Math.min(...rs.map(r => r.width)) };
+    }));
+    eq(box.map(b => b.n).join(','), '5,2', 'чипов столько же, сколько рядов');
+    box.forEach(b => {
+      eq(b.minH >= 36, true, b.id + ': высота тап-зоны ' + b.minH);
+      eq(b.minW >= 44, true, b.id + ': ширина тап-зоны ' + b.minW);
+    });
+  });
+
   check('выключение ряда в легенде пересчитывает среднее и подписи над столбцами', async p => {
     await p.evaluate(() => setStatsPeriod(6));
     // Из шести месяцев завершены пять, траты есть только в прошлом: 50 000 ₽.
@@ -1186,7 +1204,7 @@ suite(390, 'средние и период графиков', () => {
     const hidden = await p.evaluate(() => {
       const c = charts.grouped;
       const i = c.data.datasets.findIndex(d => d.label.startsWith('Аренда'));
-      c.options.plugins.legend.onClick.call(c.legend, {}, c.legend.legendItems[i], c.legend);
+      document.querySelectorAll('#grouped-legend .sl-chip')[i].click();
       return { i, prev: _stackVisTotals(c)[c.data.labels.length - 2], n: c.data.datasets.length };
     });
     eq(hidden.prev, 20000, 'подпись над столбцом прошлого месяца без «Аренды»');
@@ -1208,7 +1226,7 @@ suite(390, 'средние и период графиков', () => {
     await p.evaluate(() => {
       const c = charts.incomeTags;
       const i = c.data.datasets.findIndex(d => d.label === 'Проценты');
-      c.options.plugins.legend.onClick.call(c.legend, {}, c.legend.legendItems[i], c.legend);
+      document.querySelectorAll('#income-tags-legend .sl-chip')[i].click();
     });
     eq(await bDigits(p, '#income-tags-avg'), '12000', 'среднее без «Процентов»');
   });
