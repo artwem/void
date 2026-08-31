@@ -229,6 +229,14 @@ Session-persisted UI state uses `sessionStorage`:
 среднее, и подписи над столбцами, и проценты в тултипе. `charts.grouped`/`charts.incomeTags` после
 `destroy()` обнуляются: `_renderStackAvg` не должен лезть в уничтоженный график.
 
+**Сумма за период (v1.68.0).** У двух стэк-графиков строка читается «За 6 мес: X ₽ · ⌀ Y ₽/мес»
+(в режиме «всё» — «За всё время»). Сумма и среднее СОЗНАТЕЛЬНО считаются по разным наборам
+месяцев, поэтому сумма ≠ ⌀ × месяцы: сумма — по всем нарисованным столбцам, включая текущий
+неполный (иначе она не сходится с тем, что видно на графике), среднее — только по завершённым.
+Разница объяснена в `title` строки. Обе цифры идут через `_stackVisTotals`, то есть переключение
+чипа легенды пересчитывает и сумму. Классы `.sa-sum` / `.sa-avg` на `<b>` — за них цепляется
+`tools/dt-check.mjs`.
+
 Filter state (module-level variables, reset on tab re-render):
 - `_expCatFilter` (`null` | `Set<number>`) — category multi-select of the expense search card in Аналитика (`renderExpenseSearch`, `#cw-search`; period chips `setExpSearchPeriod` → sessionStorage `expSearchPeriod` 1/3/6/12/'all', default 6; result = count+sum, per-month breakdown, date-grouped list, tap on a date → Day tab). Moved from the Day tab in v1.56.0
 - `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter

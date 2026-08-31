@@ -1143,6 +1143,15 @@ suite(390, 'средние и период графиков', () => {
     const b = document.querySelector(s + ' b');
     return b ? (b.textContent.match(/\d/g) || []).join('') : null;
   }, sel);
+  // Под стэк-графиками две цифры: сумма за период и среднее за завершённые месяцы.
+  const digitsOf = (p, sel) => p.evaluate(s => {
+    const el = document.querySelector(s);
+    return el ? (el.textContent.match(/\d/g) || []).join('') : null;
+  }, sel);
+  const avgDigits = (p, sel) => digitsOf(p, sel + ' .sa-avg');
+  const sumDigits = (p, sel) => digitsOf(p, sel + ' .sa-sum');
+  const chartSum = (p, name) => p.evaluate(n =>
+    String(Math.round(_stackVisTotals(charts[n]).reduce((s, v) => s + v, 0))), name);
 
   check('на «Накоплениях» свой период, по умолчанию полгода', async p => {
     await p.evaluate(() => window.showPage('assets', document.getElementById('nav-assets')));
@@ -1200,7 +1209,11 @@ suite(390, 'средние и период графиков', () => {
   check('выключение ряда в легенде пересчитывает среднее и подписи над столбцами', async p => {
     await p.evaluate(() => setStatsPeriod(6));
     // Из шести месяцев завершены пять, траты есть только в прошлом: 50 000 ₽.
-    eq(await bDigits(p, '#grouped-avg'), '10000', 'среднее по всем группам');
+    eq(await avgDigits(p, '#grouped-avg'), '10000', 'среднее по всем группам');
+    // Сумма — по ВСЕМ столбцам графика, включая текущий неполный месяц (в отличие
+    // от среднего), поэтому она строго больше суммы завершённых месяцев.
+    eq(await sumDigits(p, '#grouped-avg'), await chartSum(p, 'grouped'), 'сумма = все столбцы графика');
+    eq(+(await sumDigits(p, '#grouped-avg')) > 50000, true, 'текущий месяц входит в сумму');
     const hidden = await p.evaluate(() => {
       const c = charts.grouped;
       const i = c.data.datasets.findIndex(d => d.label.startsWith('Аренда'));
@@ -1208,7 +1221,8 @@ suite(390, 'средние и период графиков', () => {
       return { i, prev: _stackVisTotals(c)[c.data.labels.length - 2], n: c.data.datasets.length };
     });
     eq(hidden.prev, 20000, 'подпись над столбцом прошлого месяца без «Аренды»');
-    eq(await bDigits(p, '#grouped-avg'), '4000', 'среднее пересчиталось под выбор');
+    eq(await avgDigits(p, '#grouped-avg'), '4000', 'среднее пересчиталось под выбор');
+    eq(await sumDigits(p, '#grouped-avg'), await chartSum(p, 'grouped'), 'сумма пересчиталась под выбор');
     const txt = await p.evaluate(() => document.getElementById('grouped-avg').textContent);
     eq(/выбрано 4 из 5/.test(txt), true, 'подписано, сколько рядов осталось: ' + txt);
   });
@@ -1222,13 +1236,15 @@ suite(390, 'средние и период графиков', () => {
       DB.incomes.push({id:'pi2', date: mk + '-06', source:'Вклад', amount:20000, tag:'Проценты', updatedAt:1});
       saveDB(); renderStats();
     });
-    eq(await bDigits(p, '#income-tags-avg'), '16000', 'среднее по всем тегам (80 000 за 5 завершённых мес.)');
+    eq(await avgDigits(p, '#income-tags-avg'), '16000', 'среднее по всем тегам (80 000 за 5 завершённых мес.)');
+    eq(await sumDigits(p, '#income-tags-avg'), await chartSum(p, 'incomeTags'), 'сумма по всем тегам = все столбцы');
     await p.evaluate(() => {
       const c = charts.incomeTags;
       const i = c.data.datasets.findIndex(d => d.label === 'Проценты');
       document.querySelectorAll('#income-tags-legend .sl-chip')[i].click();
     });
-    eq(await bDigits(p, '#income-tags-avg'), '12000', 'среднее без «Процентов»');
+    eq(await avgDigits(p, '#income-tags-avg'), '12000', 'среднее без «Процентов»');
+    eq(await sumDigits(p, '#income-tags-avg'), await chartSum(p, 'incomeTags'), 'сумма без «Процентов»');
   });
 });
 

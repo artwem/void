@@ -1251,7 +1251,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.67.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.68.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3976,11 +3976,17 @@ function _renderStackAvg(chart, elId, color){
   const done = totals.length>1 ? totals.slice(0,-1) : totals;
   if(!done.length){ el.textContent=''; return; }
   const avg = Math.round(done.reduce((s,v)=>s+v,0)/done.length);
+  // Сумма — по ВСЕМ нарисованным столбцам, включая текущий неполный месяц:
+  // это то, что видно на графике. Среднее — только по завершённым, поэтому сумма ≠ ⌀ × месяцы.
+  const sum = Math.round(totals.reduce((s,v)=>s+v,0));
   const dss = chart.data.datasets;
   const vis = dss.filter((_,di)=>chart.isDatasetVisible(di)).length;
   const part = vis<dss.length ? ' <span style="opacity:.65">выбрано '+vis+' из '+dss.length+'</span>' : '';
-  el.innerHTML = '⌀ в месяц: <b style="color:'+color+'">'+fmtH(avg)+'</b>'+part;
-  el.title = 'Среднее за '+done.length+' мес.'+(totals.length>1?', текущий месяц не в счёт':'');
+  const per = statsPeriodMode==='all' ? 'За всё время' : 'За '+totals.length+' мес';
+  el.innerHTML = per+': <b class="sa-sum" style="color:'+color+'">'+fmtH(sum)+'</b>'
+               + ' · ⌀ <b class="sa-avg" style="color:'+color+'">'+fmtH(avg)+'</b>/мес'+part;
+  el.title = 'Сумма за '+totals.length+' мес.'
+           + (totals.length>1?' · среднее за '+done.length+' мес., текущий месяц не в счёт':'');
 }
 // Своя HTML-легенда вместо встроенной: у legend'а Chart.js хитбокс высотой в
 // строку шрифта (~11px), на телефоне палец мазал по соседней категории.
