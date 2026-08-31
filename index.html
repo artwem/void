@@ -1254,7 +1254,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4771,7 +4771,10 @@ function openGraceModal(id, presetBank){
 // «↙ остаток банка» — подставить последний известный баланс кредитки в сумму
 function graceFillFromBank(){
   const bank = document.getElementById('grace-bank').value;
-  const amt = _lastKnownAmount(bank, today());
+  // Без отсечки по today(): снимок могли только что внести будущей датой
+  // (ритуал «вечером 31-го на 1-е»), и именно он — актуальный долг кредитки.
+  // Та же семантика «последняя запись независимо от даты», что у сумм счетов.
+  const amt = _lastKnownAmount(bank);
   if(!amt) return;
   const amtEl = document.getElementById('grace-amount');
   amtEl.value = String(amt);

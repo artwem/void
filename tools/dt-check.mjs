@@ -1361,8 +1361,11 @@ suite(390, 'секрет синка и дата снимка', () => {
     await p.evaluate(() => closeModal('modal-sync'));
   });
 
-  check('снимок сохраняется за будущую дату, «грейс» её не подменяет', async p => {
+  check('снимок сохраняется за будущую дату, «грейс» берёт введённую сумму', async p => {
     const got = await p.evaluate(() => {
+      // старый баланс кредитки — именно его грейс подставлял вместо введённого,
+      // пока «остаток банка» отсекался по today() и не видел будущий снимок
+      DB.assets.push({ id: 'tst-alfa', date: '2026-01-01', bankName: 'Альфа-Банк', bank: 2, amount: 12000, updatedAt: 1 });
       const t = new Date(Date.now() + 86400000);
       const tomorrow = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
       openEditAssetDate(tomorrow, true);
@@ -1373,12 +1376,14 @@ suite(390, 'секрет синка и дата снимка', () => {
       _tagCreditSnapshot('Альфа-Банк', 'grace');
       const rec = DB.assets.find(a => !a._deleted && a.bankName === 'Альфа-Банк' && a.date === tomorrow);
       const graceOpen = document.getElementById('modal-grace').classList.contains('open');
+      const graceAmt = parseMoney(document.getElementById('grace-amount').value);
       closeModal('modal-grace');
-      return { noMax, amount: rec ? rec.amount : null, graceOpen };
+      return { noMax, amount: rec ? rec.amount : null, graceOpen, graceAmt };
     });
     eq(got.noMax, true, 'у даты снимка нет max');
     eq(got.amount, 5000, 'снимок кредитки лёг на завтрашнюю дату');
     eq(got.graceOpen, true, 'модалка грейса открылась после сохранения');
+    eq(got.graceAmt, 5000, 'в сумме грейса введённый баланс, а не старый');
   });
 });
 
