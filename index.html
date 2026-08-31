@@ -1251,7 +1251,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.68.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -8101,117 +8101,234 @@ function _aboutIconTap(){
   _aboutTapTimer = setTimeout(() => { _aboutTapCount = 0; }, 1500);
 }
 
+// ─── ДЕМО-ДАННЫЕ ────────────────────────────────────────────────────
+// Один источник правды для «5 тапов по иконке» в «О программе» и для
+// tools/harness.mjs (режим demo): тесты, скриншоты и человек, заливший
+// себе демо руками, видят ровно один и тот же набор.
+//
+// Даты считаются от «сегодня», суммы — от фиксированного сида, поэтому
+// набор воспроизводим от прогона к прогону и при этом не устаревает.
+// Покрыты ВСЕ сущности схемы: вклады (месячная капитализация с ручной
+// правкой начисления, «сумма в конце», закрытый по сроку, удалённый),
+// инвестиции с выводом средств, грейс и сплит, шаблоны, бронь особых,
+// тумбстоуны, 14 месяцев истории.
+const DEMO_MONTHS = 14;
+
+function buildDemoDB(now){
+  now = now || new Date();
+  let _seed = 20260101;
+  const rnd = () => {                                   // mulberry32
+    _seed = _seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(_seed ^ _seed >>> 15, 1 | _seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const near = (base, spread) => Math.round(base * (1 + (rnd() * 2 - 1) * spread) / 10) * 10;
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  let _n = 0;
+  const nid = p => p + String(++_n).padStart(3, '0');
+  const TS = now.getTime() - 86400000;                  // все записи «вчерашние»
+
+  const Y = now.getFullYear(), M = now.getMonth(), TODAY = now.getDate();
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  // back = сколько месяцев назад; day обрезается по длине месяца, а в текущем
+  // месяце — ещё и по сегодняшнему числу: трат из будущего быть не должно.
+  const dstr = (back, day) => {
+    const d = new Date(Y, M - back, 1);
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    let dd = Math.min(day, last);
+    if(back === 0) dd = Math.min(dd, TODAY);
+    d.setDate(dd);
+    return ymd(d);
+  };
+  const mkey = back => { const d = new Date(Y, M - back, 1); return d.getFullYear() + '-' + pad(d.getMonth() + 1); };
+  const shift = days => { const d = new Date(now); d.setDate(d.getDate() + days); return ymd(d); };
+
+  // ── Категории ──────────────────────────────────────────────────────
+  const categories = [...DEFAULT_CATS];
+  const catIds = categories.map((_, i) => 'dc' + pad(i + 1));
+  const catColors = {};
+  catIds.forEach((cid, i) => { catColors[cid] = DEFAULT_COLORS[i]; });
+
+  // Профиль категории: сколько трат в месяц, на какую сумму, с чем в
+  // комментарии. freq < 1 — категория появляется не каждый месяц.
+  const PROFILE = [
+    { freq: 2,   sum: 35000, sum2: 4800, spread: .02, special: true, cmt: ['Аренда квартиры', 'ЖКУ'] },
+    { freq: 1.4, sum: 2400,  spread: .5,  cmt: ['Моющие средства', 'Лампочки', 'Фильтр для воды', 'Мелочи в дом'] },
+    { freq: 9,   sum: 2600,  spread: .55, cmt: ['Пятёрочка', 'Магнит', 'ВкусВилл', 'Перекрёсток', 'Большая закупка', 'Ашан'] },
+    { freq: 6,   sum: 1300,  spread: .7,  cmt: ['Кофейня', 'Яндекс Еда', 'Ресторан', 'Обед на работе', 'Ужин с друзьями'] },
+    { freq: 5,   sum: 480,   spread: .6,  cmt: ['Такси', 'Метро', 'Самокат'] },
+    { freq: 2,   sum: 4700,  spread: .25, cmt: ['Бензин', 'Мойка', 'Шиномонтаж'] },
+    { freq: 1.6, sum: 2100,  spread: .8,  cmt: ['Аптека', 'Приём врача', 'Анализы'] },
+    { freq: 1.2, sum: 2000,  spread: .3,  cmt: ['Абонемент в зал', 'Плавание'] },
+    { freq: 1.5, sum: 3400,  spread: .8,  cmt: ['Кроссовки', 'Стрижка', 'Куртка', 'Косметика'] },
+    { freq: 3,   sum: 420,   spread: .4,  cmt: ['Яндекс Плюс', 'Телефон', 'Облако', 'Музыка'] },
+    { freq: .5,  sum: 3500,  spread: .6,  cmt: ['День рождения', 'Подарок к празднику'] },
+    { freq: .6,  sum: 6000,  spread: .7,  special: true, cmt: ['Ремонт телефона', 'Штраф', 'Замена стекла'] },
+  ];
+
+  const expenses = [];
+  for(let back = DEMO_MONTHS - 1; back >= 0; back--){
+    const partial = back === 0 ? Math.max(TODAY / 30, .2) : 1;   // текущий месяц идёт не весь
+    PROFILE.forEach((p, ci) => {
+      const times = p.freq * partial;
+      let n = Math.floor(times);
+      if(rnd() < times - n) n++;
+      for(let k = 0; k < n; k++){
+        const day = p.special && k === 0 ? 1 + Math.floor(rnd() * 3) : 1 + Math.floor(rnd() * 28);
+        const rec = {
+          id: nid('e'), date: dstr(back, day), cat: ci, catId: catIds[ci],
+          amount: near(k === 0 ? p.sum : (p.sum2 || p.sum), p.spread),
+          comment: p.sum2 ? p.cmt[Math.min(k, p.cmt.length - 1)] : pick(p.cmt), updatedAt: TS
+        };
+        if(p.special && k === 0) rec.special = true;
+        expenses.push(rec);
+      }
+    });
+  }
+  // Тумбстоуны: удалённые записи должны быть в наборе, иначе фильтрация по
+  // _deleted и 90-дневная чистка не проверяются вообще ни на чём.
+  expenses.push(
+    { id: nid('e'), date: dstr(1, 12), cat: 2, catId: catIds[2], amount: 0, comment: 'Дубль', _deleted: true, updatedAt: TS },
+    { id: nid('e'), date: dstr(0, 4),  cat: 3, catId: catIds[3], amount: 0, comment: 'Ошибся суммой', _deleted: true, updatedAt: TS }
+  );
+
+  // ── Доходы ─────────────────────────────────────────────────────────
+  const incomeTags = ['Оплата труда', 'Подработка', 'Проценты', 'Кэшбэк'];
+  const incomeTagColors = { 0: '#185fa5', 1: '#7b4fa5', 2: '#1d9e75', 3: '#b07d1a' };
+  const incomes = [];
+  for(let back = DEMO_MONTHS - 1; back >= 0; back--){
+    const raise = 1 + (DEMO_MONTHS - 1 - back) * .012;          // зарплата понемногу растёт
+    if(back > 0 || TODAY >= 5)  incomes.push({ id: nid('i'), date: dstr(back, 5),  source: 'Зарплата', amount: Math.round(near(96000, .01) * raise), tag: 'Оплата труда', updatedAt: TS });
+    if(back > 0 || TODAY >= 20) incomes.push({ id: nid('i'), date: dstr(back, 20), source: 'Аванс',    amount: Math.round(near(42000, .01) * raise), tag: 'Оплата труда', updatedAt: TS });
+    if(rnd() < .45)             incomes.push({ id: nid('i'), date: dstr(back, 8 + Math.floor(rnd() * 14)), source: 'Фриланс', amount: near(28000, .5), tag: 'Подработка', updatedAt: TS });
+    if(back > 0 || TODAY >= 14) incomes.push({ id: nid('i'), date: dstr(back, 14), source: 'Кэшбэк', amount: near(1800, .5), tag: 'Кэшбэк', updatedAt: TS });
+  }
+  // Проценты закрытого вклада — так их и заводит confirmCloseDeposit;
+  // без этой записи тег «Проценты» оставался бы в списке, но без единого дохода.
+  incomes.push({ id: nid('i'), date: dstr(2, 20), source: 'Накопительный (закрыт)', amount: 13140, tag: 'Проценты', updatedAt: TS });
+  incomes.push({ id: nid('i'), date: dstr(2, 9), source: 'Возврат', amount: 0, tag: 'Подработка', _deleted: true, updatedAt: TS });
+
+  // ── Банки и снимки ─────────────────────────────────────────────────
+  const banks = ['Сбербанк', 'Т-Банк', 'Озон Банк'];
+  const creditBanks = ['Альфа-Банк'];
+  const allBanks = [...banks, ...creditBanks];
+  const assets = [];
+  const startAmt = [430000, 210000, 38000, 24000];   // последний — долг по кредитке
+  for(let back = DEMO_MONTHS - 1; back >= 0; back--){
+    const step = DEMO_MONTHS - 1 - back;
+    allBanks.forEach((b, bi) => {
+      const grow = bi === 3 ? 1 : 1 + step * .021;               // кредитка не растёт
+      assets.push({
+        id: nid('a'), date: dstr(back, 1), bankName: b, bank: bi,
+        amount: near(startAmt[bi] * grow, bi === 3 ? .35 : .03), updatedAt: TS
+      });
+    });
+  }
+  assets.push({ id: nid('a'), date: dstr(3, 1), bankName: 'Озон Банк', bank: 2, amount: 0, _deleted: true, updatedAt: TS });
+
+  // ── Вклады ─────────────────────────────────────────────────────────
+  // Четыре штуки специально разные: месячная капитализация с ручной правкой
+  // начисления, режим «сумма в конце», закрытый по сроку и удалённый — на
+  // каждом своя ветка depositValueAt и своя карточка в интерфейсе.
+  const deposits = [
+    {
+      id: nid('d'), name: 'Сбербанк · 16%', amount: 300000, rate: 16,
+      openDate: dstr(8, 12), endDate: shift(120), capitalization: 'monthly',
+      contributions: [
+        { id: nid('dc'), date: dstr(5, 12), amount: 50000, updatedAt: TS },
+        { id: nid('dc'), date: dstr(2, 12), amount: 30000, updatedAt: TS },
+      ],
+      accruals: { [dstr(3, 12)]: 4100 },      // ручная правка начисления
+      updatedAt: TS
+    },
+    {
+      id: nid('d'), name: 'Т-Банк · сумма в конце', amount: 150000, rate: 14.2,
+      finalAmount: 168000, openDate: dstr(5, 3), endDate: shift(210),
+      capitalization: 'end', updatedAt: TS
+    },
+    {
+      id: nid('d'), name: 'Накопительный (закрыт)', amount: 120000, rate: 11,
+      openDate: dstr(13, 20), endDate: dstr(2, 20), capitalization: 'end', updatedAt: TS
+    },
+    {
+      id: nid('d'), name: 'Старый вклад', amount: 80000, rate: 9,
+      openDate: dstr(13, 5), endDate: dstr(6, 5), capitalization: 'end',
+      _deleted: true, updatedAt: TS
+    },
+  ];
+
+  // ── Инвестиции ─────────────────────────────────────────────────────
+  const invSnaps = {}, invContribs = [];
+  let invVal = 60000;
+  for(let back = 11; back >= 0; back--){
+    invVal = Math.round(invVal * (1 + (rnd() * .09 - .025)));
+    if(back % 3 === 0 && back > 0){
+      invVal += 20000;
+      invContribs.push({ id: nid('ic'), date: dstr(back, 15), amount: 20000, updatedAt: TS });
+    }
+    invSnaps[dstr(back, 15)] = invVal;
+  }
+  invContribs.push({ id: nid('ic'), date: dstr(4, 22), amount: -15000, updatedAt: TS });  // вывод
+  const investments = [{
+    id: nid('inv'), name: 'Брокерский счёт', snapshots: invSnaps,
+    contributions: invContribs, updatedAt: TS
+  }];
+
+  // ── Кредиты: грейс + сплит ─────────────────────────────────────────
+  const splitTotal = 31960, splitParts = 4, splitBase = Math.floor(splitTotal / splitParts);
+  const credits = [
+    { id: nid('cr'), kind: 'grace', bank: 'Альфа-Банк', payoffAmount: 24300, graceEnd: shift(6), updatedAt: TS },
+    {
+      id: nid('cr'), kind: 'split', name: 'Наушники', updatedAt: TS,
+      payments: Array.from({ length: splitParts }, (_, i) => ({
+        date: shift(-28 + i * 14),
+        amount: i === splitParts - 1 ? splitTotal - splitBase * (splitParts - 1) : splitBase,
+        paid: i < 2
+      }))
+    },
+  ];
+
+  // ── Шаблоны, лимиты, бронь особых ──────────────────────────────────
+  const templates = [
+    { id: nid('t'), name: '🛒', cat: 2, catId: catIds[2], amount: 2500, comment: 'Пятёрочка', color: '#1d9e75', updatedAt: TS },
+    { id: nid('t'), name: '☕', cat: 3, catId: catIds[3], amount: 350,  comment: '',          color: '#d85a30', updatedAt: TS },
+    { id: nid('t'), name: '🚕', cat: 4, catId: catIds[4], amount: 450,  comment: '',          color: '#ba7517', updatedAt: TS },
+    { id: nid('t'), name: '⛽', cat: 5, catId: catIds[5], amount: 4800, comment: 'АЗС',       color: '#639922', updatedAt: TS },
+    { id: nid('t'), name: '💊', cat: 6, catId: catIds[6], amount: 900,  comment: 'Аптека',    color: '#8e44ad', updatedAt: TS },
+  ];
+
+  // Лимиты под ЭТОТ профиль трат (≈110% от типичного месяца категории):
+  // с DEFAULT_LIMITS демо жило в сплошном перерасходе и посмотреть на
+  // нормальный прогресс-бар было негде.
+  const DEMO_LIMITS = [42000, 4000, 25000, 8500, 2800, 10000, 4000, 2600, 5500, 1500, 2000, 4000];
+  const limits = {};
+  for(let back = DEMO_MONTHS - 1; back >= 0; back--){
+    const row = {};
+    catIds.forEach((cid, i) => { row[cid] = DEMO_LIMITS[i]; });
+    limits[mkey(back)] = row;
+  }
+
+  // Бронь особых текущего месяца: аренду уже заплатили (0 = «не будет»),
+  // непредвиденные ещё ждём.
+  const specPlan = { [mkey(0)]: { [catIds[0]]: 0, [catIds[11]]: 6000 } };
+
+  return {
+    categories, catIds, catColors, expenses, incomes, assets,
+    banks, creditBanks, limits, templates, deposits, investments, credits,
+    incomeTags, incomeTagColors,
+    incomeTagOrder: ['Оплата труда', 'Подработка', 'Проценты', 'Кэшбэк', ''],
+    specPlan,
+    listsMeta: { categories: TS, banks: TS, creditBanks: TS, incomeTags: TS, incomeTagOrder: TS },
+  };
+}
+
 function fillTestData(){
   const hasData = DB.expenses.length > 0 || DB.incomes.length > 0 || DB.assets.length > 0;
   if(hasData){ toast('Сначала очистите данные'); return; }
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  function dAgo(n){ const d = new Date(now); d.setDate(d.getDate() - n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-
-  DB.categories  = [...DEFAULT_CATS];
-  DB.catColors   = {...DEFAULT_COLORS};
-  DB.banks       = ['Сбербанк', 'Тинькофф'];
-  DB.creditBanks = ['Альфа кредит'];
-  const prevM = m === 0 ? 11 : m - 1;
-  const prevY = m === 0 ? y - 1 : y;
-  DB.limits = {};
-  DB.limits[monthKey(y, m)]       = [...DEFAULT_LIMITS];
-  DB.limits[monthKey(prevY, prevM)] = [...DEFAULT_LIMITS];
-
-  DB.expenses = [
-    // ЖКУ + аренда (0)
-    {id:uid(), date:dAgo(28), cat:0, amount:35000, comment:'Аренда квартиры'},
-    {id:uid(), date:dAgo(14), cat:0, amount:4200,  comment:'ЖКУ'},
-    // Ремонт и быт (1)
-    {id:uid(), date:dAgo(25), cat:1, amount:2800, comment:'Моющие средства'},
-    {id:uid(), date:dAgo(10), cat:1, amount:1500, comment:'Лампочки'},
-    // Продукты (2)
-    {id:uid(), date:dAgo(29), cat:2, amount:3200, comment:'Пятёрочка'},
-    {id:uid(), date:dAgo(27), cat:2, amount:1800, comment:'Перекрёсток'},
-    {id:uid(), date:dAgo(25), cat:2, amount:2100, comment:'Пятёрочка'},
-    {id:uid(), date:dAgo(22), cat:2, amount:4500, comment:'Большая закупка'},
-    {id:uid(), date:dAgo(20), cat:2, amount:1200, comment:'ВкусВилл'},
-    {id:uid(), date:dAgo(18), cat:2, amount:2700, comment:'Пятёрочка'},
-    {id:uid(), date:dAgo(15), cat:2, amount:1900, comment:'Магнит'},
-    {id:uid(), date:dAgo(12), cat:2, amount:3100, comment:'Перекрёсток'},
-    {id:uid(), date:dAgo(8),  cat:2, amount:2400, comment:'ВкусВилл'},
-    {id:uid(), date:dAgo(5),  cat:2, amount:1600, comment:'Пятёрочка'},
-    {id:uid(), date:dAgo(2),  cat:2, amount:2200, comment:'Пятёрочка'},
-    // Кафе и доставка (3)
-    {id:uid(), date:dAgo(26), cat:3, amount:890,  comment:'Кофе с коллегами'},
-    {id:uid(), date:dAgo(23), cat:3, amount:1450, comment:'Яндекс Еда'},
-    {id:uid(), date:dAgo(19), cat:3, amount:2100, comment:'Ресторан'},
-    {id:uid(), date:dAgo(16), cat:3, amount:780,  comment:'Кофейня'},
-    {id:uid(), date:dAgo(11), cat:3, amount:1650, comment:'Яндекс Еда'},
-    {id:uid(), date:dAgo(7),  cat:3, amount:3200, comment:'Ужин с друзьями'},
-    {id:uid(), date:dAgo(3),  cat:3, amount:620,  comment:'Кофе'},
-    // Транспорт и такси (4)
-    {id:uid(), date:dAgo(28), cat:4, amount:450, comment:'Такси'},
-    {id:uid(), date:dAgo(21), cat:4, amount:320, comment:'Метро'},
-    {id:uid(), date:dAgo(14), cat:4, amount:680, comment:'Такси'},
-    {id:uid(), date:dAgo(6),  cat:4, amount:410, comment:'Такси'},
-    // Авто (5)
-    {id:uid(), date:dAgo(24), cat:5, amount:4800, comment:'Бензин'},
-    {id:uid(), date:dAgo(9),  cat:5, amount:4600, comment:'Бензин'},
-    // Аптека и врачи (6)
-    {id:uid(), date:dAgo(17), cat:6, amount:1200, comment:'Аптека'},
-    {id:uid(), date:dAgo(4),  cat:6, amount:3500, comment:'Приём врача'},
-    // Спорт (7)
-    {id:uid(), date:dAgo(28), cat:7, amount:2000, comment:'Абонемент в зал'},
-    {id:uid(), date:dAgo(13), cat:7, amount:800,  comment:'Плавание'},
-    // Одежда и уход (8)
-    {id:uid(), date:dAgo(22), cat:8, amount:3900, comment:'Кроссовки'},
-    {id:uid(), date:dAgo(8),  cat:8, amount:1200, comment:'Стрижка'},
-    // Подписки и связь (9)
-    {id:uid(), date:dAgo(30), cat:9, amount:399, comment:'Яндекс Плюс'},
-    {id:uid(), date:dAgo(29), cat:9, amount:550, comment:'Телефон'},
-    {id:uid(), date:dAgo(1),  cat:9, amount:299, comment:'Spotify'},
-    // Подарки (10)
-    {id:uid(), date:dAgo(12), cat:10, amount:3000, comment:'День рождения'},
-    // Непредвиденные (11)
-    {id:uid(), date:dAgo(20), cat:11, amount:5200, comment:'Ремонт телефона'},
-    {id:uid(), date:dAgo(3),  cat:11, amount:800,  comment:'Штраф'},
-    // Сегодня: несколько трат в одной категории (для теста группировки)
-    {id:uid(), date:dAgo(0), cat:2, amount:1100, comment:'Хлеб и молоко'},
-    {id:uid(), date:dAgo(0), cat:2, amount:650,  comment:'Фрукты'},
-    {id:uid(), date:dAgo(0), cat:2, amount:2300, comment:'Мясо'},
-    {id:uid(), date:dAgo(0), cat:3, amount:280,  comment:'Американо'},
-    {id:uid(), date:dAgo(0), cat:3, amount:490,  comment:'Сэндвич'},
-    {id:uid(), date:dAgo(0), cat:4, amount:380,  comment:'Метро'},
-    // Вчера: группировка
-    {id:uid(), date:dAgo(1), cat:2, amount:1800, comment:'Перекрёсток'},
-    {id:uid(), date:dAgo(1), cat:2, amount:420,  comment:''},
-    {id:uid(), date:dAgo(1), cat:4, amount:550,  comment:'Такси домой'},
-    {id:uid(), date:dAgo(1), cat:4, amount:310,  comment:'Такси на работу'},
-  ];
-
-  DB.incomes = [
-    {id:uid(), date:dAgo(23), source:'Зарплата',  amount:85000, comment:''},
-    {id:uid(), date:dAgo(7),  source:'Аванс',     amount:30000, comment:''},
-    {id:uid(), date:dAgo(15), source:'Фриланс',   amount:15000, comment:''},
-  ];
-
-  // banks: ['Сбербанк'=0, 'Тинькофф'=1], creditBanks: ['Альфа кредит'=2]
-  DB.assets = [
-    {id:uid(), bank:0, bankName:'Сбербанк',    amount:142000, date:dAgo(30)},
-    {id:uid(), bank:0, bankName:'Сбербанк',    amount:128000, date:dAgo(15)},
-    {id:uid(), bank:0, bankName:'Сбербанк',    amount:115000, date:dAgo(0)},
-    {id:uid(), bank:1, bankName:'Тинькофф',    amount:34000,  date:dAgo(30)},
-    {id:uid(), bank:1, bankName:'Тинькофф',    amount:47000,  date:dAgo(15)},
-    {id:uid(), bank:1, bankName:'Тинькофф',    amount:52000,  date:dAgo(0)},
-    {id:uid(), bank:2, bankName:'Альфа кредит', amount:25000, date:dAgo(30)},
-    {id:uid(), bank:2, bankName:'Альфа кредит', amount:18000, date:dAgo(0)},
-  ];
-
-  DB.templates = [
-    {id:uid(), name:'🛒', cat:2, amount:2000, comment:'Пятёрочка', color:'#1d9e75'},
-    {id:uid(), name:'☕', cat:3, amount:350,  comment:'',          color:'#d85a30'},
-    {id:uid(), name:'🚕', cat:4, amount:400,  comment:'',          color:'#ba7517'},
-    {id:uid(), name:'⛽', cat:5, amount:4800, comment:'АЗС',       color:'#639922'},
-  ];
-
-  DB.catIds = [];
-  _ensureCatIds(); // новые категории → новые id, catId на записях
+  Object.assign(DB, buildDemoDB(new Date()));
+  _ensureCatIds();
   saveDB();
   closeModal('modal-about');
   renderBudget();

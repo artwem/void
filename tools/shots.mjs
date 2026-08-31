@@ -1,9 +1,15 @@
 // Скриншоты всех вкладок на всех ширинах. Запуск: node tools/shots.mjs
+// Снимается полный демо-набор (buildDemoDB в index.html), а не минимальная
+// FIXTURE: на ней вклады, инвестиции, кредиты и шаблоны были пустыми, и
+// половина интерфейса на скриншотах просто не существовала.
 import { mkdir } from 'node:fs/promises';
 import { withPage } from './harness.mjs';
 
 const WIDTHS = [390, 1000, 1280, 1440, 1600];
-const PAGES = ['day', 'budget', 'income', 'stats', 'assets', 'settings'];
+// Шесть вкладок навбара плюс четыре подстраницы, у которых своей кнопки нет:
+// без них вклады, инвестиции, годовой отчёт и калькулятор не попадали в съёмку.
+const PAGES = ['day', 'budget', 'income', 'stats', 'assets', 'settings',
+               'deposits', 'investments', 'report', 'calc'];
 const OUT = new URL('shots/', import.meta.url);
 
 await mkdir(OUT, { recursive: true });
@@ -13,7 +19,7 @@ await withPage(WIDTHS, async (page, { width }) => {
     // из-за чего кадр ловит fadeIn в полёте и выходит выцветшим.
     '*,*::before,*::after{animation:none!important;transition:none!important}' });
   for (const name of PAGES) {
-    await page.evaluate(n => window.showPage(n, document.getElementById('nav-' + n)), name);
+    await page.evaluate(n => window.showPage(n, document.getElementById('nav-' + n) || undefined), name);
     await new Promise(r => setTimeout(r, 350)); // дать Chart.js дорисоваться
     await page.screenshot({
       path: new URL(`${String(width).padStart(4, '0')}-${name}.png`, OUT).pathname.slice(1),
@@ -21,7 +27,7 @@ await withPage(WIDTHS, async (page, { width }) => {
     });
   }
   console.log('снято', width);
-});
+}, { demo: true });
 
 // Все оверлеи в трёх амплуа — основная визуальная проверка задачи 7
 const MODALS = await (async () => {
@@ -40,5 +46,5 @@ await withPage([390, 1280, 1600], async (page, { width }) => {
     await page.evaluate(i => window.closeModal(i), id);
   }
   console.log('модалки сняты', width);
-});
+}, { demo: true });
 console.log('готово:', OUT.pathname);

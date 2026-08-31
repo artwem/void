@@ -80,14 +80,19 @@ export const FIXTURE = {
     { id: 'p01', date: pd(4), cat: 0, catId: 'cat0001', amount: 30000, comment: '', updatedAt: 1 },
     { id: 'p02', date: pd(6), cat: 1, catId: 'cat0002', amount: 12000, comment: '', updatedAt: 1 },
     { id: 'p03', date: pd(9), cat: 2, catId: 'cat0003', amount: 8000, comment: '', updatedAt: 1 },
+    // Тумбстоун: сумма нулевая, поэтому на ожидаемые «⌀» он не влияет, но
+    // фильтр !_deleted теперь есть чему ловить и в минимальном наборе.
+    { id: 'x01', date: dd(9), cat: 1, catId: 'cat0002', amount: 0, comment: 'Дубль', _deleted: true, updatedAt: 1 },
   ],
   incomes: [
     { id: 'i01', date: dd(5), source: 'Зарплата', amount: 180000, tag: 'Оплата труда', updatedAt: 1 },
     { id: 'i02', date: dd(12), source: 'Вклад', amount: 27550, tag: 'Проценты', updatedAt: 1 },
+    { id: 'x03', date: dd(12), source: 'Возврат', amount: 0, tag: 'Проценты', _deleted: true, updatedAt: 1 },
   ],
   assets: [
     { id: 'a01', date: dd(1), bankName: 'Сбербанк', bank: 0, amount: 420000, updatedAt: 1 },
     { id: 'a02', date: dd(1), bankName: 'Т-Банк', bank: 1, amount: 310000, updatedAt: 1 },
+    { id: 'x02', date: dd(1), bankName: 'Т-Банк', bank: 1, amount: 0, _deleted: true, updatedAt: 1 },
   ],
   banks: ['Сбербанк', 'Т-Банк'],
   creditBanks: ['Альфа-Банк'],
@@ -107,8 +112,16 @@ export const FIXTURE = {
  * повторы не схлопываются, каждый получает свежую страницу. Так вызывающий
  * решает сам, делить ли одну страницу между сюитами (передать уникальные
  * ширины) или дать каждой свою (передать ширины с повторами).
+ *
+ * opts.demo — вместо минимальной FIXTURE залить полный демо-набор из
+ * buildDemoDB() (14 месяцев истории, вклады, инвестиции, кредиты, шаблоны,
+ * бронь особых, тумбстоуны). Генератор живёт в index.html и его же получает
+ * человек, заливший демо пятью тапами по иконке в «О программе», — второго
+ * набора данных, который молча разъедется со схемой, тут заводить нельзя.
+ * Поэтому страница грузится дважды: первый раз, чтобы вызвать генератор,
+ * второй — уже с готовыми данными в localStorage.
  */
-export async function withPage(widths, fn) {
+export async function withPage(widths, fn, opts = {}) {
   const { srv, port } = await serve();
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -116,6 +129,17 @@ export async function withPage(widths, fn) {
     args: ['--hide-scrollbars', '--font-render-hinting=none'],
   });
   try {
+    // Данные пишутся в localStorage при КАЖДОЙ навигации: страницы одного
+    // браузера делят origin, и эта безусловная перезапись — единственное, что
+    // изолирует сюиты друг от друга. Поэтому демо-набор считается один раз
+    // здесь, а не после загрузки каждой страницы.
+    let payload = JSON.stringify(FIXTURE);
+    if (opts.demo) {
+      const probe = await browser.newPage();
+      await probe.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
+      payload = await probe.evaluate(() => JSON.stringify(buildDemoDB(new Date())));
+      await probe.close();
+    }
     for (const [index, width] of widths.entries()) {
       const page = await browser.newPage();
       await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
@@ -129,11 +153,11 @@ export async function withPage(widths, fn) {
         { name: 'prefers-reduced-motion', value: 'no-preference' },
       ]);
       await page.evaluateOnNewDocument(fx => {
-        localStorage.setItem('budgetDB_v2', JSON.stringify(fx));
+        localStorage.setItem('budgetDB_v2', fx);
         // SW перезагружает страницу по controllerchange — в тестах это помеха.
         // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.
         Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined });
-      }, FIXTURE);
+      }, payload);
       await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
       await page.evaluate(() => document.fonts.ready);
       await fn(page, { width, index });

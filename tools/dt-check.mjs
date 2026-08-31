@@ -4,7 +4,10 @@ import { withPage, rect, cssOf, isVisible, scrollDown, resetScroll } from './har
 const results = [];
 let current = null;
 
-export function suite(width, title, fn) { SUITES.push({ width, title, fn }); }
+// opts.demo — сюита идёт на полном демо-наборе (buildDemoDB), а не на
+// минимальной FIXTURE: вклады, инвестиции, кредиты и шаблоны проверять
+// больше не на чем.
+export function suite(width, title, fn, opts = {}) { SUITES.push({ width, title, fn, demo: !!opts.demo }); }
 export function check(name, fn) { current.checks.push({ name, fn }); }
 
 const SUITES = [];
@@ -1248,6 +1251,101 @@ suite(390, 'средние и период графиков', () => {
   });
 });
 
+suite(390, 'демо-набор покрывает всё приложение', () => {
+  // Эти экраны до v1.69.0 не проверял никто: в FIXTURE deposits/investments/
+  // credits/templates были пустыми массивами, и рендерить было нечего.
+  check('вклады: три живых, у каждого тело, срок и доход', async p => {
+    await p.evaluate(() => window.showPage('deposits'));
+    const n = await p.evaluate(() => document.querySelectorAll('#deposits-list > div').length);
+    eq(n >= 3, true, 'карточек вкладов на странице: ' + n);
+    const total = await p.evaluate(() => (document.getElementById('deposits-total-now').textContent.match(/\d/g) || []).join(''));
+    eq(Number(total) > 0, true, '«На вкладах сейчас» посчитано: ' + total);
+    const txt = await p.evaluate(() => document.getElementById('deposits-list').textContent);
+    eq(/капитализац/i.test(txt), true, 'месячная капитализация подписана');
+    eq(/пополнени/i.test(txt), true, 'пополнения показаны');
+  });
+
+  check('удалённый вклад в список не попадает', async p => {
+    const shown = await p.evaluate(() => document.getElementById('deposits-list').textContent.includes('Старый вклад'));
+    eq(shown, false, 'вклад с _deleted не отрисован');
+    eq(await p.evaluate(() => DB.deposits.some(d => d._deleted)), true, 'при этом тумбстоун в данных есть');
+  });
+
+  check('инвестиции: снимки и вывод средств', async p => {
+    await p.evaluate(() => window.showPage('investments'));
+    const n = await p.evaluate(() => document.getElementById('investments-list').children.length);
+    eq(n >= 1, true, 'карточек инвестиций: ' + n);
+    const withdrawn = await p.evaluate(() => (DB.investments[0].contributions || []).some(c => c.amount < 0));
+    eq(withdrawn, true, 'в наборе есть вывод средств (amount < 0)');
+    const total = await p.evaluate(() => (document.getElementById('investments-total-now').textContent.match(/\d/g) || []).join(''));
+    eq(Number(total) > 0, true, '«Стоимость сейчас» посчитана: ' + total);
+  });
+
+  check('кредиты: грейс и сплит с отметками оплаты', async p => {
+    await p.evaluate(() => window.showPage('assets', document.getElementById('nav-assets')));
+    const txt = await p.evaluate(() => document.getElementById('credits-list').textContent);
+    eq(/грейс/i.test(txt), true, 'грейс-кредитка в списке: ' + txt.slice(0, 80));
+    eq(/сплит/i.test(txt), true, 'сплит в списке');
+    eq(/оплачено 2\/4/.test(txt), true, 'видно, сколько платежей закрыто: ' + txt.slice(0, 120));
+  });
+
+  check('«Всего активов» = банки + вклады + инвестиции', async p => {
+    const parts = await p.evaluate(() => {
+      const num = id => Number((document.getElementById(id).textContent.match(/\d/g) || []).join(''));
+      return { total: num('total-val'), banks: num('total-banks-val'), deps: num('total-deps-val'), inv: num('total-inv-val') };
+    });
+    eq(parts.banks > 0 && parts.deps > 0 && parts.inv > 0, true, 'все три части ненулевые: ' + JSON.stringify(parts));
+    near(parts.total, parts.banks + parts.deps + parts.inv, 'итог сходится с разбивкой', 2);
+  });
+
+  check('история активов: колонки и глубина', async p => {
+    const head = await p.evaluate(() => [...document.querySelectorAll('#assets-history-table th')].map(th => th.textContent.trim()).join('|'));
+    eq(/Счета/.test(head) && /Вклады/.test(head) && /Всего/.test(head), true, 'колонки истории: ' + head);
+    const rows = await p.evaluate(() => document.querySelectorAll('#assets-history-table tbody tr, #assets-history-table tr').length);
+    eq(rows > 5, true, 'строк в истории: ' + rows);
+  });
+
+  check('шаблоны быстрых трат нарисованы чипами', async p => {
+    await p.evaluate(() => window.showPage('day', document.getElementById('nav-day')));
+    const n = await p.evaluate(() => document.querySelectorAll('#template-chips > *').length);
+    eq(n, 5, 'чипов шаблонов');
+  });
+
+  check('история — 14 месяцев, все периоды графиков наполнены', async p => {
+    eq(await p.evaluate(() => _dataMonthsSpan()), 14, 'месяцев в данных');
+    await p.evaluate(() => { window.showPage('stats', document.getElementById('nav-stats')); setStatsPeriod(12); });
+    const empty = await p.evaluate(() => charts.grouped.data.labels
+      .filter((_, i) => _stackVisTotals(charts.grouped)[i] === 0).length);
+    eq(empty, 0, 'пустых столбцов на 12 месяцах: ' + empty);
+  });
+
+  check('тумбстоуны есть в данных и не попадают в суммы', async p => {
+    const t = await p.evaluate(() => ({
+      exp: DB.expenses.filter(e => e._deleted).length,
+      inc: DB.incomes.filter(i => i._deleted).length,
+      ast: DB.assets.filter(a => a._deleted).length,
+      leak: getMonthExpenses(new Date().getFullYear(), new Date().getMonth()).some(e => e._deleted),
+    }));
+    eq(t.exp > 0 && t.inc > 0 && t.ast > 0, true, 'тумбстоуны всех видов: ' + JSON.stringify(t));
+    eq(t.leak, false, 'удалённые не попадают в расходы месяца');
+  });
+
+  check('бронь особых заполнена и видна в шапке «Бюджета»', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const txt = await p.evaluate(() => document.getElementById('budget-days-row').parentElement.textContent);
+    eq(/особые/.test(txt), true, 'строка особых на месте');
+    eq(await p.evaluate(() => Object.keys(DB.specPlan[monthKey(new Date().getFullYear(), new Date().getMonth())] || {}).length), 2, 'категорий в брони');
+  });
+
+  check('годовой отчёт наполнен и на прошлый год тоже', async p => {
+    await p.evaluate(() => window.showPage('report'));
+    const rows = await p.evaluate(() => document.querySelectorAll('#rep-col-a table tr').length);
+    eq(rows > 3, true, 'строк в помесячной таблице: ' + rows);
+    const years = await p.evaluate(() => document.querySelectorAll('#report-year option').length);
+    eq(years >= 2, true, 'лет на выбор: ' + years);
+  });
+}, { demo: true });
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
@@ -1265,18 +1363,25 @@ let failed = 0;
 // пересеивается через evaluateOnNewDocument, localStorage/sessionStorage,
 // scrollY и активная вкладка стартуют с нуля. Внутри одной сюиты порядок
 // по-прежнему значим — там чеки обязаны задавать нужную вкладку сами.
-await withPage(SUITES.map(s => s.width), async (page, { width, index }) => {
-  const s = SUITES[index];
-  for (const c of byWidth.get(s)) {
-    try {
-      await c.fn(page);
-      results.push(['ok', width, s.title, c.name, '']);
-    } catch (e) {
-      failed++;
-      results.push(['FAIL', width, s.title, c.name, e.message]);
+// Два прохода: набор данных задаётся при старте браузера, поэтому сюиты на
+// FIXTURE и на демо-наборе не могут ехать в одном.
+async function runPass(list, opts) {
+  if (!list.length) return;
+  await withPage(list.map(s => s.width), async (page, { width, index }) => {
+    const s = list[index];
+    for (const c of byWidth.get(s)) {
+      try {
+        await c.fn(page);
+        results.push(['ok', width, s.title, c.name, '']);
+      } catch (e) {
+        failed++;
+        results.push(['FAIL', width, s.title, c.name, e.message]);
+      }
     }
-  }
-});
+  }, opts);
+}
+await runPass(SUITES.filter(s => !s.demo), {});
+await runPass(SUITES.filter(s => s.demo), { demo: true });
 
 for (const [st, w, t, n, msg] of results) {
   const mark = st === 'ok' ? '  ok  ' : ' FAIL ';
