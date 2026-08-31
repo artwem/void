@@ -1185,7 +1185,10 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="fgrp">
       <label class="flbl">Секрет (опционально — должен совпадать с SECRET в Code.gs)</label>
-      <input type="text" id="sync-token-input" placeholder="пусто = без проверки" autocomplete="off"/>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="password" id="sync-token-input" placeholder="пусто = без проверки" autocomplete="new-password" style="flex:1"/>
+        <button type="button" class="btn small" id="sync-token-eye" onclick="toggleSyncTokenVis(this)" title="Показать/скрыть" style="flex-shrink:0">👁</button>
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-sync')">Отмена</button>
@@ -1251,7 +1254,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6354,8 +6357,11 @@ function openEditAssetDate(date, carryForward){
   const allBanks = getAllBanks();
 
   document.getElementById('asset-edit-title').textContent = 'Активы за ' + date;
+  // max НЕ ставим: снимок «на завтра» — легальный ритуал (вечером 31-го вносят
+  // состояние на 1-е). С max=today() пикер молча не давал выбрать будущую дату,
+  // и «🏷 грейс» сохранял снимок за сегодня, хотя человек ставил завтрашнюю
   const dateInp = document.getElementById('asset-edit-date');
-  if(dateInp){ dateInp.value = date; dateInp.max = today(); }
+  if(dateInp){ dateInp.value = date; dateInp.removeAttribute('max'); }
 
   const container = document.getElementById('asset-edit-rows');
   container.innerHTML = '';
@@ -8397,8 +8403,17 @@ function copyScriptFromModal(){
 // ── URL настройки ─────────────────────────────────────────────────────
 function openSyncSettings(){
   document.getElementById('sync-url-input').value = DB.syncUrl || '';
-  document.getElementById('sync-token-input').value = DB.syncToken || '';
+  const tok = document.getElementById('sync-token-input');
+  tok.value = DB.syncToken || '';
+  tok.type = 'password'; // секрет всегда открывается скрытым, даже если глаз нажимали
+  document.getElementById('sync-token-eye').textContent = '👁';
   openModal('modal-sync');
+}
+
+function toggleSyncTokenVis(btn){
+  const inp = document.getElementById('sync-token-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
 }
 
 function clearSyncUrl(){

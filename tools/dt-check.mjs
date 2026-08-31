@@ -1346,6 +1346,42 @@ suite(390, 'демо-набор покрывает всё приложение',
   });
 }, { demo: true });
 
+// Секрет Apps Script скрыт звёздочками, а дата снимка принимает будущее:
+// вечером 31-го вносят состояние на 1-е, и «🏷 грейс» обязан сохранить снимок
+// за выбранную дату. С max=today() пикер молча ел будущую дату, и снимок
+// уезжал на сегодня.
+suite(390, 'секрет синка и дата снимка', () => {
+  check('поле секрета — password, глаз переключает видимость', async p => {
+    await p.evaluate(() => openSyncSettings());
+    eq(await p.evaluate(() => document.getElementById('sync-token-input').type), 'password', 'тип поля при открытии');
+    await p.evaluate(() => toggleSyncTokenVis(document.getElementById('sync-token-eye')));
+    eq(await p.evaluate(() => document.getElementById('sync-token-input').type), 'text', 'после глаза секрет видно');
+    await p.evaluate(() => { closeModal('modal-sync'); openSyncSettings(); });
+    eq(await p.evaluate(() => document.getElementById('sync-token-input').type), 'password', 'повторное открытие снова прячет');
+    await p.evaluate(() => closeModal('modal-sync'));
+  });
+
+  check('снимок сохраняется за будущую дату, «грейс» её не подменяет', async p => {
+    const got = await p.evaluate(() => {
+      const t = new Date(Date.now() + 86400000);
+      const tomorrow = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+      openEditAssetDate(tomorrow, true);
+      const noMax = !document.getElementById('asset-edit-date').getAttribute('max');
+      const idx = getAllBanks().indexOf('Альфа-Банк');
+      const inp = document.getElementById('asset-edit-inp-' + idx);
+      inp.value = '5 000';
+      _tagCreditSnapshot('Альфа-Банк', 'grace');
+      const rec = DB.assets.find(a => !a._deleted && a.bankName === 'Альфа-Банк' && a.date === tomorrow);
+      const graceOpen = document.getElementById('modal-grace').classList.contains('open');
+      closeModal('modal-grace');
+      return { noMax, amount: rec ? rec.amount : null, graceOpen };
+    });
+    eq(got.noMax, true, 'у даты снимка нет max');
+    eq(got.amount, 5000, 'снимок кредитки лёг на завтрашнюю дату');
+    eq(got.graceOpen, true, 'модалка грейса открылась после сохранения');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {
