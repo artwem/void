@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.71.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.71.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4130,6 +4130,7 @@ function _renderWeekdayChart(lastN){
       borderRadius:4, borderSkipped:false }] },
     options:{
       responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false }, // тап между столбцами тоже попадает
       plugins:{ legend:{display:false},
         tooltip:{callbacks:{label:v=>'⌀ '+(DB.privacyMode?'—':fmt(v.raw))}} },
       scales:{
@@ -4173,6 +4174,8 @@ function _renderCushionChart(lastN){
       fill:true, tension:0.3, pointRadius:2, borderWidth:2, spanGaps:true }] },
     options:{
       responsive:true, maintainAspectRatio:false,
+      // тап по всей вертикали, а не по точке 2px — как у «День за днём»
+      interaction:{ mode:'index', intersect:false },
       plugins:{ legend:{display:false},
         tooltip:{callbacks:{label:v=>v.raw===null?'Нет данных':v.raw+' мес'}} },
       scales:{
