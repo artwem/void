@@ -1355,6 +1355,20 @@ suite(390, 'демо-набор покрывает всё приложение',
     eq(/Дешевле всего/.test(txt), true, 'вывод про дни недели в отчёте');
   });
 
+  check('тап по столбику отчёта показывает цифру тостом', async p => {
+    await p.evaluate(() => window.showPage('report'));
+    const cushion = await p.evaluate(() => {
+      document.querySelector('.rb-bar').click();
+      return document.getElementById('toast').textContent;
+    });
+    eq(/: [\d.]+ мес/.test(cushion), true, 'тост подушки с месяцами: ' + cushion);
+    const wd = await p.evaluate(() => {
+      document.querySelector('.rb-wd').click();
+      return document.getElementById('toast').textContent;
+    });
+    eq(/⌀ [\d\s ]+₽/.test(wd), true, 'тост дня недели с суммой: ' + wd);
+  });
+
   check('годовой отчёт наполнен и на прошлый год тоже', async p => {
     await p.evaluate(() => window.showPage('report'));
     const rows = await p.evaluate(() => document.querySelectorAll('#rep-col-a table tr').length);

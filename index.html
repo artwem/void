@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.70.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.71.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -8930,7 +8930,7 @@ function renderReport(){
         <div class="s-lbl" style="margin-bottom:2px">Финансовая подушка</div>
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">${last.v} мес <span style="font-size:11px;font-weight:400;color:var(--muted)">хватит активов при ⌀ расходе последних 6 мес</span></div>
         <div style="display:flex;align-items:flex-end;gap:3px;height:48px">
-          ${pts.map((p,i)=>`<div title="${p.lbl}: ${p.v} мес" style="flex:1;min-width:0;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div>`).join('')}
+          ${pts.map((p,i)=>`<div class="rb-bar" onclick="toast('${p.lbl}: ${p.v} мес')" title="${p.lbl}: ${p.v} мес" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div></div>`).join('')}
         </div>
         <div style="display:flex;gap:3px;margin-top:3px">
           ${pts.map(p=>`<div style="flex:1;min-width:0;text-align:center;font-size:9px;color:var(--hint);overflow:hidden">${p.lbl}</div>`).join('')}
@@ -9035,7 +9035,7 @@ function renderReport(){
       h += `<div class="chart-card" style="margin-bottom:14px">
         <div class="chart-title">Дни недели <span style="font-size:11px;font-weight:400;color:var(--muted)">⌀ расход, без особых</span></div>
         <div style="display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:6px">
-          ${avgs.map((v,i)=>`<div title="${_WEEKDAY_LABELS[i]}: ⌀ ${DB.privacyMode?'—':fmt(v)}" style="flex:1;height:${Math.max(4, Math.round(v/maxV*100))}%;border-radius:3px 3px 0 0;background:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--muted)'};${i===iMax||i===iMin?'':'opacity:.35'}"></div>`).join('')}
+          ${avgs.map((v,i)=>`<div class="rb-wd" onclick="toast('${_WEEKDAY_LABELS[i]}: ⌀ '+fmtN(${v}))" title="${_WEEKDAY_LABELS[i]}: ⌀ ${DB.privacyMode?'—':fmt(v)}" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(v/maxV*100))}%;border-radius:3px 3px 0 0;background:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--muted)'};${i===iMax||i===iMin?'':'opacity:.35'}"></div></div>`).join('')}
         </div>
         <div style="display:flex;gap:6px;margin-top:4px">
           ${_WEEKDAY_LABELS.map((l,i)=>`<div style="flex:1;text-align:center;font-size:10px;color:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--hint)'}">${l}</div>`).join('')}
