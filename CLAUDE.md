@@ -257,6 +257,17 @@ Session-persisted UI state uses `sessionStorage`:
 чипа легенды пересчитывает и сумму. Классы `.sa-sum` / `.sa-avg` на `<b>` — за них цепляется
 `tools/dt-check.mjs`.
 
+**Дни недели и финансовая подушка (v1.70.0) — один движок, два потребителя.** `_weekdayAvgs(from,
+to)` (⌀ расход по дню недели, БЕЗ особых — разовые платежи падают на случайный день и перекашивают
+его) и `_cushionAt(series, expBy, dateStr)` (подушка = активы по последнему снимку ≤ даты ÷
+⌀ расход за 6 ЗАВЕРШЁННЫХ к дате месяцев) живут в `═══ stats.js ═══` перед `renderStats`.
+Потребители: Chart.js-карточки `#cw-weekday`/`#cw-cushion` на «Аналитике» (слушают общий
+`statsPeriod`) и CSS-блоки годового отчёта в `renderReport` (период = год или «всё время»).
+**Инварианты:** окно усреднения подушки фиксированное скользящее — чипы периода двигают глубину
+линии, но не знаменатель (иначе «24 мес» разбавляли бы его старым образом жизни); особые в
+расходы подушки входят (реальные деньги), а из дней недели исключены; число месяцев подушки не
+прячется в приватном режиме (как норма накопления), абсолютные суммы идут через `fmtH`.
+
 Filter state (module-level variables, reset on tab re-render):
 - `_expCatFilter` (`null` | `Set<number>`) — category multi-select of the expense search card in Аналитика (`renderExpenseSearch`, `#cw-search`; period chips `setExpSearchPeriod` → sessionStorage `expSearchPeriod` 1/3/6/12/'all', default 6; result = count+sum, per-month breakdown, date-grouped list, tap on a date → Day tab). Moved from the Day tab in v1.56.0
 - `_incomeTagFilter` (`null` | `''` | `string`) — Income tab tag filter
