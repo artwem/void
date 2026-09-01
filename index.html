@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.70.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.70.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4037,7 +4037,18 @@ function _renderStackLegend(chart, legendElId, avgElId, avgColor){
 function _weekdayAvgs(from, to){
   const t = today();
   if(to > t) to = t;
-  if(!from || from > to) return null;
+  if(!from) return null;
+  // Пустые дни до самой первой неособой траты не входят в знаменатель: иначе
+  // «всё» в Аналитике (период с первого числа самого раннего месяца) и отчёт
+  // «Всё время» (с даты первой траты) давали разные средние на одних данных,
+  // а первый год использования занижался месяцами до начала записей.
+  let firstExp = null;
+  (DB.expenses||[]).forEach(e => {
+    if(e._deleted || e.special || !e.date) return;
+    if(!firstExp || e.date < firstExp) firstExp = e.date;
+  });
+  if(firstExp && from < firstExp) from = firstExp;
+  if(from > to) return null;
   const sums = Array(7).fill(0); // 0=Пн … 6=Вс
   (DB.expenses||[]).forEach(e => {
     if(e._deleted || e.special || !e.date) return;
@@ -4070,7 +4081,7 @@ function _expTotalsByMonth(){
 // и фиксированное: чипы периода двигают глубину линии, но не знаменатель —
 // иначе «24 мес» разбавляли бы его образом жизни двухлетней давности.
 // Особые в расходы входят — это реальные деньги. null — нет снимков ≤ даты
-// или меньше 2 завершённых месяцев с трат-историей.
+// или ни одного завершённого месяца с трат-историей.
 function _cushionAt(series, expBy, dateStr){
   let idx = -1;
   series.dates.forEach((d,i)=>{ if(d <= dateStr) idx = i; });
@@ -4086,7 +4097,10 @@ function _cushionAt(series, expBy, dateStr){
     mks.push(monthKey(y,m));
     m--; if(m<0){m=11;y--;}
   }
-  if(mks.length < 2) return null;
+  // Хватает одного завершённого месяца: в первый месяц использования среднее —
+  // это его же траты. Порог «≥2» прятал первую точку истории (март у реальных
+  // данных), хотя активы по снимкам уже были известны.
+  if(mks.length < 1) return null;
   const avgExp = mks.reduce((s,mk)=>s+(expBy[mk]||0),0) / mks.length;
   if(avgExp <= 0) return null;
   return {months: assets/avgExp, assets, avgExp, asOf: series.dates[idx]};

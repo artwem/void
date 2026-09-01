@@ -1362,6 +1362,29 @@ suite(390, 'демо-набор покрывает всё приложение',
     const years = await p.evaluate(() => document.querySelectorAll('#report-year option').length);
     eq(years >= 2, true, 'лет на выбор: ' + years);
   });
+
+  check('«всё» в Аналитике и «Всё время» в отчёте дают одни дни недели', async p => {
+    const nums = s => (s.match(/⌀\s*[\d\s ]+₽/g) || []).map(x => x.replace(/\D/g, ''));
+    const a = await p.evaluate(() => {
+      window.showPage('stats', document.getElementById('nav-stats'));
+      setStatsPeriod('all');
+      return document.getElementById('weekday-summary').textContent;
+    });
+    const b = await p.evaluate(() => {
+      window.showPage('report');
+      const sel = document.getElementById('report-year');
+      sel.value = 'all'; renderReport();
+      return [...document.querySelectorAll('#rep-col-b .chart-card')]
+        .map(c => c.textContent).find(t => /Дешевле всего/.test(t)) || '';
+    });
+    await p.evaluate(() => { // вернуть состояние соседним чекам
+      document.getElementById('report-year').value = String(new Date().getFullYear());
+      renderReport();
+      setStatsPeriod(6);
+    });
+    eq(nums(a).length, 2, 'в сводке Аналитики две суммы');
+    eq(nums(a).join('|'), nums(b).join('|'), 'средние совпали с отчётом');
+  });
 }, { demo: true });
 
 // Дни недели и финансовая подушка: общий движок (_weekdayAvgs/_cushionAt)
@@ -1400,16 +1423,37 @@ suite(390, 'дни недели и подушка', () => {
 
   check('_cushionAt: активы ÷ ⌀ расход завершённых месяцев', async p => {
     const got = await p.evaluate(() => {
-      const series = {dates:['2026-08-20'], bankSeries:[100000], depSeries:[15000], invSeries:[5000]};
+      const series = {dates:['2026-06-20','2026-08-20'], bankSeries:[80000,100000], depSeries:[15000,15000], invSeries:[5000,5000]};
       const expBy = {'2026-06': 30000, '2026-07': 20000, '2026-08': 10000};
       const atEnd  = _cushionAt(series, expBy, '2026-08-31'); // авг завершён: окно июн–авг
       const midSep = _cushionAt(series, expBy, '2026-09-15'); // сен не завершён: то же окно
+      const firstM = _cushionAt(series, expBy, '2026-06-30'); // один завершённый месяц — уже точка
       const early  = _cushionAt(series, expBy, '2026-06-15'); // ни одного завершённого месяца
-      return {m1: atEnd && atEnd.months, m2: midSep && midSep.months, early};
+      return {m1: atEnd && atEnd.months, m2: midSep && midSep.months, m0: firstM && firstM.months, early};
     });
     eq(got.m1, 6, 'подушка на конец августа'); // 120000 ÷ 20000
     eq(got.m2, 6, 'середина сентября считает по тем же завершённым месяцам');
-    eq(got.early, null, 'меньше двух завершённых месяцев — null');
+    near(got.m0, 100000/30000, 'первый месяц истории виден', 0.01); // порог — 1 месяц
+    eq(got.early, null, 'ни одного завершённого месяца — null');
+  });
+
+  check('пустые дни до первой траты не размывают средние дней недели', async p => {
+    const got = await p.evaluate(() => {
+      const saved = DB.expenses;
+      DB.expenses = [
+        {id:'w1', date:'2026-06-01', cat:0, catId:DB.catIds[0], amount:1000}, // Пн
+        {id:'w2', date:'2026-06-08', cat:0, catId:DB.catIds[0], amount:3000}, // Пн
+      ];
+      // Аналитика зовёт с первого числа раннего месяца, отчёт — с даты первой
+      // траты; движок обязан привести оба к одному началу
+      const a = _weekdayAvgs('2026-04-01', '2026-06-14');
+      const b = _weekdayAvgs('2026-06-01', '2026-06-14');
+      DB.expenses = saved;
+      return {aMon: a.avgs[0], bMon: b.avgs[0], aCnt: a.counts[0], bCnt: b.counts[0]};
+    });
+    eq(got.aCnt, got.bCnt, 'число понедельников совпало');
+    eq(got.aMon, 2000, '⌀ понедельника без разбавления пустым апрелем-маем');
+    eq(got.aMon, got.bMon, 'средние совпали');
   });
 });
 
