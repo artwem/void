@@ -1337,6 +1337,24 @@ suite(390, 'демо-набор покрывает всё приложение',
     eq(await p.evaluate(() => Object.keys(DB.specPlan[monthKey(new Date().getFullYear(), new Date().getMonth())] || {}).length), 2, 'категорий в брони');
   });
 
+  check('дни недели и подушка живут на «Аналитике»', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => ({
+      wd: !!charts.weekday, cu: !!charts.cushion,
+      now: document.getElementById('cushion-now').textContent,
+    }));
+    eq(got.wd, true, 'график дней недели');
+    eq(got.cu, true, 'график подушки');
+    eq(/мес/.test(got.now), true, 'текущая подушка в месяцах');
+  });
+
+  check('подушка и дни недели есть в годовом отчёте', async p => {
+    await p.evaluate(() => window.showPage('report'));
+    const txt = await p.evaluate(() => document.getElementById('report-body').textContent);
+    eq(/Финансовая подушка/.test(txt), true, 'блок подушки в отчёте');
+    eq(/Дешевле всего/.test(txt), true, 'вывод про дни недели в отчёте');
+  });
+
   check('годовой отчёт наполнен и на прошлый год тоже', async p => {
     await p.evaluate(() => window.showPage('report'));
     const rows = await p.evaluate(() => document.querySelectorAll('#rep-col-a table tr').length);
@@ -1345,6 +1363,55 @@ suite(390, 'демо-набор покрывает всё приложение',
     eq(years >= 2, true, 'лет на выбор: ' + years);
   });
 }, { demo: true });
+
+// Дни недели и финансовая подушка: общий движок (_weekdayAvgs/_cushionAt)
+// для карточек «Аналитики» и блоков годового отчёта.
+suite(390, 'дни недели и подушка', () => {
+  check('карточки на «Аналитике» отрисованы на фикстуре', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => ({
+      wd: !!charts.weekday,
+      sum: document.getElementById('weekday-summary').textContent,
+      now: document.getElementById('cushion-now').textContent,
+    }));
+    eq(got.wd, true, 'график дней недели создан');
+    eq(/Дешевле всего/.test(got.sum), true, 'строка-вывод про дешёвый день');
+    eq(got.now.length > 0, true, 'плашка подушки не пустая');
+  });
+
+  check('_weekdayAvgs: среднее по дню недели, особые и удалённые вне', async p => {
+    const got = await p.evaluate(() => {
+      const saved = DB.expenses;
+      DB.expenses = [
+        {id:'w1', date:'2026-06-01', cat:0, catId:DB.catIds[0], amount:1000},               // Пн
+        {id:'w2', date:'2026-06-08', cat:0, catId:DB.catIds[0], amount:3000},               // Пн
+        {id:'w3', date:'2026-06-02', cat:0, catId:DB.catIds[0], amount:500, special:true},  // Вт — особая, вне
+        {id:'w4', date:'2026-06-03', cat:0, catId:DB.catIds[0], amount:700, _deleted:true}, // Ср — удалена, вне
+      ];
+      const wd = _weekdayAvgs('2026-06-01', '2026-06-14'); // две полные недели Пн–Вс
+      DB.expenses = saved;
+      return {mon: wd.avgs[0], tue: wd.avgs[1], wed: wd.avgs[2], cnt: wd.counts[0]};
+    });
+    eq(got.cnt, 2, 'понедельников в периоде');
+    eq(got.mon, 2000, '⌀ понедельника');
+    eq(got.tue, 0, 'особая не вошла во вторник');
+    eq(got.wed, 0, 'удалённая не вошла в среду');
+  });
+
+  check('_cushionAt: активы ÷ ⌀ расход завершённых месяцев', async p => {
+    const got = await p.evaluate(() => {
+      const series = {dates:['2026-08-20'], bankSeries:[100000], depSeries:[15000], invSeries:[5000]};
+      const expBy = {'2026-06': 30000, '2026-07': 20000, '2026-08': 10000};
+      const atEnd  = _cushionAt(series, expBy, '2026-08-31'); // авг завершён: окно июн–авг
+      const midSep = _cushionAt(series, expBy, '2026-09-15'); // сен не завершён: то же окно
+      const early  = _cushionAt(series, expBy, '2026-06-15'); // ни одного завершённого месяца
+      return {m1: atEnd && atEnd.months, m2: midSep && midSep.months, early};
+    });
+    eq(got.m1, 6, 'подушка на конец августа'); // 120000 ÷ 20000
+    eq(got.m2, 6, 'середина сентября считает по тем же завершённым месяцам');
+    eq(got.early, null, 'меньше двух завершённых месяцев — null');
+  });
+});
 
 // Секрет Apps Script скрыт звёздочками, а дата снимка принимает будущее:
 // вечером 31-го вносят состояние на 1-е, и «🏷 грейс» обязан сохранить снимок

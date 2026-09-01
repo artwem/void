@@ -214,6 +214,20 @@ if ('serviceWorker' in navigator) {
       <div id="day-compare-summary" style="margin-top:10px"></div>
     </div>
   </div>
+  <div class="chart-wrap" id="cw-weekday">
+    <div class="chart-card">
+      <div class="chart-title" style="margin-bottom:4px">Дни недели</div>
+      <div id="weekday-summary" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
+      <div class="chart-box h190"><canvas id="chartWeekday"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-wrap" id="cw-cushion">
+    <div class="chart-card">
+      <div class="chart-title" style="margin-bottom:4px">Финансовая подушка</div>
+      <div id="cushion-now" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
+      <div class="chart-box h190"><canvas id="chartCushion"></canvas></div>
+    </div>
+  </div>
   <div class="chart-wrap" id="cw-search">
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
@@ -1254,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.69.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.70.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4015,6 +4029,146 @@ function _renderStackLegend(chart, legendElId, avgElId, avgColor){
   });
 }
 
+// ── Дни недели и подушка: один движок, два потребителя ──────────────
+// Расчёт общий для карточек «Аналитики» и блоков годового отчёта.
+
+// Средний расход по дням недели за [from, to] БЕЗ особых: сумма трат такого
+// дня недели ÷ сколько раз он встретился в периоде. Будущее не считается.
+function _weekdayAvgs(from, to){
+  const t = today();
+  if(to > t) to = t;
+  if(!from || from > to) return null;
+  const sums = Array(7).fill(0); // 0=Пн … 6=Вс
+  (DB.expenses||[]).forEach(e => {
+    if(e._deleted || e.special || !e.date) return;
+    if(e.date < from || e.date > to) return;
+    sums[(new Date(e.date+'T12:00:00').getDay()+6)%7] += e.amount;
+  });
+  const counts = Array(7).fill(0);
+  for(let d = new Date(from+'T12:00:00'); ; d.setDate(d.getDate()+1)){
+    const ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(ds > to) break;
+    counts[(d.getDay()+6)%7]++;
+  }
+  return {avgs: sums.map((s,i)=>counts[i] ? s/counts[i] : 0), sums, counts};
+}
+const _WEEKDAY_LABELS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+// Помесячные суммы расходов (особые входят) — знаменатель подушки
+function _expTotalsByMonth(){
+  const map = {};
+  (DB.expenses||[]).forEach(e => {
+    if(e._deleted || !e.date) return;
+    const mk = e.date.slice(0,7);
+    map[mk] = (map[mk]||0) + e.amount;
+  });
+  return map;
+}
+
+// Подушка на дату: активы (банки+вклады+инвест, последний снимок ≤ даты)
+// ÷ средний расход за последние 6 ЗАВЕРШЁННЫХ к дате месяцев. Окно скользящее
+// и фиксированное: чипы периода двигают глубину линии, но не знаменатель —
+// иначе «24 мес» разбавляли бы его образом жизни двухлетней давности.
+// Особые в расходы входят — это реальные деньги. null — нет снимков ≤ даты
+// или меньше 2 завершённых месяцев с трат-историей.
+function _cushionAt(series, expBy, dateStr){
+  let idx = -1;
+  series.dates.forEach((d,i)=>{ if(d <= dateStr) idx = i; });
+  if(idx < 0) return null;
+  const assets = series.bankSeries[idx] + series.depSeries[idx] + series.invSeries[idx];
+  const firstMk = Object.keys(expBy).sort()[0];
+  if(!firstMk) return null;
+  let y = +dateStr.slice(0,4), m = +dateStr.slice(5,7)-1;
+  // месяц самой даты завершён, только если дата — его последний день
+  if(+dateStr.slice(8,10) < new Date(y, m+1, 0).getDate()){ m--; if(m<0){m=11;y--;} }
+  const mks = [];
+  while(mks.length < 6 && monthKey(y,m) >= firstMk){
+    mks.push(monthKey(y,m));
+    m--; if(m<0){m=11;y--;}
+  }
+  if(mks.length < 2) return null;
+  const avgExp = mks.reduce((s,mk)=>s+(expBy[mk]||0),0) / mks.length;
+  if(avgExp <= 0) return null;
+  return {months: assets/avgExp, assets, avgExp, asOf: series.dates[idx]};
+}
+
+// ── Карточка «Дни недели» на «Аналитике» ────────────────────────────
+function _renderWeekdayChart(lastN){
+  const el = document.getElementById('chartWeekday');
+  if(!el) return;
+  const first = lastN[0];
+  const wd = _weekdayAvgs(monthKey(first.y, first.m) + '-01', today());
+  const sumEl = document.getElementById('weekday-summary');
+  if(charts.weekday){ charts.weekday.destroy(); charts.weekday = null; }
+  if(!wd || wd.sums.every(s=>!s)){
+    if(sumEl) sumEl.textContent = 'Нет данных за период';
+    return;
+  }
+  const avgs = wd.avgs.map(v=>Math.round(v));
+  let iMin = 0, iMax = 0;
+  wd.avgs.forEach((v,i)=>{ if(v < wd.avgs[iMin]) iMin = i; if(v > wd.avgs[iMax]) iMax = i; });
+  if(sumEl) sumEl.innerHTML = `Дешевле всего — ${_WEEKDAY_LABELS[iMin]} · ⌀ ${fmtH(avgs[iMin])}, дороже — ${_WEEKDAY_LABELS[iMax]} · ⌀ ${fmtH(avgs[iMax])} <span style="color:var(--hint)">· без особых</span>`;
+  const cc = _chartColors();
+  charts.weekday = new Chart(el, {
+    type:'bar',
+    data:{ labels: _WEEKDAY_LABELS, datasets:[{ data: avgs,
+      backgroundColor: avgs.map((_,i)=> i===iMax ? cc.red : i===iMin ? cc.green : cc.mutedBar),
+      borderRadius:4, borderSkipped:false }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{callbacks:{label:v=>'⌀ '+(DB.privacyMode?'—':fmt(v.raw))}} },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
+        y:{grid:{color:cc.gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:cc.muted}}
+      }
+    }
+  });
+}
+
+// ── Карточка «Финансовая подушка» на «Аналитике» ────────────────────
+// Число месяцев — как «Норма накопления»: не прячется в приватном режиме,
+// абсолютные суммы в подписи идут через fmtH и блюрятся.
+function _renderCushionChart(lastN){
+  const el = document.getElementById('chartCushion');
+  if(!el) return;
+  const series = _buildAssetSeries();
+  const expBy = _expTotalsByMonth();
+  const t = today();
+  const pts = lastN.map(x => {
+    const end = monthKey(x.y, x.m) + '-' + String(new Date(x.y, x.m+1, 0).getDate()).padStart(2,'0');
+    const c = _cushionAt(series, expBy, end > t ? t : end);
+    return c ? Math.round(c.months*10)/10 : null;
+  });
+  const nowC = _cushionAt(series, expBy, t);
+  const nowEl = document.getElementById('cushion-now');
+  if(nowEl){
+    if(nowC){
+      nowEl.innerHTML = `Сейчас: <b style="font-size:15px;color:var(--text)">${Math.round(nowC.months*10)/10} мес</b> <span style="color:var(--hint)">— активы ${fmtH(Math.round(nowC.assets))} ÷ ⌀ расход ${fmtH(Math.round(nowC.avgExp))} за 6 мес</span>`;
+    } else {
+      nowEl.textContent = 'Мало истории — нужен снимок активов и 2+ месяца трат';
+    }
+  }
+  if(charts.cushion){ charts.cushion.destroy(); charts.cushion = null; }
+  if(pts.every(v=>v===null)) return;
+  const cc = _chartColors();
+  charts.cushion = new Chart(el,{
+    type:'line',
+    data:{ labels: lastN.map(x=>x.label), datasets:[{
+      data: pts, borderColor: cc.blue, backgroundColor: cc.blueFill,
+      fill:true, tension:0.3, pointRadius:2, borderWidth:2, spanGaps:true }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{callbacks:{label:v=>v.raw===null?'Нет данных':v.raw+' мес'}} },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
+        y:{grid:{color:cc.gridLine}, beginAtZero:true, ticks:{callback:v=>v+' мес',font:{size:9},color:cc.muted}}
+      }
+    }
+  });
+}
+
 function renderStats(){
   const now = new Date();
   statsPeriod = _periodMonths(statsPeriodMode);
@@ -4542,6 +4696,10 @@ function renderStats(){
       if(canvasEl) canvasEl.style.display = 'none';
     }
   }
+
+  // ── Дни недели + финансовая подушка ───────────────────────────────
+  _renderWeekdayChart(lastN);
+  _renderCushionChart(lastN);
 }
 
 
@@ -8729,6 +8887,44 @@ function renderReport(){
     </div>`;
   }
 
+  // Финансовая подушка: активы ÷ ⌀ расход 6 завершённых месяцев — движок
+  // общий с карточкой «Аналитики» (_cushionAt). Год → точки по концам месяцев,
+  // «Всё время» → по концам годов (как таблица «По годам»).
+  {
+    const expBy = _expTotalsByMonth();
+    const tNow = today();
+    const pts = [];
+    if(isAll){
+      [...new Set([...Object.keys(yInc), ...Object.keys(yExp)])].sort().forEach(y2=>{
+        const end = y2+'-12-31' > tNow ? tNow : y2+'-12-31';
+        const c = _cushionAt(series, expBy, end);
+        if(c) pts.push({lbl: y2, v: Math.round(c.months*10)/10});
+      });
+    } else {
+      for(let mm=0; mm<12; mm++){
+        let end = yr+'-'+String(mm+1).padStart(2,'0')+'-'+String(new Date(+yr, mm+1, 0).getDate()).padStart(2,'0');
+        if(end.slice(0,7) > tNow.slice(0,7)) break; // будущие месяцы года не рисуем
+        if(end > tNow) end = tNow;
+        const c = _cushionAt(series, expBy, end);
+        if(c) pts.push({lbl: SHORT_MONTHS[mm], v: Math.round(c.months*10)/10});
+      }
+    }
+    if(pts.length){
+      const last = pts[pts.length-1];
+      const maxV = Math.max(...pts.map(p=>p.v), 0.1);
+      h += `<div class="s-card" style="margin-bottom:14px">
+        <div class="s-lbl" style="margin-bottom:2px">Финансовая подушка</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">${last.v} мес <span style="font-size:11px;font-weight:400;color:var(--muted)">хватит активов при ⌀ расходе последних 6 мес</span></div>
+        <div style="display:flex;align-items:flex-end;gap:3px;height:48px">
+          ${pts.map((p,i)=>`<div title="${p.lbl}: ${p.v} мес" style="flex:1;min-width:0;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div>`).join('')}
+        </div>
+        <div style="display:flex;gap:3px;margin-top:3px">
+          ${pts.map(p=>`<div style="flex:1;min-width:0;text-align:center;font-size:9px;color:var(--hint);overflow:hidden">${p.lbl}</div>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
   // Из чего накоплено — та же логика, что в сводке Аналитики (_savingsBreakdownHtml)
   {
     const periodIncs = incs.filter(x=>inYr(x.date));
@@ -8808,6 +9004,31 @@ function renderReport(){
       </div>`;
       }).join('')}
     </div>`;
+  }
+
+  // Дни недели: ⌀ расход по дню недели (без особых) — движок _weekdayAvgs,
+  // общий с карточкой «Аналитики»
+  {
+    let wdFrom = null;
+    if(isAll) exps.forEach(e=>{ if(e.date && (!wdFrom || e.date < wdFrom)) wdFrom = e.date; });
+    else wdFrom = yr + '-01-01';
+    const wd = wdFrom ? _weekdayAvgs(wdFrom, isAll ? today() : yr + '-12-31') : null;
+    if(wd && wd.sums.some(s=>s)){
+      const avgs = wd.avgs.map(v=>Math.round(v));
+      let iMin = 0, iMax = 0;
+      wd.avgs.forEach((v,i)=>{ if(v < wd.avgs[iMin]) iMin = i; if(v > wd.avgs[iMax]) iMax = i; });
+      const maxV = Math.max(...avgs, 1);
+      h += `<div class="chart-card" style="margin-bottom:14px">
+        <div class="chart-title">Дни недели <span style="font-size:11px;font-weight:400;color:var(--muted)">⌀ расход, без особых</span></div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:6px">
+          ${avgs.map((v,i)=>`<div title="${_WEEKDAY_LABELS[i]}: ⌀ ${DB.privacyMode?'—':fmt(v)}" style="flex:1;height:${Math.max(4, Math.round(v/maxV*100))}%;border-radius:3px 3px 0 0;background:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--muted)'};${i===iMax||i===iMin?'':'opacity:.35'}"></div>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          ${_WEEKDAY_LABELS.map((l,i)=>`<div style="flex:1;text-align:center;font-size:10px;color:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--hint)'}">${l}</div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Дешевле всего — ${_WEEKDAY_LABELS[iMin]} · ⌀ ${fmtH(avgs[iMin])}, дороже — ${_WEEKDAY_LABELS[iMax]} · ⌀ ${fmtH(avgs[iMax])}</div>
+      </div>`;
+    }
   }
 
   if(tagRows.length){
