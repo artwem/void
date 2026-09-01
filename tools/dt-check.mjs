@@ -1512,6 +1512,74 @@ suite(390, 'секрет синка и дата снимка', () => {
   });
 });
 
+suite(390, 'чипы «банки / вклады / инвестиции» на графике накоплений', () => {
+  const open = (p, stored) => p.evaluate(v => {
+    localStorage.removeItem('assetsChartDeps');
+    if (v === null) localStorage.removeItem('assetsChartParts'); else localStorage.setItem('assetsChartParts', v);
+    window.showPage('assets', document.getElementById('nav-assets'));
+  }, stored);
+  const active = p => p.evaluate(() => ['banks', 'deps', 'inv']
+    .filter(k => document.getElementById('acp-' + k).style.fontWeight === '600').join(','));
+  const last = p => p.evaluate(() => { const d = charts.assets.data.datasets[0].data; return d[d.length - 1]; });
+  const tap = (p, k) => p.evaluate(key => document.getElementById('acp-' + key).click(), k);
+  const sums = p => p.evaluate(() => {
+    const s = _buildAssetSeries(); const i = s.dates.length - 1;
+    return { banks: s.bankSeries[i], deps: s.depSeries[i], inv: s.invSeries[i] };
+  });
+
+  check('по умолчанию три чипа видны и все включены', async p => {
+    await open(p, null);
+    eq(await isVisible(p, '#assets-chart-parts-toggle'), true, 'переключатель виден');
+    const cells = await p.evaluate(() => [...document.querySelectorAll('#assets-chart-parts-toggle > span')]
+      .filter(s => s.style.display !== 'none').map(s => s.textContent.trim()));
+    eq(cells.join('|'), 'банки|вклады|инвестиции', 'состав чипов');
+    eq(await active(p), 'banks,deps,inv', 'все включены');
+    const s = await sums(p);
+    near(await last(p), s.banks + s.deps + s.inv, 'последняя точка = банки + вклады + инвестиции', 2);
+  });
+
+  check('чипы выключаются независимо, линия пересчитывается', async p => {
+    await open(p, null);
+    const s = await sums(p);
+    await tap(p, 'deps');
+    eq(await active(p), 'banks,inv', 'после выключения вкладов');
+    near(await last(p), s.banks + s.inv, 'без вкладов', 2);
+    await tap(p, 'banks');
+    eq(await active(p), 'inv', 'только инвестиции');
+    near(await last(p), s.inv, 'одни инвестиции', 2);
+    eq(await p.evaluate(() => localStorage.getItem('assetsChartParts')), 'inv', 'выбор сохранён на устройстве');
+  });
+
+  check('последний включённый чип выключить нельзя', async p => {
+    await open(p, 'deps');
+    eq(await active(p), 'deps', 'стартовое состояние');
+    await tap(p, 'deps');
+    eq(await active(p), 'deps', 'чип остался включённым');
+    const s = await sums(p);
+    near(await last(p), s.deps, 'линия по-прежнему одни вклады', 2);
+  });
+
+  check('старый тумблер «только банки» переезжает в чипы', async p => {
+    await p.evaluate(() => { localStorage.removeItem('assetsChartParts'); localStorage.setItem('assetsChartDeps', '0');
+      window.showPage('assets', document.getElementById('nav-assets')); });
+    eq(await active(p), 'banks', 'явный выбор «банки» сохранён');
+    await p.evaluate(() => { localStorage.setItem('assetsChartDeps', '1');
+      window.showPage('assets', document.getElementById('nav-assets')); });
+    eq(await active(p), 'banks,deps,inv', '«+вклады·инвест» → всё включено');
+    await p.evaluate(() => { localStorage.removeItem('assetsChartDeps'); localStorage.removeItem('assetsChartParts'); });
+  });
+}, { demo: true });
+
+suite(390, 'без вкладов и инвестиций чипов графика нет', () => {
+  check('переключатель скрыт, линия = банки', async p => {
+    await p.evaluate(() => { localStorage.removeItem('assetsChartParts'); window.showPage('assets', document.getElementById('nav-assets')); });
+    eq(await isVisible(p, '#assets-chart-parts-toggle'), false, 'переключатель скрыт');
+    const ok = await p.evaluate(() => { const s = _buildAssetSeries(); const d = charts.assets.data.datasets[0].data;
+      return d.every((v, i) => v === s.bankSeries[i]); });
+    eq(ok, true, 'линия совпадает с рядом банков');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

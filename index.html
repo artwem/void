@@ -308,8 +308,8 @@ if ('serviceWorker' in navigator) {
           <div id="assets-chart-scale-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
             <span id="acs-raw" onclick="setAssetsChartScale('raw')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">снимки</span><span id="acs-month" onclick="setAssetsChartScale('month')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">месяц</span><span id="acs-year" onclick="setAssetsChartScale('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">год</span>
           </div>
-          <div id="assets-chart-deps-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="acd-off" onclick="setAssetsChartDeps(false)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">банки</span><span id="acd-on" onclick="setAssetsChartDeps(true)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">+вклады·инвест</span>
+          <div id="assets-chart-parts-toggle" title="Что складывать в линию — чипы независимые, последний включённый выключить нельзя" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
+            <span id="acp-banks" onclick="toggleAssetsChartPart('banks')" style="padding:2px 7px;cursor:pointer">банки</span><span id="acp-deps" onclick="toggleAssetsChartPart('deps')" style="padding:2px 7px;cursor:pointer">вклады</span><span id="acp-inv" onclick="toggleAssetsChartPart('inv')" style="padding:2px 7px;cursor:pointer">инвестиции</span>
           </div>
         </div>
       </div>
@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.71.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.72.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5128,9 +5128,29 @@ let _assetsHistoryRows = [];
 // Показ нулевых счетов в списке (сбрасывается при перезагрузке)
 let _showZeroBanks = false;
 
-// Переключатель графика «банки / +вклады» (настройка устройства)
-function setAssetsChartDeps(on){
-  try{ localStorage.setItem('assetsChartDeps', on ? '1' : '0'); }catch(_){}
+// Части линии «Рост накоплений»: банки / вклады / инвестиции — три независимых
+// чипа (настройка устройства, localStorage.assetsChartParts = 'banks,deps,inv').
+// По умолчанию включены все; последний включённый выключить нельзя — иначе
+// линия превращается в ноль и непонятно, что вообще нарисовано.
+const _ASSET_CHART_PARTS = ['banks', 'deps', 'inv'];
+function _assetsChartParts(){
+  let raw = null;
+  try{ raw = localStorage.getItem('assetsChartParts'); }catch(_){}
+  if(raw === null){
+    // Миграция с тумблера «банки / +вклады·инвест» (до v1.72.0): явный выбор
+    // «только банки» сохраняем, всё остальное — новый дефолт «всё включено».
+    let old = null;
+    try{ old = localStorage.getItem('assetsChartDeps'); }catch(_){}
+    return new Set(old === '0' ? ['banks'] : _ASSET_CHART_PARTS);
+  }
+  const s = new Set(raw.split(',').filter(k => _ASSET_CHART_PARTS.includes(k)));
+  return s.size ? s : new Set(_ASSET_CHART_PARTS);
+}
+function toggleAssetsChartPart(key){
+  const s = _assetsChartParts();
+  if(s.has(key)){ if(s.size === 1) return; s.delete(key); }
+  else s.add(key);
+  try{ localStorage.setItem('assetsChartParts', _ASSET_CHART_PARTS.filter(k => s.has(k)).join(',')); }catch(_){}
   renderAssets();
 }
 
@@ -5433,17 +5453,32 @@ function renderAssets(){
       _segActive(['raw','month','year'].map(k=>['acs-'+k, chartScale===k]));
     }
   }
-  // Тумблер «банки / +вклады·инвест»: добавить к каждой точке вклады и инвестиции на эту дату
-  const liveDepsCnt = (DB.deposits||[]).filter(x=>!x._deleted).length + (DB.investments||[]).filter(x=>!x._deleted).length;
-  const depsOn = localStorage.getItem('assetsChartDeps') === '1' && liveDepsCnt > 0;
+  // Чипы «банки / вклады / инвестиции»: какие ряды складывать в линию. Чип
+  // вкладов/инвестиций есть только когда ряду есть что показать (в истории
+  // считаются и закрытые вклады до дня закрытия — см. _buildAssetSeries);
+  // если кроме банков ничего нет, переключатель не показываем вовсе.
+  const hasDeps = rawDepSeries.some(v => v > 0), hasInv = rawInvSeries.some(v => v > 0);
+  const parts = _assetsChartParts();
+  const partOn = {banks: parts.has('banks'), deps: parts.has('deps') && hasDeps, inv: parts.has('inv') && hasInv};
   {
-    const tgl = document.getElementById('assets-chart-deps-toggle');
+    const tgl = document.getElementById('assets-chart-parts-toggle');
     if(tgl){
-      tgl.style.display = liveDepsCnt ? 'inline-flex' : 'none';
-      _segActive([['acd-off', !depsOn], ['acd-on', depsOn]]);
+      tgl.style.display = (hasDeps || hasInv) ? 'inline-flex' : 'none';
+      const avail = {banks: true, deps: hasDeps, inv: hasInv};
+      const shown = _ASSET_CHART_PARTS.filter(k => avail[k]);
+      _ASSET_CHART_PARTS.forEach(k => {
+        const el = document.getElementById('acp-' + k);
+        if(!el) return;
+        el.style.display = avail[k] ? '' : 'none';
+        const i = shown.indexOf(k);
+        // скругления и разделители — по видимым ячейкам, а не по DOM-соседям
+        el.style.borderLeft = i > 0 ? '1px solid var(--border)' : '';
+        el.style.borderRadius = (i === 0 ? '3px' : '0') + ' ' + (i === shown.length - 1 ? '3px 3px' : '0 0') + ' ' + (i === 0 ? '3px' : '0');
+      });
+      _segActive(_ASSET_CHART_PARTS.map(k => ['acp-' + k, partOn[k]]));
     }
   }
-  const data = bankSeries.map((v,i)=> v + (depsOn ? depSeries[i] + invSeries[i] : 0));
+  const data = bankSeries.map((v,i)=> (partOn.banks ? v : 0) + (partOn.deps ? depSeries[i] : 0) + (partOn.inv ? invSeries[i] : 0));
   try{
     if(charts.assets) charts.assets.destroy();
     if(labels.length>0){
