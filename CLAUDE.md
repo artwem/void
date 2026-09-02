@@ -14,7 +14,7 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**Тест-раннер есть:** `node tools/dt-check.mjs` — 92 проверки геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
+**Тест-раннер есть:** `node tools/dt-check.mjs` — 110 проверок геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
 
 **Два набора данных для тестов (since v1.69.0).** `suite(width, title, fn)` идёт на минимальной
 `FIXTURE` из `harness.mjs`, `suite(..., { demo: true })` — на полном демо-наборе; раннер делит
@@ -225,21 +225,40 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 
 ### UI State Patterns
 
-Session-persisted UI state uses `sessionStorage`:
+**UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**
+Хелперы живут в `═══ db.js ═══` рядом с `saveDB()`, обёрнуты в try/catch (Safari в приватном
+режиме бросает на `localStorage`). До v1.73.0 половина ключей лежала в `sessionStorage`, а в PWA
+сессия кончается вместе со свёрнутым приложением — период «всё», «Особые: без» и глубина средней
+приходилось выставлять заново после каждого холодного старта. В синк ключи не идут (device-local,
+как `theme`/`privacyMode`), в `buildPayload()` их нет — они вообще не в `DB`. **Харнесс тестов
+делает `localStorage.clear()` в `evaluateOnNewDocument`**: origin у страниц общий, без очистки
+выбор одной сюиты протекал бы в следующую.
+
+Ключи (все — `uiGet`/`uiSet`, кроме отдельно помеченных):
 - `expViewMode` (`'cats'`|`'groups'`), `pieViewMode` — breakdown views in Аналитика
 - `statsPeriod` — период графиков Аналитики. Хранится РЕЖИМ (`'6'`|`'12'`|`'24'`|`'all'`) в
   `statsPeriodMode`; `statsPeriod` — производное число месяцев, пересчитывается `_periodMonths()`
   в начале `renderStats()` (для `'all'` — `_dataMonthsSpan()`: от самой ранней траты/дохода до
   текущего месяца, потолок 240). Присваивать `statsPeriod` напрямую нельзя — только
   `setStatsPeriod(6|12|24|'all')`
-- `savingsPeriod` (**localStorage**, device-local, по умолчанию `'6'`) — период графиков «Доходы vs
+- `savingsPeriod` (device-local, по умолчанию `'6'`) — период графиков «Доходы vs
   Расходы» и «Норма накопления» на «Накоплениях» (`savingsPeriodMode`, `setSavingsPeriod()`, те же
   четыре режима). До v1.65.0 эти два графика молча жили на `statsPeriod` с «Аналитики», где
   переключателя из «Активов» не видно. Чипов два ряда (у каждого графика свой), период у них один —
   `renderSavingsCharts()` подсвечивает оба ряда (`svp-*` и `svp2-*`)
 - `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Affects the fact/average lines and the drawn «Прогноз» line; the printed «Прогноз на конец месяца» total always includes specials (see the forecast section above)
 - `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
-- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`)
+- `dayCompareMode` (`'today'`|`'full'`) — «Сегодня / Месяц» на «Дне за днём» (`setDayCompareMode`).
+  До v1.73.0 режим хранился в `data-mode` самого переключателя и умирал вместе с разметкой;
+  `renderStats()` теперь наоборот проставляет атрибут из переменной
+- `expSearchPeriod` (`1`|`3`|`6`|`12`|`'all'`, default 6) — период карточки поиска по тратам
+- `reportYear` — выбранный год годового отчёта (`'2026'` … | `'all'`); при рендере значение
+  селекта побеждает сохранённое, сохранённое подхватывается только на первой отрисовке
+- `showZeroBanks` (`'0'`|`'1'`) — раскрыт ли список нулевых счетов на «Накоплениях» (`_showZeroBanks`)
+- `assetsChartParts` (`'banks,deps,inv'`), `assetsChartScale` (`'raw'`|`'month'`|`'year'`),
+  `assetsFxCur` — чипы и шкала графика «Рост накоплений», валюта итога. Читаются напрямую через
+  `localStorage` со своими миграциями (см. `_assetsChartParts`), а не через `uiGet`
+- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`). **Единственный оставшийся на `sessionStorage`** — это «Бюджет», а не «Аналитика»/«Накопления»
 
 **Средние за месяц (v1.65.0).** Под «Доходы vs Расходы» (`#inc-exp-avg`), «Расходы по группам»
 (`#grouped-avg`) и «Доходы по тегам» (`#income-tags-avg`) печатается «⌀ в месяц». Везде считается

@@ -153,6 +153,12 @@ export async function withPage(widths, fn, opts = {}) {
         { name: 'prefers-reduced-motion', value: 'no-preference' },
       ]);
       await page.evaluateOnNewDocument(fx => {
+        // Полная очистка: origin у страниц общий, и UI-состояние вкладок
+        // (uiGet/uiSet — периоды графиков, режимы разбивки, чипы частей
+        // накоплений) с v1.73.0 живёт в localStorage. Без clear() выбор одной
+        // сюиты протекал бы в следующую и порядок объявления снова стал бы
+        // значим — ровно то, от чего уходили, давая каждой сюите свою страницу.
+        localStorage.clear();
         localStorage.setItem('budgetDB_v2', fx);
         // SW перезагружает страницу по controllerchange — в тестах это помеха.
         // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.

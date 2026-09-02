@@ -196,8 +196,8 @@ if ('serviceWorker' in navigator) {
       <div class="chart-title">День за днём</div>
       <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px">
         <div id="day-compare-mode" data-mode="today" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="dcm-full" onclick="document.getElementById('day-compare-mode').dataset.mode='full';renderStats()" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
-          <span id="dcm-today" onclick="document.getElementById('day-compare-mode').dataset.mode='today';renderStats()" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
+          <span id="dcm-full" onclick="setDayCompareMode('full')" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
+          <span id="dcm-today" onclick="setDayCompareMode('today')" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
         </div>
         <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Особые расходы">
           <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Особые</span>
@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.72.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.73.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1475,6 +1475,19 @@ function saveDB(){
     toast('Не удалось сохранить: хранилище переполнено', 'err');
   }
 }
+
+// ── UI-состояние вкладок: чипы периодов, тумблеры, режимы разбивки ──
+// Настройка устройства, переживает перезапуск приложения. До v1.73.0 половина
+// этих ключей жила в sessionStorage: в PWA сессия кончается вместе со свёрнутым
+// приложением, поэтому выбранный период «всё» или «Особые: без» приходилось
+// ставить заново после каждого холодного старта. В синк не попадают (как theme
+// и privacyMode) — экраны у устройств разные, навязывать чужой выбор незачем.
+// try/catch — localStorage бросает в приватном режиме Safari.
+function uiGet(key, def){
+  try { const v = localStorage.getItem(key); return v === null ? def : v; }
+  catch(_) { return def; }
+}
+function uiSet(key, val){ try { localStorage.setItem(key, String(val)); } catch(_) {} }
 
 // Пометить список (categories/banks/creditBanks/incomeTags) изменённым — для LWW-merge при синке
 function touchList(name){
@@ -3436,7 +3449,7 @@ function _renderStatsSummary(lastN){
 // Период аналитики: хранится РЕЖИМ ('6'|'12'|'24'|'all'), statsPeriod — производное
 // число месяцев. 'all' пересчитывается на каждом рендере: данные прирастают.
 const _PERIOD_MODES = ['6','12','24','all'];
-let statsPeriodMode = sessionStorage.getItem('statsPeriod') || '6';
+let statsPeriodMode = uiGet('statsPeriod', '6');
 if(!_PERIOD_MODES.includes(statsPeriodMode)) statsPeriodMode = '6';
 let statsPeriod = statsPeriodMode === 'all' ? 12 : +statsPeriodMode;
 // Сколько месяцев покрывают данные: от самой ранней траты/дохода до текущего включительно.
@@ -3450,25 +3463,29 @@ function _dataMonthsSpan(){
   return Math.max(1, Math.min(n, 240));
 }
 function _periodMonths(mode){ return mode === 'all' ? _dataMonthsSpan() : +mode; }
-let _expViewMode = sessionStorage.getItem('expViewMode') || 'cats';
+let _expViewMode = uiGet('expViewMode', 'cats');
 // Особые расходы влияют только на график «День за днём» (там — переключатель).
 // В остальной аналитике учитываются как обычные расходы — _statsExps не фильтрует.
 function _statsExps(arr){ return arr; }
-let dayInclSpecial = sessionStorage.getItem('dayInclSpecial')!=='0';
+let dayInclSpecial = uiGet('dayInclSpecial', '1') !== '0';
 function setDayInclSpecial(v){
   dayInclSpecial = v;
-  sessionStorage.setItem('dayInclSpecial', v?'1':'0');
+  uiSet('dayInclSpecial', v?'1':'0');
   renderStats();
 }
 function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!e.special); }
-function setDayAvgMonths(n){ sessionStorage.setItem('dayAvgMonths', n); renderStats(); }
-function setExpViewMode(m){ _expViewMode=m; sessionStorage.setItem('expViewMode',m); }
-let _pieViewMode = sessionStorage.getItem('pieViewMode') || 'cats';
-function setPieViewMode(m){ _pieViewMode=m; sessionStorage.setItem('pieViewMode',m); renderStats(); }
+function setDayAvgMonths(n){ uiSet('dayAvgMonths', n); renderStats(); }
+// «Месяц / Сегодня» на «Дне за днём»: до v1.73.0 режим жил в data-атрибуте
+// самого переключателя и обнулялся вместе с разметкой при каждой перезагрузке.
+let dayCompareMode = uiGet('dayCompareMode', 'today') === 'full' ? 'full' : 'today';
+function setDayCompareMode(m){ dayCompareMode = m; uiSet('dayCompareMode', m); renderStats(); }
+function setExpViewMode(m){ _expViewMode=m; uiSet('expViewMode', m); }
+let _pieViewMode = uiGet('pieViewMode', 'cats');
+function setPieViewMode(m){ _pieViewMode=m; uiSet('pieViewMode', m); renderStats(); }
 
 function setStatsPeriod(n){
   statsPeriodMode = String(n);
-  sessionStorage.setItem('statsPeriod', statsPeriodMode);
+  uiSet('statsPeriod', statsPeriodMode);
   statsPeriod = _periodMonths(statsPeriodMode);
   // Сбрасываем селект Структуры — он перестроится под новый период
   const ps = document.getElementById('pie-month-sel');
@@ -3855,17 +3872,17 @@ function _monthForecast(y, m){
 
 // ─── ПОИСК ПО ТРАТАМ ────────────────────────────────────────────────
 // До v1.56.0 жил на «Дне» и искал по всей истории без ограничений. Здесь:
-// период (sessionStorage expSearchPeriod: 1/3/6/12 последних месяцев,
+// период (localStorage expSearchPeriod: 1/3/6/12 последних месяцев,
 // включая текущий, или 'all'), чипы категорий (_expCatFilter — тот же
 // фильтр, что был на «Дне»), итог и разбивка по месяцам, список по датам.
 let _expCatFilter = null; // null = без фильтра; Set<number> = позиционные индексы категорий
 
 function _expSearchPeriod(){
-  const v = sessionStorage.getItem('expSearchPeriod');
+  const v = uiGet('expSearchPeriod', '6');
   return v === 'all' ? 'all' : ([1,3,6,12].includes(parseInt(v)) ? parseInt(v) : 6);
 }
 function setExpSearchPeriod(n){
-  sessionStorage.setItem('expSearchPeriod', String(n));
+  uiSet('expSearchPeriod', n);
   renderExpenseSearch();
 }
 
@@ -4241,7 +4258,8 @@ function renderStats(){
     const maxDaySel = isCurrentMonth ? cD : daysInSel;
 
     const modeEl = document.getElementById('day-compare-mode');
-    const showFull = modeEl.dataset.mode !== 'today';
+    modeEl.dataset.mode = dayCompareMode;
+    const showFull = dayCompareMode !== 'today';
     const displayDays = showFull ? daysInSel : Math.min(daysInSel, cD);
 
     let pM = selM - 1, pY = selY;
@@ -4267,7 +4285,7 @@ function renderStats(){
     const prevCum = cumByDay(prevExps, pY,   pM,   Math.min(daysInPrev, displayDays), displayDays);
 
     // Historical avg: N months before selected (3/6/12, sessionStorage), displayDays length
-    const avgMonths = parseInt(sessionStorage.getItem('dayAvgMonths')) || 6;
+    const avgMonths = parseInt(uiGet('dayAvgMonths', '6')) || 6;
     const histCumByDay = Array.from({length: displayDays}, () => []);
     for (let i = 1; i <= avgMonths; i++) {
       let hm = selM - i, hy = selY;
@@ -5125,8 +5143,8 @@ function renderAssetsHistory(rows, showAll){
 
 let _assetsHistoryRows = [];
 
-// Показ нулевых счетов в списке (сбрасывается при перезагрузке)
-let _showZeroBanks = false;
+// Показ нулевых счетов в списке — настройка устройства (uiGet/uiSet)
+let _showZeroBanks = uiGet('showZeroBanks', '0') === '1';
 
 // Части линии «Рост накоплений»: банки / вклады / инвестиции — три независимых
 // чипа (настройка устройства, localStorage.assetsChartParts = 'banks,deps,inv').
@@ -5430,7 +5448,7 @@ function renderAssets(){
     const tglRow = document.createElement('div');
     tglRow.style.cssText = 'padding:8px 0;text-align:center;font-size:12px;color:var(--muted);cursor:pointer;user-select:none';
     tglRow.textContent = _showZeroBanks ? 'Скрыть нулевые ↑' : 'Показать нулевые счета ('+zeroBanks.length+') ↓';
-    tglRow.addEventListener('click', ()=>{ _showZeroBanks = !_showZeroBanks; renderAssets(); });
+    tglRow.addEventListener('click', ()=>{ _showZeroBanks = !_showZeroBanks; uiSet('showZeroBanks', _showZeroBanks?'1':'0'); renderAssets(); });
     list.appendChild(tglRow);
   }
   // Chart — общие серии (carry-forward, вклады до дня закрытия)
@@ -8834,10 +8852,11 @@ function renderReport(){
     body.innerHTML='<p style="color:var(--muted);font-size:13px;padding:16px 0">Нет данных — добавьте расходы или доходы</p>';
     return;
   }
-  const prevChoice = sel.value;
+  const prevChoice = sel.value || uiGet('reportYear', '');
   sel.innerHTML = years.map(yy=>`<option value="${yy}">${yy}</option>`).join('')
     + `<option value="all">Всё время</option>`;
   sel.value = (years.includes(prevChoice) || prevChoice==='all') ? prevChoice : years[0];
+  uiSet('reportYear', sel.value);
   const yr = sel.value;
   const isAll = yr === 'all';
   const inYr = ds => isAll ? true : String(ds||'').startsWith(yr+'-'); // период отчёта

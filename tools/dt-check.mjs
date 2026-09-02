@@ -527,7 +527,7 @@ suite(390, 'поиск по тратам живёт в «Аналитике»', 
     // Разбивка по месяцам: две разные суммы на двух разных месяцах
     const months = await p.evaluate(() => [...document.querySelectorAll('#exp-search-months span')].map(x => x.textContent));
     if (months.length < 2) throw new Error('разбивки по месяцам нет: ' + JSON.stringify(months));
-    eq(await p.evaluate(() => sessionStorage.getItem('expSearchPeriod')), 'all', 'период сохранён в sessionStorage');
+    eq(await p.evaluate(() => localStorage.getItem('expSearchPeriod')), 'all', 'период сохранён device-locally');
   });
   check('тап по дате выдачи уводит на «День» в тот день', async p => {
     await p.evaluate(() => document.querySelector('#exp-search-result [data-date]').click());
@@ -1579,6 +1579,51 @@ suite(390, 'без вкладов и инвестиций чипов графи�
     eq(ok, true, 'линия совпадает с рядом банков');
   });
 });
+
+// Чипы «Аналитики» и «Накоплений» — настройка устройства, а не сессии: в PWA
+// сессия кончается вместе со свёрнутым приложением, и до v1.73.0 выбор
+// сбрасывался при каждом холодном старте. Харнесс чистит localStorage на
+// каждой новой странице, поэтому проверяем сам факт записи в него.
+suite(390, 'чипы графиков переживают перезапуск', () => {
+  check('«Аналитика» пишет выбор в localStorage, а не в sessionStorage', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    await p.evaluate(() => {
+      setStatsPeriod('all'); setDayAvgMonths(12); setDayInclSpecial(false);
+      setDayCompareMode('full'); setPieViewMode('groups'); setExpSearchPeriod(3);
+    });
+    const got = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayInclSpecial',
+      'dayCompareMode','pieViewMode','expSearchPeriod'].map(k => k + '=' + localStorage.getItem(k)).join(','));
+    eq(got, 'statsPeriod=all,dayAvgMonths=12,dayInclSpecial=0,dayCompareMode=full,pieViewMode=groups,expSearchPeriod=3', 'все ключи device-local');
+    const leaked = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayInclSpecial','pieViewMode','expSearchPeriod']
+      .filter(k => sessionStorage.getItem(k) !== null));
+    eq(leaked.length, 0, 'в sessionStorage не осталось ничего: ' + leaked.join(','));
+  });
+
+  check('состояние модулей поднимается из localStorage при старте', async p => {
+    // Значения читаются на инициализации модулей, поэтому проверяем чтение
+    // через те же хелперы, что и модульные переменные.
+    eq(await p.evaluate(() => uiGet('statsPeriod', '6')), 'all', 'период аналитики прочитан');
+    eq(await p.evaluate(() => uiGet('dayCompareMode', 'today')), 'full', 'режим «Месяц/Сегодня» прочитан');
+    eq(await p.evaluate(() => uiGet('нетТакогоКлюча', 'умолчание')), 'умолчание', 'дефолт для отсутствующего ключа');
+    await p.evaluate(() => { setStatsPeriod(6); setDayInclSpecial(true); setDayCompareMode('today'); setPieViewMode('cats'); });
+  });
+
+  check('«Показать нулевые счета» запоминается', async p => {
+    // В фикстуре все счета с деньгами — заводим пустой, чтобы строка появилась
+    await p.evaluate(() => { DB.banks.push('Пустой счёт'); saveDB();
+      window.showPage('assets', document.getElementById('nav-assets')); });
+    eq(await p.evaluate(() => _showZeroBanks), false, 'по умолчанию скрыты');
+    const tgl = await p.evaluate(() => {
+      const row = [...document.querySelectorAll('#assets-list div')].find(d => /нулевые/i.test(d.textContent||''));
+      if (!row) return null; row.click(); return true;
+    });
+    if (tgl === null) throw new Error('строки «Показать нулевые счета» нет в списке');
+    eq(await p.evaluate(() => localStorage.getItem('showZeroBanks')), '1', 'выбор записан device-locally');
+    eq(await p.evaluate(() => uiGet('showZeroBanks', '0')), '1', 'читается тем же хелпером, что и при старте');
+    await p.evaluate(() => { DB.banks = DB.banks.filter(b => b !== 'Пустой счёт'); saveDB(); });
+  });
+});
+
 
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
