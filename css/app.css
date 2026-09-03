@@ -343,6 +343,13 @@ body.privacy-mode .prv *{color:transparent!important}
    @media min-width:1000px. */
 .nav-brand{display:none}
 
+/* Чипы категорий в «Поиске по тратам»: на телефоне — одна строка со свайпом
+   (список категорий длинный, перенос съел бы пол-экрана карточки), на десктопе
+   свайпа нет, и уехавшие вправо чипы просто недостижимы — там правило в блоке
+   @media min-width:1000px разворачивает их в несколько строк. */
+#expense-cat-filter{padding:8px 0 0;display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+#expense-cat-filter::-webkit-scrollbar{display:none}
+
 /* Bottom sheet drag handle */
 .sheet::before{content:'';display:block;width:32px;height:4px;background:var(--border2);border-radius:2px;margin:-8px auto 8px}
 
@@ -481,6 +488,10 @@ body.privacy-mode .prv *{color:transparent!important}
   #report-year{margin-left:12px}
   #rep-col-a{grid-column:1; grid-row:2}
   #rep-col-b{grid-column:2; grid-row:2}
+
+  /* Чипы категорий поиска: без свайпа горизонтальная лента на десктопе
+     прячет половину категорий — переносим в строки, все влезают. */
+  #expense-cat-filter{flex-wrap:wrap; overflow-x:visible}
 
   /* ─── конец десктопного блока 1000px ─── */
 }

@@ -538,6 +538,49 @@ suite(390, 'поиск по тратам живёт в «Аналитике»', 
   });
 });
 
+// Чипы категорий поиска (v1.73.1): на телефоне лента со свайпом, на десктопе
+// свайпа нет — чипы, уехавшие за правый край, были просто недостижимы.
+const CHIP_GEOM = `(() => {
+  const w = document.getElementById('expense-cat-filter');
+  const ys = [...w.children].map(c => Math.round(c.getBoundingClientRect().top));
+  const box = w.getBoundingClientRect();
+  const last = w.lastElementChild.getBoundingClientRect();
+  return { rows: new Set(ys).size, chips: w.children.length, cats: DB.categories.length,
+           overflow: Math.round(w.scrollWidth - w.clientWidth),
+           rightOut: Math.round(last.right - box.right) };
+})()`;
+
+suite(390, 'чипы категорий поиска — лента на мобиле', () => {
+  check('все чипы в одну строку, лента скроллится вбок', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const g = await p.evaluate(CHIP_GEOM);
+    eq(g.chips, g.cats, 'число чипов');
+    eq(g.rows, 1, 'строк чипов на мобиле');
+    if (g.overflow <= 0) throw new Error('лента не скроллится: overflow=' + g.overflow);
+  });
+});
+
+suite(1280, 'чипы категорий поиска — переносятся на десктопе', () => {
+  // Категорий в фикстуре семь, и в широкую карточку они влезают одной строкой —
+  // перенос виден только когда их заведомо больше, чем помещается.
+  check('чипы в несколько строк и целиком внутри карточки', async p => {
+    const g = await p.evaluate(`(() => {
+      window._chipBackup = { cats: DB.categories.slice(), ids: DB.catIds.slice() };
+      for (let i = 0; i < 20; i++) { DB.categories.push('Категория ' + i); DB.catIds.push('chipTest' + i); }
+      window.showPage('stats', document.getElementById('nav-stats'));
+      return ${CHIP_GEOM};
+    })()`);
+    await p.evaluate(() => {
+      DB.categories = window._chipBackup.cats; DB.catIds = window._chipBackup.ids;
+      delete window._chipBackup; renderExpenseSearch();
+    });
+    eq(g.chips, g.cats, 'число чипов');
+    if (g.rows < 2) throw new Error('чипы не перенеслись: строк ' + g.rows);
+    if (g.overflow > 0) throw new Error('на десктопе осталась боковая прокрутка: ' + g.overflow);
+    if (g.rightOut > 0) throw new Error('последний чип вылез за правый край на ' + g.rightOut + ' px');
+  });
+});
+
 suite(1600, 'карточка поиска на десктопе во всю ширину', () => {
   check('#cw-search растянута на обе колонки', async p => {
     await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
