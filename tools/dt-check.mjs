@@ -538,6 +538,57 @@ suite(390, 'поиск по тратам живёт в «Аналитике»', 
   });
 });
 
+// Доли в процентах (v1.74.0): один формат «#.#%» на все разбивки — до этого
+// отчёт и сводка «Аналитики» округляли до целого, и близкие категории
+// (6.4% и 5.6%) печатались одинаковыми «6%».
+const PCT_RE = /^\d+\.\d%$/;
+// Сюита идёт на демо-наборе: в FIXTURE нет групп (все категории разного
+// цвета), и карточка «Расходы по группам» в отчёте просто не рисуется.
+suite(1280, 'доли печатаются с одним знаком после запятой', () => {
+  check('сводка «Аналитики»: карточки и «% от дохода»', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const got = await p.evaluate(() => {
+      const el = document.getElementById('stats-summary');
+      return [...el.querySelectorAll('div,span')].map(x => x.childElementCount ? '' : x.textContent.trim())
+        .filter(t => /%$/.test(t));
+    });
+    if (!got.length) throw new Error('процентов в сводке не найдено');
+    const bad = got.filter(t => !PCT_RE.test(t));
+    if (bad.length) throw new Error('не в формате #.#%: ' + bad.join(', '));
+  });
+  check('годовой отчёт: категории, группы, теги доходов', async p => {
+    await p.evaluate(() => window.showPage('report', document.getElementById('nav-report')));
+    const got = await p.evaluate(() => {
+      const cards = [...document.querySelectorAll('#report-body .chart-card')]
+        .filter(c => /Расходы по (категориям|группам)|Доходы по тегам/.test(c.querySelector('.chart-title')?.textContent || ''));
+      return cards.map(c => ({
+        title: c.querySelector('.chart-title').textContent,
+        pcts: [...c.querySelectorAll('span')].map(x => x.textContent.trim()).filter(t => /%$/.test(t)),
+      }));
+    });
+    eq(got.length, 3, 'карточек с разбивками в отчёте');
+    got.forEach(c => {
+      if (!c.pcts.length) throw new Error('«' + c.title + '»: процентов нет');
+      const bad = c.pcts.filter(t => !PCT_RE.test(t));
+      if (bad.length) throw new Error('«' + c.title + '» не в формате #.#%: ' + bad.join(', '));
+    });
+  });
+  check('колонка процента вмещает «100.0%» без обрезки', async p => {
+    const over = await p.evaluate(() => {
+      const out = [];
+      document.querySelectorAll('#report-body .chart-card span').forEach(x => {
+        if (!/^\d+\.\d%$/.test(x.textContent.trim())) return;
+        const probe = x.cloneNode(true); probe.textContent = '100.0%';
+        x.after(probe);
+        if (probe.scrollWidth > probe.clientWidth) out.push(probe.scrollWidth + '>' + probe.clientWidth);
+        probe.remove();
+      });
+      return out;
+    });
+    if (over.length) throw new Error('«100.0%» не влезает в колонку: ' + over.join(', '));
+  });
+}, { demo: true });
+
 // Чипы категорий поиска (v1.73.1): на телефоне лента со свайпом, на десктопе
 // свайпа нет — чипы, уехавшие за правый край, были просто недостижимы.
 const CHIP_GEOM = `(() => {

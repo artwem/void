@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.73.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1610,6 +1610,10 @@ function fmtShort(n){
   if(a >= 1000)    return (n/1000).toFixed(0)+'к';
   return Math.round(n)+'';
 }
+// Доля в процентах, всегда с одним знаком: «12.3», «100.0», «0.0». Один
+// формат на все разбивки трат и доходов — до v1.74.0 половина мест печатала
+// целые, и в отчёте две категории по 6.4% и 5.6% выглядели одинаковыми «6%».
+function pct1(part, whole){ return (whole > 0 ? part / whole * 100 : 0).toFixed(1); }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function renderColorPicker(elementId, palette, selectedColor, callbackName){
@@ -3294,8 +3298,8 @@ function _renderStatsSummary(lastN){
   const totalExp = lastN.reduce((s,x)=>s+x.totalExp,0);
   const totalInc = lastN.reduce((s,x)=>s+x.totalInc,0);
   const balance  = totalInc - totalExp;
-  const expPct   = totalInc > 0 ? Math.round(totalExp / totalInc * 100) : null;
-  const savePct  = totalInc > 0 ? Math.round(balance  / totalInc * 100) : null;
+  const expPct   = totalInc > 0 ? totalExp / totalInc * 100 : null;
+  const savePct  = totalInc > 0 ? balance  / totalInc * 100 : null;
 
   const catTotals = DB.categories.map((name,i)=>({
     name, color: getCatColor(i),
@@ -3360,7 +3364,7 @@ function _renderStatsSummary(lastN){
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
       +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmtH(s.abs?Math.abs(s.val):s.val)}</div>`
-      +(s.pct!==null ? `<div style="font-size:10px;color:${s.color};opacity:0.8;margin-top:2px">${s.pct}%</div>` : '')
+      +(s.pct!==null ? `<div style="font-size:10px;color:${s.color};opacity:0.8;margin-top:2px">${s.pct.toFixed(1)}%</div>` : '')
       +`</div>`
     ).join('')
     +`</div>`;
@@ -3396,7 +3400,7 @@ function _renderStatsSummary(lastN){
     const showGroups = hasGroups && _expViewMode === 'groups';
 
     const hdrPct = expPct !== null
-      ? ` — <span style="color:var(--red,#d85a30);font-weight:600">${expPct}%</span> от дохода`
+      ? ` — <span style="color:var(--red,#d85a30);font-weight:600">${expPct.toFixed(1)}%</span> от дохода`
       : '';
     const toggleHtml = hasGroups
       ? `<div style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">`
@@ -4645,8 +4649,8 @@ function renderStats(){
               label:v=>{
                 const idx=v.dataIndex;
                 const total=_stackVisTotals(v.chart)[idx];
-                const pct=total>0?Math.round(v.raw/total*100):0;
-                return v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))+(pct?' ('+pct+'%)':'');
+                const pct=total>0?v.raw/total*100:0;
+                return v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))+(pct?' ('+pct.toFixed(1)+'%)':'');
               }
             }
           }
@@ -7901,7 +7905,7 @@ function checkBudgetNotifications(){
       if(stored !== null && spent <= parseFloat(stored)) return;
       localStorage.setItem(key, String(spent));
       new Notification('Бюджет: ' + cat, {
-        body: 'Потрачено ' + fmtN(spent) + ' из ' + fmtN(limit) + ' (' + Math.round(ratio*100) + '%)',
+        body: 'Потрачено ' + fmtN(spent) + ' из ' + fmtN(limit) + ' (' + (ratio*100).toFixed(1) + '%)',
         icon: './apple-touch-icon.png'
       });
     }
@@ -8054,7 +8058,7 @@ function _excelSummarySheet(X, yr){
     .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
   catRows2.forEach((cr, k) => {
     const color = getCatColor(cr.i);
-    rows.push([cr.name, ...cr.arr.map(v=>v||''), cr.sum, expTot>0?Math.round(cr.sum/expTot*100)+'%':'']);
+    rows.push([cr.name, ...cr.arr.map(v=>v||''), cr.sum, expTot>0?pct1(cr.sum, expTot)+'%':'']);
     put(R,0,{font:{sz:10, bold:true, color:{rgb:txtOn(color)}}, fill:{fgColor:{rgb:hex(color)}}});
     const zebra = k%2===1;
     for(let c=1;c<=nC;c++) put(R,c, zebra?S.numZ:S.num);
@@ -8087,7 +8091,7 @@ function _excelSummarySheet(X, yr){
     .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum)
     .forEach((tr, k) => {
       const color = tr.t==='Без тега' ? '#888882' : getIncomeTagColor(tr.t);
-      rows.push([tr.t, ...tr.arr.map(v=>v||''), tr.sum, incTot>0?Math.round(tr.sum/incTot*100)+'%':'']);
+      rows.push([tr.t, ...tr.arr.map(v=>v||''), tr.sum, incTot>0?pct1(tr.sum, incTot)+'%':'']);
       put(R,0,{font:{sz:10, bold:true, color:{rgb:txtOn(color)}}, fill:{fgColor:{rgb:hex(color)}}});
       const zebra = k%2===1;
       for(let c=1;c<=nC;c++) put(R,c, zebra?S.numZ:S.num);
@@ -8103,7 +8107,7 @@ function _excelSummarySheet(X, yr){
   // ── Накоплено по периодам ──
   const savM = incMTot.map((v,i)=>v-expMTot[i]);
   const savTot = incTot-expTot;
-  rows.push(['НАКОПЛЕНО', ...savM.map((v,i)=>(incMTot[i]||expMTot[i])?v:''), savTot, incTot>0?Math.round(savTot/incTot*100)+'%':'']);
+  rows.push(['НАКОПЛЕНО', ...savM.map((v,i)=>(incMTot[i]||expMTot[i])?v:''), savTot, incTot>0?pct1(savTot, incTot)+'%':'']);
   put(R,0,{font:{bold:true, sz:10}});
   savM.forEach((v,i)=>{ put(R,i+1,{numFmt:NUM, font:{bold:true, sz:10, color:{rgb:v>=0?'2D7A4F':'C0392B'}}, alignment:{horizontal:'right'}}); });
   put(R,nC+1,{numFmt:NUM, font:{bold:true, sz:10, color:{rgb:savTot>=0?'2D7A4F':'C0392B'}}, alignment:{horizontal:'right'}});
@@ -8242,8 +8246,9 @@ function exportExcel(){
     const rows = cats.map((c,i) => {
       const spent = catSpent[i]||0;
       const limit = (lim||[])[i]||0;
-      const pctTotal = totalSpent > 0 ? Math.round(spent/totalSpent*100) : '';
-      const pctLimit = limit > 0      ? Math.round(spent/limit*100)      : '';
+      // Числа, а не строки: это столбцы Excel, «12.3» текстом ломает сортировку
+      const pctTotal = totalSpent > 0 ? +pct1(spent, totalSpent) : '';
+      const pctLimit = limit > 0      ? +pct1(spent, limit)      : '';
       return [c, spent||'', pctTotal, pctLimit, limit||0];
     });
 
@@ -9054,7 +9059,7 @@ function renderReport(){
         <span style="width:10px;height:10px;border-radius:50%;background:${getCatColor(r.i)};flex-shrink:0"></span>
         <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
         <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
-        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totExp>0?Math.round(r.sum/totExp*100):0}%</span>
+        <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(r.sum, totExp)}%</span>
       </div>`).join('')}
     </div>`;
   }
@@ -9071,7 +9076,7 @@ function renderReport(){
           ${sub?`<div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>`:''}
         </div>
         <span style="font-size:13px;font-weight:600">${fmtH(g.sum)}</span>
-        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totExp>0?Math.round(g.sum/totExp*100):0}%</span>
+        <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(g.sum, totExp)}%</span>
       </div>`;
       }).join('')}
     </div>`;
@@ -9109,7 +9114,7 @@ function renderReport(){
         <span style="width:10px;height:10px;border-radius:50%;background:${r.name==='Без тега'?'var(--muted)':getIncomeTagColor(r.name)};flex-shrink:0"></span>
         <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
         <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
-        <span style="font-size:11px;color:var(--muted);width:34px;text-align:right">${totInc>0?Math.round(r.sum/totInc*100):0}%</span>
+        <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(r.sum, totInc)}%</span>
       </div>`).join('')}
     </div>`;
   }
