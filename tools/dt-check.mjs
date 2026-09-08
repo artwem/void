@@ -1381,6 +1381,17 @@ suite(390, 'демо-набор покрывает всё приложение',
     eq(/грейс/i.test(txt), true, 'грейс-кредитка в списке: ' + txt.slice(0, 80));
     eq(/сплит/i.test(txt), true, 'сплит в списке');
     eq(/оплачено 2\/4/.test(txt), true, 'видно, сколько платежей закрыто: ' + txt.slice(0, 120));
+    // Суммы долгов красные — как минусы кредиток в списке счетов, а не синие «как актив»
+    const col = await p.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--red)';
+      document.body.appendChild(probe);
+      const red = getComputedStyle(probe).color;
+      probe.remove();
+      const amts = [...document.querySelectorAll('#credits-list .asset-amount')].map(e => getComputedStyle(e).color);
+      return { red, amts };
+    });
+    eq(col.amts.length >= 2 && col.amts.every(c => c === col.red), true, 'суммы кредитов красные: ' + JSON.stringify(col));
   });
 
   check('«Всего активов» = банки + вклады + инвестиции', async p => {

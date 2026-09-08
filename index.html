@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5031,7 +5031,7 @@ function renderCredits(){
     row.style.cssText = 'gap:8px;cursor:pointer';
     row.addEventListener('click', () => openGraceModal(g.id));
     const sub = `<div style="font-size:11px;color:${col};margin-top:2px">до ${_fmtDateRu(g.graceEnd)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
-    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(g.bank)}<span class="tag tag-red">грейс</span></div>${sub}</div><span class="asset-amount">${fmtH(g.payoffAmount)}</span>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(g.bank)}<span class="tag tag-red">грейс</span></div>${sub}</div><span class="asset-amount" style="color:var(--red)">${fmtH(g.payoffAmount)}</span>`;
     wrap.appendChild(row);
   });
   splits.forEach(c => {
@@ -5045,7 +5045,7 @@ function renderCredits(){
     const sub = next
       ? `<div style="font-size:11px;color:${overdue?'var(--red)':'var(--muted)'};margin-top:2px">оплачено ${paidCnt}/${c.payments.length}${overdue ? ' · просрочен ' : ' · след. '}${_fmtDateRu(next.date)} · ${fmtH(next.amount)}</div>`
       : `<div style="font-size:11px;color:var(--green);margin-top:2px">${ICO.check} всё оплачено — можно закрыть</div>`;
-    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span class="tag tag-grey">сплит</span></div>${sub}</div><span class="asset-amount">${fmtH(_splitRemains(c))}</span>`;
+    row.innerHTML = `<div style="flex:1;min-width:0"><div class="asset-name">${esc(c.name)}<span class="tag tag-grey">сплит</span></div>${sub}</div><span class="asset-amount" style="color:var(--red)">${fmtH(_splitRemains(c))}</span>`;
     wrap.appendChild(row);
   });
 }
