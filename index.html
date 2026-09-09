@@ -1268,7 +1268,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1609,6 +1609,27 @@ function fmtShort(n){
   if(a >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'М';
   if(a >= 1000)    return (n/1000).toFixed(0)+'к';
   return Math.round(n)+'';
+}
+// Подпись деления оси Y. Единица (к/М) — одна на всю ось, по самому крупному
+// делению; число знаков после запятой — минимальное, при котором ВСЕ подписи
+// оси различаются (до двух). fmtShort печатал миллионы всегда с одним знаком,
+// и на узком диапазоне («Рост накоплений» с шагом 100к) деления 1.05М и
+// 1.15М читались одинаковыми «1.1М». Вызывать только из
+// ticks.callback — второй аргумент это массив делений от Chart.js.
+function fmtAxis(v, ticks){
+  const vals = (ticks && ticks.length ? ticks.map(t => t.value) : [v]);
+  const uniq = a => new Set(a).size === a.length;
+  // Пока подписи fmtShort различаются, ось выглядит как раньше: «200к … 1.2М».
+  if(uniq(vals.map(fmtShort))) return fmtShort(v);
+  // Иначе единица одна на всю ось (по самому крупному делению), а знаков
+  // после запятой берём минимум, при котором все деления различаются.
+  const maxAbs = Math.max.apply(null, vals.map(x => Math.abs(x)));
+  // Ниже 10к «к» не спасает: «0.5к» читается хуже, чем просто «500».
+  const div = maxAbs >= 1000000 ? 1000000 : maxAbs >= 10000 ? 1000 : 1;
+  const suf = div === 1000000 ? 'М' : div === 1000 ? 'к' : '';
+  let d = 0;
+  for(; d < 2; d++) if(uniq(vals.map(x => (x / div).toFixed(d)))) break;
+  return v === 0 ? '0' : (v / div).toFixed(d) + suf;
 }
 // Доля в процентах, всегда с одним знаком: «12.3», «100.0», «0.0». Один
 // формат на все разбивки трат и доходов — до v1.74.0 половина мест печатала
@@ -3602,7 +3623,7 @@ function renderSavingsCharts(){
         },
         scales:{
           x:{grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-          y:{grid:{color:_chartColors().gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_chartColors().muted}}
+          y:{grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
         }
       }
     });
@@ -4156,7 +4177,7 @@ function _renderWeekdayChart(lastN){
         tooltip:{callbacks:{label:v=>'⌀ '+(DB.privacyMode?'—':fmt(v.raw))}} },
       scales:{
         x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
-        y:{grid:{color:cc.gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:cc.muted}}
+        y:{grid:{color:cc.gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:cc.muted}}
       }
     }
   });
@@ -4441,7 +4462,7 @@ function renderStats(){
           // На широком экране ось вмещает все дни месяца — на мобиле autoSkip
           // оставляет каждый третий-четвёртый, иначе подписи слипаются.
           x: { grid: { display: false }, ticks: { font: { size: 10 }, color: _chartColors().muted, autoSkip: !_isWide(), maxTicksLimit: _isWide() ? 31 : 10, maxRotation: 0, minRotation: 0 } },
-          y: { grid: { color: _chartColors().gridLine }, ticks: { callback: v => (DB.privacyMode?'':fmtShort(v) + '₽'), font: { size: 9 }, color: _chartColors().muted } }
+          y: { grid: { color: _chartColors().gridLine }, ticks: { callback: (v,i,t) => (DB.privacyMode?'':fmtAxis(v,t) + '₽'), font: { size: 9 }, color: _chartColors().muted } }
         }
       }
     });
@@ -4657,7 +4678,7 @@ function renderStats(){
         },
         scales:{
           x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-          y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_chartColors().muted}}
+          y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
         }
       }
     });
@@ -4723,7 +4744,7 @@ function renderStats(){
           },
           scales:{
             x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-            y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_chartColors().muted}}
+            y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
           }
         }
       });
@@ -5508,7 +5529,7 @@ function renderAssets(){
       charts.assets=new Chart(document.getElementById('chartAssets'),{
         type:'line',
         data:{labels,datasets:[{data,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,cubicInterpolationMode:'monotone',pointRadius:3,pointBackgroundColor:_cc.blue,borderWidth:2}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted}},y:{grid:{color:_cc.gridLine},ticks:{callback:v=>(DB.privacyMode?'':fmtShort(v)+'₽'),font:{size:9},color:_cc.muted}}}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted}},y:{grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_cc.muted}}}}
       });
     }
   }catch(e){ console.error('assets chart:', e); }
@@ -9384,7 +9405,7 @@ function calcUpdate(){
           ...(iR>0 ? [{label:'Реальные ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,cubicInterpolationMode:'monotone',pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
         ]
       },
-      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:v=>fmtShort(v)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>fmtAxis(v,t)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
     });
   }, 150);
 
