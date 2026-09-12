@@ -1345,6 +1345,76 @@ suite(390, 'средние и период графиков', () => {
   });
 });
 
+suite(390, 'доходность вкладов и архив закрытых', () => {
+  // 100 000 ровно на 365 дней, фактические проценты 10 000 → 10% годовых.
+  const CLOSED = { id: 'y1', name: 'Тест', amount: 100000, rate: 10, openDate: '2025-01-01', endDate: '2026-01-01',
+    capitalization: 'end', closedAt: '2026-01-01', closedInterest: 10000, _deleted: true, updatedAt: 1 };
+
+  check('_depYield: начислено по деньго-дням, получено по дате закрытия', async p => {
+    const r = await p.evaluate(c => {
+      DB.deposits = [c];
+      const all = _depYield('0000-01-01', '9999-12-31');
+      const half = _depYield('2025-01-01', '2025-07-02');     // 182 дня из 365
+      const after = _depYield('2026-01-01', '2027-01-01');
+      return { all: [all.accrued, all.received, all.rate], half: [half.accrued, half.received, half.rate],
+               after: [after.accrued, after.received, after.rate, after.rows.length] };
+    }, CLOSED);
+    eq(r.all.join('|'), '10000|10000|10', 'всё время');
+    eq(r.half.join('|'), '4986|0|10', 'полгода: 10 000 × 182/365, получено 0');
+    eq(r.after.map(String).join('|'), '0|10000|null|1', 'год закрытия после срока: только получено');
+  });
+
+  check('взвешенная средняя, а не среднее ставок', async p => {
+    const rate = await p.evaluate(c => {
+      // 1 000 000 на полгода под ~20% и 100 000 на год под 10%
+      DB.deposits = [c, { ...c, id: 'y2', amount: 1000000, openDate: '2025-01-01', endDate: '2025-07-02',
+        closedAt: '2025-07-02', closedInterest: 99726 }];
+      return Math.round(_depYield('0000-01-01', '9999-12-31').rate * 10) / 10;
+    }, CLOSED);
+    // 109 726 ÷ ((100 000×365 + 1 000 000×182) / 365) — а среднее ставок дало бы 15%
+    eq(rate, 18.3, 'средняя доходность');
+  });
+
+  check('вклад, закрытый задним числом, уходит из ряда активов в дату закрытия', async p => {
+    const s = await p.evaluate(c => { DB.deposits = [c]; return _buildAssetSeries(['2025-06-01', '2026-02-01']).depSeries; }, CLOSED);
+    eq(s.join('|'), '100000|0', 'до закрытия есть, после — нет');
+  });
+
+  check('чистка 90 дней не трогает закрытые, миграция узнаёт закрытый по доходу', async p => {
+    const r = await p.evaluate(c => {
+      DB.deposits = [c,
+        { id: 'y3', name: 'Удалён', amount: 5000, rate: 5, openDate: '2025-01-01', endDate: '2025-06-01', capitalization: 'end', _deleted: true, updatedAt: 1 },
+        { id: 'y4', name: 'Старый', amount: 5000, rate: 5, openDate: '2025-01-01', endDate: '2025-06-01', capitalization: 'end', _deleted: true, updatedAt: 1 },
+        { id: 'y5', name: 'Стёрт', amount: 5000, rate: 5, openDate: '2025-01-01', endDate: '2025-06-01', capitalization: 'end', _deleted: true, closedAt: null, updatedAt: 1 }];
+      DB.incomes.push({ id: 'yi', date: '2025-06-01', source: 'Проценты по вкладу Старый', amount: 120, tag: '', updatedAt: 1 });
+      DB.incomes.push({ id: 'yj', date: '2025-06-01', source: 'Проценты по вкладу Стёрт', amount: 120, tag: '', updatedAt: 1 });
+      saveDB(); loadDB();
+      const old = DB.deposits.find(d => d.id === 'y4');
+      return { ids: DB.deposits.map(d => d.id).sort().join(','), old: old ? old.closedAt + '/' + old.closedInterest : '' };
+    }, CLOSED);
+    eq(r.ids, 'y1,y4', 'остались закрытый и мигрированный');
+    eq(r.old, '2025-06-01/120', 'миграция: closedAt и проценты из дохода');
+  });
+
+  check('закрытие: дата окончания по умолчанию, без записи в доходы по галке', async p => {
+    const r = await p.evaluate(() => {
+      DB.deposits = [{ id: 'y6', name: 'Ретро', amount: 100000, rate: 12, openDate: '2025-01-01', endDate: '2025-07-01', capitalization: 'end', updatedAt: 1 }];
+      const before = DB.incomes.length;
+      openCloseDeposit('y6');
+      const date = document.getElementById('close-dep-date').value;
+      const interest = parseMoney(document.getElementById('close-dep-interest').value);
+      document.getElementById('close-dep-to-income').checked = false;
+      confirmCloseDeposit();
+      const d = DB.deposits[0];
+      return { date, interest, closed: d.closedAt + '/' + d.closedInterest + '/' + d._deleted, added: DB.incomes.length - before };
+    });
+    eq(r.date, '2025-07-01', 'дата закрытия = endDate');
+    eq(r.interest, 5951, 'расчётные проценты 100 000 × 12% × 181/365');
+    eq(r.closed, '2025-07-01/5951/true', 'вклад закрыт');
+    eq(r.added, 0, 'доход не записан');
+  });
+});
+
 suite(390, 'демо-набор покрывает всё приложение', () => {
   // Эти экраны до v1.69.0 не проверял никто: в FIXTURE deposits/investments/
   // credits/templates были пустыми массивами, и рендерить было нечего.
@@ -1363,6 +1433,28 @@ suite(390, 'демо-набор покрывает всё приложение',
     const shown = await p.evaluate(() => document.getElementById('deposits-list').textContent.includes('Старый вклад'));
     eq(shown, false, 'вклад с _deleted не отрисован');
     eq(await p.evaluate(() => DB.deposits.some(d => d._deleted)), true, 'при этом тумбстоун в данных есть');
+  });
+
+  check('закрытый вклад — в архиве, доходность на странице вкладов и в отчёте', async p => {
+    await p.evaluate(() => window.showPage('deposits'));
+    const st = await p.evaluate(() => ({
+      open: document.getElementById('deposits-list').textContent.includes('ВТБ · полгода'),
+      closed: document.getElementById('deposits-closed-list').textContent.includes('ВТБ · полгода'),
+      grp: getComputedStyle(document.getElementById('deposits-closed-grp')).display,
+      yieldShown: getComputedStyle(document.getElementById('deposits-yield-wrap')).display,
+    }));
+    eq(st.open, false, 'закрытый не в списке открытых');
+    eq(st.closed, true, 'закрытый в «Закрытых вкладах»');
+    eq(st.grp !== 'none', true, 'секция закрытых видна');
+    eq(st.yieldShown !== 'none', true, 'карточка «Доходность» видна');
+    await p.evaluate(() => setDepYieldPeriod('all'));
+    const txt = await p.evaluate(() => document.querySelector('#dep-yield-body .dy-rate').textContent);
+    eq(/^\d+\.\d%/.test(txt), true, 'средняя доходность печатается: ' + txt);
+    await p.evaluate(() => { uiSet('reportYear', 'all'); window.showPage('report'); });
+    const rows = await p.evaluate(() => document.querySelectorAll('#rep-dep-yield .dy-row').length);
+    eq(rows >= 4, true, 'в отчёте «всё время» строки вкладов: ' + rows);
+    // вернуть отчёт на последний год — страница у сюиты общая, «Всё время» ломало бы проверки дальше
+    await p.evaluate(() => { const s = document.getElementById('report-year'); s.value = s.options[0].value; uiSet('reportYear', s.value); renderReport(); });
   });
 
   check('инвестиции: снимки и вывод средств', async p => {

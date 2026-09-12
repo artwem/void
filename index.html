@@ -489,6 +489,23 @@ if ('serviceWorker' in navigator) {
       <div id="dep-forecast-result"></div>
     </div>
   </div>
+  <div class="chart-wrap" id="deposits-yield-wrap" style="display:none">
+    <div class="chart-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <div class="chart-title" style="margin:0">Доходность</div>
+        <div id="dep-yield-period" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Период">
+          <span id="dyp-12" onclick="setDepYieldPeriod('12')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">12 мес</span>
+          <span id="dyp-year" onclick="setDepYieldPeriod('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">этот год</span>
+          <span id="dyp-all" onclick="setDepYieldPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+        </div>
+      </div>
+      <div id="dep-yield-body"></div>
+    </div>
+  </div>
+  <div id="deposits-closed-grp" style="display:none">
+    <div class="sec-hdr"><span class="sec-title">Закрытые вклады</span></div>
+    <div id="deposits-closed-list" style="padding:0 16px 8px"></div>
+  </div>
   <div class="page-end"></div>
 </div>
 
@@ -877,6 +894,14 @@ if ('serviceWorker' in navigator) {
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Расчётные проценты. Впиши фактическое начисление из банка — дальше посчитается от него.</div>
       <div id="dep-accruals-list" style="font-size:13px;max-height:220px;overflow-y:auto"></div>
     </div>
+    <div class="fgrp" id="dep-closed-grp" style="display:none">
+      <label class="flbl">Закрыт · проценты, ₽</label>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="deposit-closed-at" class="finp" style="flex:1;min-width:0">
+        <input type="text" id="deposit-closed-interest" class="finp" style="flex:1;min-width:0" inputmode="decimal" placeholder="0" oninput="formatMoneyInput(this)">
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Дата закрытия и фактически полученные проценты — из них считается доходность</div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn danger" id="deposit-delete-btn" onclick="deleteDeposit()" style="display:none">Удалить</button>
       <button class="btn primary" onclick="saveDeposit()" style="flex:1">Сохранить</button>
@@ -1005,6 +1030,12 @@ if ('serviceWorker' in navigator) {
     <button class="close-btn" onclick="closeModal('modal-close-deposit')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Закрыть вклад</h2>
     <p id="close-dep-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
+    <div class="fgrp"><label class="flbl">Дата закрытия</label><input type="date" id="close-dep-date" class="finp" onchange="_closeDepRecalc()"></div>
+    <div class="fgrp"><label class="flbl">Проценты, ₽</label><input type="text" id="close-dep-interest" class="finp" inputmode="decimal" oninput="formatMoneyInput(this);this.dataset.manual='1';_closeDepTagVis()"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="close-dep-to-income" checked onchange="_closeDepTagVis()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto"/>
+      <span>Записать проценты в доходы</span>
+    </label>
     <div class="fgrp" id="close-dep-tag-grp"><label class="flbl">Тег дохода (проценты)</label><select id="close-dep-tag" class="finp"></select></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-close-deposit')">Отмена</button>
@@ -1268,7 +1299,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.74.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.75.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1456,10 +1487,12 @@ function loadDB(){
     const k = monthKey(new Date().getFullYear(), new Date().getMonth());
     DB.limits[k]  = [...DEFAULT_LIMITS];
   }
-  // Purge tombstones older than 90 days — even slow devices have synced by then
+  _migrateClosedDeposits(); // до чистки: закрытый вклад без closedAt иначе сотрётся как тумбстоун
+  // Purge tombstones older than 90 days — even slow devices have synced by then.
+  // Закрытые вклады (closedAt) — не тумбстоуны, а архив для доходности: не чистим.
   const _cut = Date.now() - 90*24*3600*1000;
   ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(k => {
-    if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && (it.updatedAt||0) < _cut));
+    if(Array.isArray(DB[k])) DB[k] = DB[k].filter(it => !(it && it._deleted && !it.closedAt && (it.updatedAt||0) < _cut));
   });
   _ensureCatIds(); // миграция: раздать id категориям и catId записям
 }
@@ -5676,11 +5709,130 @@ function depositValueAt(d, dateStr){
   return Math.round(_depValueWithRate(d, dateStr, d.rate));
 }
 
-// Локальный день закрытия (soft-delete) вклада; null для живых
+// Локальный день закрытия (soft-delete) вклада; null для живых.
+// closedAt побеждает: вклад, закрытый задним числом, уходит из истории в дату закрытия, а не в день нажатия.
 function _depDelDay(d){
-  if(!d._deleted || !d.updatedAt) return null;
+  if(!d._deleted) return null;
+  if(d.closedAt) return d.closedAt;
+  if(!d.updatedAt) return null;
   const t = new Date(d.updatedAt); // локальный день, не UTC — закрытие ночью не должно сдвигать дату
   return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+}
+
+// ── Закрытые вклады: архив для доходности ───────────────────────────
+// Закрытый вклад = _deleted + closedAt (дата) + closedInterest (фактические %).
+// Чистка тумбстоунов его не трогает. До v1.75.0 closedAt не было — вклад,
+// закрытый через confirmCloseDeposit, узнаём по парной записи дохода.
+// Явный closedAt:null = «удалён, а не закрыт» — миграция его не воскрешает.
+function _migrateClosedDeposits(){
+  const incs = (DB.incomes||[]).filter(x=>x && !x._deleted && typeof x.source==='string' && x.source.startsWith('Проценты по вкладу '));
+  if(!incs.length) return;
+  (DB.deposits||[]).forEach(d=>{
+    if(!d || !d._deleted || ('closedAt' in d)) return;
+    const inc = incs.find(x=>x.source === 'Проценты по вкладу '+d.name && (!d.openDate || x.date >= d.openDate));
+    if(!inc) return;
+    d.closedAt = inc.date;
+    d.closedInterest = inc.amount;
+    d.updatedAt = Date.now();
+  });
+}
+
+// Деньго-дни вклада внутри [a, b): тело × дни с openDate + пополнение × дни со своей даты, до end
+function _depCapDays(d, end, a, b){
+  const span = s => { const x = s > a ? s : a; const y = end < b ? end : b; return y > x ? _depDays(x, y) : 0; };
+  let cd = d.amount * span(d.openDate);
+  (d.contributions||[]).forEach(c=>{ if(c.date < end) cd += c.amount * span(c.date); });
+  return cd;
+}
+
+// Доход за всю жизнь вклада: закрытый — фактический, открытый — ожидаемый на endDate
+function _depLifeInterest(d){
+  if(d.closedAt) return d.closedInterest || 0;
+  return depositValueAt(d, d.endDate) - d.amount - _depContribsSum(d, d.endDate);
+}
+
+function _depRatePct(r){ return r == null || !isFinite(r) ? '—' : r.toFixed(1)+'%'; }
+
+// Доходность вкладов за период [from, to). Доход вклада размазывается по его
+// деньго-дням — «% в конце» не падает целиком на день закрытия. Начислено — только
+// по сегодня; получено — доход вкладов, закрытых в периоде. Средняя — годовая,
+// взвешенная суммой и сроком: Σначислено ÷ (Σденьго-дни / 365).
+function _depYield(from, to){
+  const t = new Date(today()); t.setUTCDate(t.getUTCDate()+1);
+  const tNext = t.toISOString().slice(0,10);
+  const accTo = tNext < to ? tNext : to;
+  let accrued = 0, received = 0, cdSum = 0;
+  const rows = [];
+  (DB.deposits||[]).forEach(d=>{
+    if(!d || !d.openDate || !d.endDate) return;
+    if(d._deleted && !d.closedAt) return;
+    const end = d.closedAt || d.endDate;
+    const cdTotal = _depCapDays(d, end, d.openDate, end);
+    if(cdTotal <= 0) return;
+    const I = _depLifeInterest(d);
+    const cd = _depCapDays(d, end, from, accTo);
+    const rec = d.closedAt && d.closedAt >= from && d.closedAt < to ? I : 0;
+    if(!cd && !rec) return;
+    const acc = I * cd / cdTotal;
+    accrued += acc; received += rec; cdSum += cd;
+    rows.push({d, accrued:acc, received:rec, rate:I/(cdTotal/365)*100, closed:!!d.closedAt});
+  });
+  rows.sort((a,b)=>a.d.openDate.localeCompare(b.d.openDate));
+  return {accrued:Math.round(accrued), received:Math.round(received), rate: cdSum > 0 ? accrued/(cdSum/365)*100 : null, rows};
+}
+
+// Разметка итога доходности — общая для страницы вкладов и годового отчёта
+function _depYieldHtml(y){
+  if(!y.rows.length) return '<p style="color:var(--muted);font-size:13px;margin:0">За этот период вкладов не было</p>';
+  const kv = (cls, lbl, val, col) => `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px"><span style="color:var(--muted)">${lbl}</span><b class="${cls}"${col?` style="color:${col}"`:''}>${val}</b></div>`;
+  return `
+    ${kv('dy-acc', 'Начислено', '+'+fmtH(y.accrued), 'var(--green)')}
+    ${kv('dy-rec', 'Получено', '+'+fmtH(y.received), 'var(--green)')}
+    ${kv('dy-rate', 'Средняя доходность', _depRatePct(y.rate)+' годовых')}
+    <div style="margin-top:6px;border-top:0.5px solid var(--border)">
+    ${y.rows.map(r=>`<div class="dy-row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;font-size:12px">
+      <span style="min-width:0"><span style="font-weight:600">${esc(r.d.name)}</span><br><span style="color:var(--muted)">${_fmtDateRu(r.d.openDate)} – ${_fmtDateRu(r.d.closedAt||r.d.endDate)}${r.closed?' · закрыт':''} · ${_depRatePct(r.rate)}</span></span>
+      <span style="white-space:nowrap;color:var(--green);font-weight:600">+${fmtH(Math.round(r.accrued))}</span>
+    </div>`).join('')}
+    </div>`;
+}
+
+function setDepYieldPeriod(v){ uiSet('depYieldPeriod', String(v)); renderDepYield(); }
+
+// Карточка «Доходность» (чипы 12 мес / этот год / всё) + секция «Закрытые вклады»
+function renderDepYield(){
+  const wrap = document.getElementById('deposits-yield-wrap');
+  if(!wrap) return;
+  const any = (DB.deposits||[]).some(d=>d && d.openDate && (!d._deleted || d.closedAt));
+  wrap.style.display = any ? '' : 'none';
+  const mode = String(uiGet('depYieldPeriod', 'year'));
+  const td = today();
+  let from = '0000-01-01';
+  if(mode === 'year') from = td.slice(0,4)+'-01-01';
+  else if(mode === '12'){ const d = new Date(td); d.setUTCFullYear(d.getUTCFullYear()-1); d.setUTCDate(d.getUTCDate()+1); from = d.toISOString().slice(0,10); }
+  _segActive([['dyp-12', mode==='12'], ['dyp-year', mode==='year'], ['dyp-all', mode==='all']]);
+  document.getElementById('dep-yield-body').innerHTML = _depYieldHtml(_depYield(from, '9999-12-31'));
+
+  const grp = document.getElementById('deposits-closed-grp');
+  const el = document.getElementById('deposits-closed-list');
+  const closed = (DB.deposits||[]).filter(d=>d && d._deleted && d.closedAt).sort((a,b)=>b.closedAt.localeCompare(a.closedAt));
+  grp.style.display = closed.length ? '' : 'none';
+  el.innerHTML = closed.map((d,idx)=>{
+    const invested = d.amount + _depContribsSum(d, d.closedAt);
+    const cd = _depCapDays(d, d.closedAt, d.openDate, d.closedAt);
+    const rate = cd > 0 ? (d.closedInterest||0)/(cd/365)*100 : null;
+    return `<div onclick="openDepositModal('${esc(d.id)}')" style="${idx>0?'border-top:1px solid var(--border);':''}padding:10px 0;cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-size:14px;font-weight:600">${esc(d.name)}</span>
+        <span style="font-size:12px;color:var(--muted)">${_depRatePct(rate)} год.</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px">${fmtH(invested)}</span>
+        <span style="font-size:12px;color:var(--green);font-weight:600">+${fmtH(d.closedInterest||0)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${_fmtDateRu(d.openDate)} → закрыт ${_fmtDateRu(d.closedAt)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── Инвестиции: снимки стоимости + пополнения/выводы ────────────────
@@ -6059,6 +6211,7 @@ function saveInvContribution(){
 function renderDeposits(){
   const list = document.getElementById('deposits-list');
   if(!list) return;
+  renderDepYield(); // до раннего выхода: закрытые вклады бывают и без открытых
   const deps = (DB.deposits||[]).filter(d=>!d._deleted).sort((a,b)=>(a.endDate||'').localeCompare(b.endDate||''));
   // «Сейчас» — текущая стоимость с набежавшими процентами, не тело
   const _tdNow = today();
@@ -6144,43 +6297,65 @@ function openCloseDeposit(id){
   const d = (DB.deposits||[]).find(x=>x.id===id && !x._deleted);
   if(!d) return;
   _closingDepositId = id;
-  const val = depositValueAt(d, today());
-  const interest = val - d.amount - _depContribsSum(d, today());
-  document.getElementById('close-dep-info').innerHTML =
-    interest > 0
-      ? `${esc(d.name)}: проценты ${fmtH(interest)} добавятся в доходы отдельной записью. Вклад исчезнет из списка (снимок в банк не создаётся).`
-      : `${esc(d.name)}: процентов к начислению нет. Вклад исчезнет из списка (снимок в банк не создаётся).`;
+  const td = today();
+  // дата закрытия: истёкший — его endDate (в т.ч. внесённый задним числом), иначе сегодня
+  const dateInp = document.getElementById('close-dep-date');
+  dateInp.min = d.openDate; dateInp.max = td;
+  dateInp.value = d.endDate < td ? d.endDate : td;
+  delete document.getElementById('close-dep-interest').dataset.manual;
+  document.getElementById('close-dep-to-income').checked = true;
+  document.getElementById('close-dep-info').textContent =
+    d.name+': вклад переедет в «Закрытые вклады» и останется в расчёте доходности. Снимок в банк не создаётся.';
   // тег для записи дохода: по умолчанию — тег с «процент» в названии
-  const tagGrp = document.getElementById('close-dep-tag-grp');
-  tagGrp.style.display = interest > 0 ? '' : 'none';
-  if(interest > 0){
-    const tags = DB.incomeTags||[];
-    const def = tags.find(t=>/процент/i.test(t)) || '';
-    document.getElementById('close-dep-tag').innerHTML =
-      '<option value=""'+(def?'':' selected')+'>— без тега</option>' +
-      tags.map(t=>`<option value="${esc(t)}"${t===def?' selected':''}>${esc(t)}</option>`).join('');
-  }
+  const tags = DB.incomeTags||[];
+  const def = tags.find(t=>/процент/i.test(t)) || '';
+  document.getElementById('close-dep-tag').innerHTML =
+    '<option value=""'+(def?'':' selected')+'>— без тега</option>' +
+    tags.map(t=>`<option value="${esc(t)}"${t===def?' selected':''}>${esc(t)}</option>`).join('');
+  _closeDepRecalc();
   openModal('modal-close-deposit');
+}
+
+// Расчётные проценты на выбранную дату — пока пользователь не вписал свои
+function _closeDepRecalc(){
+  const d = (DB.deposits||[]).find(x=>x.id===_closingDepositId && !x._deleted);
+  if(!d) return;
+  const date = document.getElementById('close-dep-date').value;
+  const inp = document.getElementById('close-dep-interest');
+  if(date && !inp.dataset.manual)
+    setMoneyInput('close-dep-interest', Math.max(0, depositValueAt(d, date) - d.amount - _depContribsSum(d, date)));
+  _closeDepTagVis();
+}
+
+function _closeDepTagVis(){
+  const on = document.getElementById('close-dep-to-income').checked;
+  const amt = parseMoney(document.getElementById('close-dep-interest').value) || 0;
+  document.getElementById('close-dep-tag-grp').style.display = on && amt > 0 ? '' : 'none';
 }
 
 function confirmCloseDeposit(){
   const d = (DB.deposits||[]).find(x=>x.id===_closingDepositId && !x._deleted);
   if(!d) return;
-  const val = depositValueAt(d, today());
-  // проценты (стоимость − тело − пополнения) — отдельной записью в доходы; снимок в банк не создаётся
-  const interest = val - d.amount - _depContribsSum(d, today());
-  if(interest > 0){
+  const date = document.getElementById('close-dep-date').value;
+  if(!date || date < d.openDate || date > today()){ toast('Проверьте дату закрытия'); return; }
+  const interest = Math.max(0, Math.round(parseMoney(document.getElementById('close-dep-interest').value) || 0));
+  // проценты — отдельной записью в доходы датой закрытия (если не сняли галку); снимок в банк не создаётся
+  const toIncome = interest > 0 && document.getElementById('close-dep-to-income').checked;
+  if(toIncome){
     if(!DB.incomes) DB.incomes = [];
     const tag = document.getElementById('close-dep-tag').value || '';
-    DB.incomes.push({id:uid(), source:'Проценты по вкладу '+d.name, amount:interest, date:today(), comment:'', tag, _deleted:false, updatedAt:Date.now()});
+    DB.incomes.push({id:uid(), source:'Проценты по вкладу '+d.name, amount:interest, date, comment:'', tag, _deleted:false, updatedAt:Date.now()});
   }
+  d.closedAt = date;
+  d.closedInterest = interest;
   d._deleted = true;
   d.updatedAt = Date.now();
   saveDB();
   closeModal('modal-close-deposit');
   _closingDepositId = null;
   renderDeposits();
-  toast(interest>0?'✓ проценты '+fmt(interest)+' → в доходы':'✓ вклад закрыт');
+  if(typeof renderAssets==='function') renderAssets();
+  toast(toIncome?'✓ проценты '+fmt(interest)+' → в доходы':'✓ вклад закрыт');
 }
 
 // ── Корректировка баланса банка записью на дату (перевод банк↔вклад) ──
@@ -6368,6 +6543,12 @@ function openDepositModal(id){
   document.getElementById('deposit-days').value = '';
   document.getElementById('deposit-cap').value = d ? (d.capitalization||'monthly') : 'monthly';
   document.getElementById('deposit-delete-btn').style.display = d ? '' : 'none';
+  const isClosed = !!(d && d._deleted && d.closedAt);
+  document.getElementById('dep-closed-grp').style.display = isClosed ? '' : 'none';
+  if(isClosed){
+    document.getElementById('deposit-closed-at').value = d.closedAt;
+    setMoneyInput('deposit-closed-interest', d.closedInterest || 0);
+  }
   // Списание из банка — только при создании нового вклада
   document.getElementById('deposit-src-grp').style.display = d ? 'none' : '';
   if(!d) _fillSrcBankSelect('deposit-src-bank');
@@ -6419,7 +6600,19 @@ function saveDeposit(){
   if(!DB.deposits) DB.deposits=[];
   if(_editingDepositId){
     const idx = DB.deposits.findIndex(x=>x.id===_editingDepositId);
-    if(idx>=0) DB.deposits[idx]={...DB.deposits[idx],name,amount,rate,finalAmount,openDate,endDate,capitalization,_deleted:false,updatedAt:Date.now()};
+    if(idx>=0){
+      const cur = DB.deposits[idx];
+      const upd = {...cur,name,amount,rate,finalAmount,openDate,endDate,capitalization,_deleted:false,updatedAt:Date.now()};
+      // закрытый остаётся закрытым: правятся его дата закрытия и фактические проценты
+      if(cur._deleted && cur.closedAt){
+        const closedAt = document.getElementById('deposit-closed-at').value;
+        if(!closedAt || closedAt < openDate || closedAt > today()){ toast('Проверьте дату закрытия'); return; }
+        upd._deleted = true;
+        upd.closedAt = closedAt;
+        upd.closedInterest = Math.max(0, Math.round(parseMoney(document.getElementById('deposit-closed-interest').value) || 0));
+      }
+      DB.deposits[idx] = upd;
+    }
   } else {
     DB.deposits.push({id:uid(),name,amount,rate,finalAmount,openDate,endDate,capitalization,updatedAt:Date.now()});
     const srcBank = document.getElementById('deposit-src-bank').value;
@@ -6434,12 +6627,17 @@ function saveDeposit(){
 function deleteDeposit(){
   if(!_editingDepositId) return;
   const d=(DB.deposits||[]).find(x=>x.id===_editingDepositId);
-  if(d){ d._deleted=true; d.updatedAt=Date.now(); }
+  const snap = d ? {deleted:d._deleted, closedAt:d.closedAt, closedInterest:d.closedInterest} : null;
+  // closedAt:null — «удалён, а не закрыт»: обычный тумбстоун, миграция по доходу его не вернёт
+  if(d){ d._deleted=true; if(d.closedAt){ d.closedAt=null; delete d.closedInterest; } d.updatedAt=Date.now(); }
   saveDB(); closeModal('modal-deposit');
   renderDeposits();
+  if(typeof renderAssets==='function') renderAssets();
   if(d){
     toastUndo('Вклад удалён', ()=>{
-      delete d._deleted; d.updatedAt=Date.now();
+      if(snap.deleted) d._deleted = true; else delete d._deleted;
+      if(snap.closedAt){ d.closedAt = snap.closedAt; d.closedInterest = snap.closedInterest; }
+      d.updatedAt=Date.now();
       saveDB(); renderDeposits();
       if(typeof renderAssets==='function') renderAssets();
     });
@@ -8471,6 +8669,8 @@ function buildDemoDB(now){
   // Проценты закрытого вклада — так их и заводит confirmCloseDeposit;
   // без этой записи тег «Проценты» оставался бы в списке, но без единого дохода.
   incomes.push({ id: nid('i'), date: dstr(2, 20), source: 'Накопительный (закрыт)', amount: 13140, tag: 'Проценты', updatedAt: TS });
+  // Закрытый через confirmCloseDeposit вклад (v1.75.0+): closedAt + парный доход
+  incomes.push({ id: nid('i'), date: dstr(4, 3), source: 'Проценты по вкладу ВТБ · полгода', amount: 17850, tag: 'Проценты', updatedAt: TS });
   incomes.push({ id: nid('i'), date: dstr(2, 9), source: 'Возврат', amount: 0, tag: 'Подработка', _deleted: true, updatedAt: TS });
 
   // ── Банки и снимки ─────────────────────────────────────────────────
@@ -8519,6 +8719,12 @@ function buildDemoDB(now){
       id: nid('d'), name: 'Старый вклад', amount: 80000, rate: 9,
       openDate: dstr(13, 5), endDate: dstr(6, 5), capitalization: 'end',
       _deleted: true, updatedAt: TS
+    },
+    {
+      // закрыт по сроку — архив для доходности, чистка тумбстоунов его не трогает
+      id: nid('d'), name: 'ВТБ · полгода', amount: 200000, rate: 18,
+      openDate: dstr(10, 3), endDate: dstr(4, 3), capitalization: 'end',
+      closedAt: dstr(4, 3), closedInterest: 17850, _deleted: true, updatedAt: TS
     },
   ];
 
@@ -8981,6 +9187,17 @@ function renderReport(){
         <span style="font-weight:600">Всего</span>
         <span><b>${fmtH(endCur.total)}</b>${delta(endCur.total, endPrev ? endPrev.total : null)}</span>
       </div>
+    </div>`;
+  }
+
+  // Вклады за период отчёта: начислено / получено / средняя доходность —
+  // движок общий с карточкой «Доходность» на странице вкладов (_depYield)
+  {
+    const dy = isAll ? _depYield('0000-01-01', '9999-12-31') : _depYield(yr+'-01-01', (+yr+1)+'-01-01');
+    if(dy.rows.length) h += `
+    <div class="s-card" id="rep-dep-yield" style="margin-bottom:14px">
+      <div class="s-lbl" style="margin-bottom:8px">Вклады</div>
+      ${_depYieldHtml(dy)}
     </div>`;
   }
 
