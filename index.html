@@ -503,7 +503,7 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
   <div id="deposits-closed-grp" style="display:none">
-    <div class="sec-hdr"><span class="sec-title">Закрытые вклады</span></div>
+    <div class="sec-hdr" onclick="toggleClosedDeps()" style="cursor:pointer"><span class="sec-title" id="deposits-closed-title">Закрытые вклады</span><span class="sec-action" id="deposits-closed-toggle">Показать ↓</span></div>
     <div id="deposits-closed-list" style="padding:0 16px 8px"></div>
   </div>
   <div class="page-end"></div>
@@ -904,6 +904,7 @@ if ('serviceWorker' in navigator) {
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn danger" id="deposit-delete-btn" onclick="deleteDeposit()" style="display:none">Удалить</button>
+      <button class="btn dep-early-close" id="deposit-close-btn" onclick="closeModal('modal-deposit');openCloseDeposit(_editingDepositId)" style="display:none">Закрыть досрочно</button>
       <button class="btn primary" onclick="saveDeposit()" style="flex:1">Сохранить</button>
     </div>
   </div>
@@ -1304,7 +1305,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.75.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.75.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5782,27 +5783,42 @@ function _depYield(from, to){
     accrued += acc; received += rec; cdSum += cd;
     rows.push({d, accrued:acc, received:rec, rate:I/(cdTotal/365)*100, closed:!!d.closedAt});
   });
-  rows.sort((a,b)=>a.d.openDate.localeCompare(b.d.openDate));
-  return {accrued:Math.round(accrued), received:Math.round(received), rate: cdSum > 0 ? accrued/(cdSum/365)*100 : null, rows};
+  // закрытые сверху (свежие первыми) — их цифры фактические; открытые ниже — ожидаемые
+  rows.sort((a,b)=> a.closed !== b.closed ? (a.closed ? -1 : 1)
+    : a.closed ? b.d.closedAt.localeCompare(a.d.closedAt) : a.d.openDate.localeCompare(b.d.openDate));
+  // «в среднем на вкладах» = деньго-дни ÷ дни, пока вклады были: период обрезается
+  // первым открытием и последним закрытием — иначе «всё» разбавлялось бы месяцами без вкладов
+  const firstOpen = rows.reduce((m,r)=> !m || r.d.openDate < m ? r.d.openDate : m, '');
+  const lastEnd = rows.reduce((m,r)=>{ const e = r.d.closedAt || r.d.endDate; return e > m ? e : m; }, '');
+  const pFrom = firstOpen > from ? firstOpen : from;
+  const pTo = lastEnd < accTo ? lastEnd : accTo;
+  const pDays = pFrom < pTo ? _depDays(pFrom, pTo) : 0;
+  return {accrued:Math.round(accrued), received:Math.round(received), rate: cdSum > 0 ? accrued/(cdSum/365)*100 : null,
+          avgBody: pDays > 0 ? Math.round(cdSum/pDays) : 0, rows};
 }
 
 // Разметка итога доходности — общая для страницы вкладов и годового отчёта
 function _depYieldHtml(y){
   if(!y.rows.length) return '<p style="color:var(--muted);font-size:13px;margin:0">За этот период вкладов не было</p>';
-  const kv = (cls, lbl, val, col) => `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px"><span style="color:var(--muted)">${lbl}</span><b class="${cls}"${col?` style="color:${col}"`:''}>${val}</b></div>`;
+  // Подпись + расшифровка под ней: две зелёные цифры рядом без пояснения читались как ошибка
+  const kv = (cls, lbl, hint, val, col) => `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:4px 0;font-size:13px">
+    <span style="min-width:0"><span style="color:var(--muted)">${lbl}</span><br><span style="font-size:11px;color:var(--hint,var(--muted))">${hint}</span></span>
+    <b class="${cls}" style="white-space:nowrap${col?';color:'+col:''}">${val}</b></div>`;
   return `
-    ${kv('dy-acc', 'Начислено', '+'+fmtH(y.accrued), 'var(--green)')}
-    ${kv('dy-rec', 'Получено', '+'+fmtH(y.received), 'var(--green)')}
-    ${kv('dy-rate', 'Средняя доходность', _depRatePct(y.rate)+' годовых')}
+    ${kv('dy-acc', 'Заработано за период', 'проценты по дням, открытые вклады — по сегодня', '+'+fmtH(y.accrued), 'var(--green)')}
+    ${kv('dy-rec', 'Выплачено на счёт', 'при закрытии вкладов в этом периоде', '+'+fmtH(y.received), 'var(--green)')}
+    ${kv('dy-avg', 'В среднем на вкладах', 'столько денег работало, пока вклады были открыты', fmtH(y.avgBody))}
+    ${kv('dy-rate', 'Средняя доходность', 'годовых, с учётом суммы и срока каждого вклада', _depRatePct(y.rate))}
     <div style="margin-top:6px;border-top:0.5px solid var(--border)">
     ${y.rows.map(r=>`<div class="dy-row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;font-size:12px">
-      <span style="min-width:0"><span style="font-weight:600">${esc(r.d.name)}</span><br><span style="color:var(--muted)">${_fmtDateRu(r.d.openDate)} – ${_fmtDateRu(r.d.closedAt||r.d.endDate)}${r.closed?' · закрыт':''} · ${_depRatePct(r.rate)}</span></span>
-      <span style="white-space:nowrap;color:var(--green);font-weight:600">+${fmtH(Math.round(r.accrued))}</span>
+      <span style="min-width:0"><span style="font-weight:600">${esc(r.d.name)}</span><br><span style="color:var(--muted)">${_fmtDateRu(r.d.openDate)} – ${_fmtDateRu(r.d.closedAt||r.d.endDate)} · ${r.closed ? 'закрыт · факт '+_depRatePct(r.rate) : 'открыт · ожидается '+_depRatePct(r.rate)}</span></span>
+      <span style="white-space:nowrap;color:var(--green);font-weight:600">${r.closed?'+':'~'}${fmtH(Math.round(r.accrued))}</span>
     </div>`).join('')}
     </div>`;
 }
 
 function setDepYieldPeriod(v){ uiSet('depYieldPeriod', String(v)); renderDepYield(); }
+function toggleClosedDeps(){ uiSet('showClosedDeps', uiGet('showClosedDeps', '0') === '1' ? '0' : '1'); renderDepYield(); }
 
 // Карточка «Доходность» (чипы 12 мес / этот год / всё) + секция «Закрытые вклады»
 function renderDepYield(){
@@ -5818,10 +5834,16 @@ function renderDepYield(){
   _segActive([['dyp-12', mode==='12'], ['dyp-year', mode==='year'], ['dyp-all', mode==='all']]);
   document.getElementById('dep-yield-body').innerHTML = _depYieldHtml(_depYield(from, '9999-12-31'));
 
+  // Архив свёрнут по умолчанию: те же вклады уже видны строками в «Доходности»,
+  // а через год список станет длинным
   const grp = document.getElementById('deposits-closed-grp');
   const el = document.getElementById('deposits-closed-list');
   const closed = (DB.deposits||[]).filter(d=>d && d._deleted && d.closedAt).sort((a,b)=>b.closedAt.localeCompare(a.closedAt));
   grp.style.display = closed.length ? '' : 'none';
+  const open = uiGet('showClosedDeps', '0') === '1';
+  document.getElementById('deposits-closed-title').textContent = 'Закрытые вклады ('+closed.length+')';
+  document.getElementById('deposits-closed-toggle').textContent = open ? 'Скрыть ↑' : 'Показать ↓';
+  el.style.display = open ? '' : 'none';
   el.innerHTML = closed.map((d,idx)=>{
     const invested = d.amount + _depContribsSum(d, d.closedAt);
     const cd = _depCapDays(d, d.closedAt, d.openDate, d.closedAt);
@@ -6254,8 +6276,7 @@ function renderDeposits(){
       ${closed
         ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">→ Перенести в банк</button>`
         : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>
-           <button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">→ в калькулятор</button>
-           <button class="btn small dep-early-close" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">Закрыть досрочно</button>`}
+           <button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">→ в калькулятор</button>`}
     </div>`;
   }).join('');
   // дефолт даты прогноза — самое позднее закрытие
@@ -6559,6 +6580,9 @@ function openDepositModal(id){
   document.getElementById('deposit-cap').value = d ? (d.capitalization||'monthly') : 'monthly';
   document.getElementById('deposit-delete-btn').style.display = d ? '' : 'none';
   const isClosed = !!(d && d._deleted && d.closedAt);
+  // досрочное закрытие — редкое действие, живёт тут, а не третьей кнопкой на карточке;
+  // истёкший закрывается кнопкой «Перенести в банк» на карточке
+  document.getElementById('deposit-close-btn').style.display = d && !d._deleted && d.endDate > today() ? '' : 'none';
   document.getElementById('dep-closed-grp').style.display = isClosed ? '' : 'none';
   if(isClosed){
     document.getElementById('deposit-closed-at').value = d.closedAt;
@@ -9205,17 +9229,6 @@ function renderReport(){
     </div>`;
   }
 
-  // Вклады за период отчёта: начислено / получено / средняя доходность —
-  // движок общий с карточкой «Доходность» на странице вкладов (_depYield)
-  {
-    const dy = isAll ? _depYield('0000-01-01', '9999-12-31') : _depYield(yr+'-01-01', (+yr+1)+'-01-01');
-    if(dy.rows.length) h += `
-    <div class="s-card" id="rep-dep-yield" style="margin-bottom:14px">
-      <div class="s-lbl" style="margin-bottom:8px">Вклады</div>
-      ${_depYieldHtml(dy)}
-    </div>`;
-  }
-
   // Финансовая подушка: активы ÷ ⌀ расход 6 завершённых месяцев — движок
   // общий с карточкой «Аналитики» (_cushionAt). Год → точки по концам месяцев,
   // «Всё время» → по концам годов (как таблица «По годам»).
@@ -9259,6 +9272,17 @@ function renderReport(){
     const periodIncs = incs.filter(x=>inYr(x.date));
     const sb = _savingsBreakdownHtml(periodIncs, totExp);
     if(sb) h += `<div class="s-card" style="margin-bottom:14px">${sb}</div>`;
+  }
+
+  // Вклады за период отчёта — сразу за «Из чего накоплено»: проценты — один из
+  // источников. Движок общий с карточкой «Доходность» на странице вкладов (_depYield)
+  {
+    const dy = isAll ? _depYield('0000-01-01', '9999-12-31') : _depYield(yr+'-01-01', (+yr+1)+'-01-01');
+    if(dy.rows.length) h += `
+    <div class="s-card" id="rep-dep-yield" style="margin-bottom:14px">
+      <div class="s-lbl" style="margin-bottom:8px">Вклады</div>
+      ${_depYieldHtml(dy)}
+    </div>`;
   }
 
   // таблица по месяцам (за всё время — по годам)

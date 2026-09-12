@@ -1360,6 +1360,8 @@ suite(390, 'доходность вкладов и архив закрытых',
                after: [after.accrued, after.received, after.rate, after.rows.length] };
     }, CLOSED);
     eq(r.all.join('|'), '10000|10000|10', 'всё время');
+    eq(await p.evaluate(() => _depYield('0000-01-01', '9999-12-31').avgBody), 100000, '«в среднем на вкладах» за всё = тело');
+    eq(await p.evaluate(() => _depYield('2025-01-01', '2026-01-01').avgBody), 100000, 'за год жизни вклада — тоже тело');
     eq(r.half.join('|'), '4986|0|10', 'полгода: 10 000 × 182/365, получено 0');
     eq(r.after.map(String).join('|'), '0|10000|null|1', 'год закрытия после срока: только получено');
   });
@@ -1373,6 +1375,34 @@ suite(390, 'доходность вкладов и архив закрытых',
     }, CLOSED);
     // 109 726 ÷ ((100 000×365 + 1 000 000×182) / 365) — а среднее ставок дало бы 15%
     eq(rate, 18.3, 'средняя доходность');
+  });
+
+  check('строки: закрытые сверху с «факт», открытые ниже с «ожидается» и «~»', async p => {
+    const r = await p.evaluate(c => {
+      DB.deposits = [{ ...c, id: 'o1', name: 'Открытый', openDate: '2025-06-01', endDate: '2099-01-01', closedAt: undefined, closedInterest: undefined, _deleted: false }, c];
+      const y = _depYield('0000-01-01', '9999-12-31');
+      const html = _depYieldHtml(y);
+      const rows = [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('.dy-row')].map(el => el.textContent.replace(/\s+/g, ' '));
+      return { order: y.rows.map(x => x.d.id).join(','), rows };
+    }, CLOSED);
+    eq(r.order, 'y1,o1', 'закрытый первым');
+    eq(/закрыт · факт 10\.0%/.test(r.rows[0]), true, 'закрытый: ' + r.rows[0]);
+    eq(/открыт · ожидается/.test(r.rows[1]) && /~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);
+  });
+
+  check('архив закрытых свёрнут по умолчанию, раскрывается и запоминается', async p => {
+    const r = await p.evaluate(c => {
+      DB.deposits = [c]; window.showPage('deposits');
+      const list = document.getElementById('deposits-closed-list');
+      const before = getComputedStyle(list).display;
+      const title = document.getElementById('deposits-closed-title').textContent;
+      toggleClosedDeps();
+      return { before, title, after: getComputedStyle(list).display, saved: uiGet('showClosedDeps', '0') };
+    }, CLOSED);
+    eq(r.before, 'none', 'свёрнут');
+    eq(r.title, 'Закрытые вклады (1)', 'заголовок со счётчиком');
+    eq(r.after !== 'none', true, 'раскрылся');
+    eq(r.saved, '1', 'выбор сохранён');
   });
 
   check('вклад, закрытый задним числом, уходит из ряда активов в дату закрытия', async p => {
@@ -1419,8 +1449,10 @@ suite(390, 'доходность вкладов и архив закрытых',
       DB.deposits = [{ id: 'y7', name: 'Досрочный', amount: 100000, rate: 12, openDate: '2025-01-01', endDate: '2099-01-01', capitalization: 'monthly', updatedAt: 1 }];
       const before = DB.incomes.length;
       window.showPage('deposits');
-      const btn = document.querySelector('#deposits-list .dep-early-close');
-      if(!btn) return { btn: false };
+      // кнопка живёт в модалке правки вклада, не на карточке (v1.75.2)
+      openDepositModal('y7');
+      const btn = document.getElementById('deposit-close-btn');
+      if(!btn || btn.style.display === 'none') return { btn: false };
       btn.click();
       const date = document.getElementById('close-dep-date').value;
       const prefill = parseMoney(document.getElementById('close-dep-interest').value);
