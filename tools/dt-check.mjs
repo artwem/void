@@ -1413,6 +1413,33 @@ suite(390, 'доходность вкладов и архив закрытых',
     eq(r.closed, '2025-07-01/5951/true', 'вклад закрыт');
     eq(r.added, 0, 'доход не записан');
   });
+
+  check('досрочное закрытие: кнопка на открытом вкладе, проценты сгорели', async p => {
+    const r = await p.evaluate(() => {
+      DB.deposits = [{ id: 'y7', name: 'Досрочный', amount: 100000, rate: 12, openDate: '2025-01-01', endDate: '2099-01-01', capitalization: 'monthly', updatedAt: 1 }];
+      const before = DB.incomes.length;
+      window.showPage('deposits');
+      const btn = document.querySelector('#deposits-list .dep-early-close');
+      if(!btn) return { btn: false };
+      btn.click();
+      const date = document.getElementById('close-dep-date').value;
+      const prefill = parseMoney(document.getElementById('close-dep-interest').value);
+      _closeDepZero();
+      _closeDepRecalc(); // смена даты не должна затереть ручной 0
+      const tagHidden = document.getElementById('close-dep-tag-grp').style.display === 'none';
+      confirmCloseDeposit();
+      const d = DB.deposits[0];
+      return { btn: true, date, prefill, tagHidden, closed: d.closedAt === today() && d.closedInterest === 0 && d._deleted === true,
+               added: DB.incomes.length - before, inOpen: document.getElementById('deposits-list').textContent.includes('Досрочный') };
+    });
+    eq(r.btn, true, 'кнопка «Закрыть досрочно» есть');
+    eq(r.date, await p.evaluate(() => today()), 'дата закрытия — сегодня');
+    eq(r.prefill > 0, true, 'начисленные проценты предзаполнены: ' + r.prefill);
+    eq(r.tagHidden, true, 'при 0 выбор тега скрыт');
+    eq(r.closed, true, 'закрыт сегодня с нулевыми процентами');
+    eq(r.added, 0, 'доход не записан');
+    eq(r.inOpen, false, 'из открытых ушёл');
+  });
 });
 
 suite(390, 'демо-набор покрывает всё приложение', () => {
