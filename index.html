@@ -174,14 +174,16 @@ if ('serviceWorker' in navigator) {
   <div class="spacer"></div>
   <div class="chart-wrap" id="cw-summary">
     <div class="chart-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
+      <!-- flex-wrap: с чипом «…» и подписью вроде «240 мес» строка на 390 px не влезала — «Отчёт» переносится, а не уезжает за край -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px;gap:8px">
         <span style="font-size:13px;font-weight:600">Период</span>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px">
           <div style="display:flex;flex-shrink:0;white-space:nowrap;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 8px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
-            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
-            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span>
-            <span id="sp-all" onclick="setStatsPeriod('all')" title="Весь доступный период" style="padding:3px 8px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 6px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
+            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
+            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span>
+            <span id="sp-all" onclick="setStatsPeriod('all')" title="Весь доступный период" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
+            <span id="sp-c" onclick="_editChip(this, 240, setStatsPeriod)" title="Свой период, месяцев" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
           </div>
           <button onclick="showPage('report')" class="dt-hide" aria-label="Годовой отчёт" title="Годовой отчёт" style="display:flex;align-items:center;gap:5px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:3px 9px;cursor:pointer;font-family:inherit">
             <svg width="14" height="14" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Отчёт
@@ -194,7 +196,7 @@ if ('serviceWorker' in navigator) {
   <div class="chart-wrap" id="cw-daycompare">
     <div class="chart-card">
       <div class="chart-title">День за днём</div>
-      <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0 0 8px">
         <div id="day-compare-mode" data-mode="today" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
           <span id="dcm-full" onclick="setDayCompareMode('full')" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
           <span id="dcm-today" onclick="setDayCompareMode('today')" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
@@ -206,7 +208,8 @@ if ('serviceWorker' in navigator) {
         <div id="day-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Глубина средней линии, месяцев">
           <span id="dam-3" onclick="setDayAvgMonths(3)" style="padding:2px 5px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
           <span id="dam-6" onclick="setDayAvgMonths(6)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border)">6</span>
-          <span id="dam-12" onclick="setDayAvgMonths(12)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">12</span>
+          <span id="dam-12" onclick="setDayAvgMonths(12)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border)">12</span>
+          <span id="dam-c" onclick="_editChip(this, 36, setDayAvgMonths)" title="Своя глубина, месяцев" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
         </div>
         <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
       </div>
@@ -237,7 +240,8 @@ if ('serviceWorker' in navigator) {
           <span id="esp-3" onclick="setExpSearchPeriod(3)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">3</span>
           <span id="esp-6" onclick="setExpSearchPeriod(6)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">6</span>
           <span id="esp-12" onclick="setExpSearchPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12</span>
-          <span id="esp-all" onclick="setExpSearchPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+          <span id="esp-all" onclick="setExpSearchPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
+          <span id="esp-c" onclick="_editChip(this, 240, setExpSearchPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
         </div>
       </div>
       <input id="exp-search" type="search" placeholder="🔍 Комментарий, категория или сумма" autocomplete="off"
@@ -321,7 +325,7 @@ if ('serviceWorker' in navigator) {
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
         <div class="chart-title" style="margin-bottom:0">Доходы vs Расходы</div>
         <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="svp-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+            <span id="svp-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span><span id="svp-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
           </div>
       </div>
       <div id="inc-exp-avg" style="font-size:12px;color:var(--muted);margin:6px 0 8px;min-height:15px"></div>
@@ -335,7 +339,7 @@ if ('serviceWorker' in navigator) {
         <div style="display:flex;align-items:center;gap:8px">
           <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
           <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="svp2-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp2-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp2-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp2-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+            <span id="svp2-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp2-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp2-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp2-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span><span id="svp2-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
           </div>
         </div>
       </div>
@@ -496,7 +500,8 @@ if ('serviceWorker' in navigator) {
         <div id="dep-yield-period" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Период">
           <span id="dyp-12" onclick="setDepYieldPeriod('12')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">12 мес</span>
           <span id="dyp-year" onclick="setDepYieldPeriod('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">этот год</span>
-          <span id="dyp-all" onclick="setDepYieldPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">всё</span>
+          <span id="dyp-all" onclick="setDepYieldPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
+          <span id="dyp-c" onclick="_editChip(this, 240, setDepYieldPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
         </div>
       </div>
       <div id="dep-yield-body"></div>
@@ -795,7 +800,8 @@ if ('serviceWorker' in navigator) {
         <div id="limit-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
           <span id="lam-3" onclick="setLimitAvgMonths(3)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
           <span id="lam-6" onclick="setLimitAvgMonths(6)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border)">6</span>
-          <span id="lam-12" onclick="setLimitAvgMonths(12)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">12</span>
+          <span id="lam-12" onclick="setLimitAvgMonths(12)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border)">12</span>
+          <span id="lam-c" onclick="_editChip(this, 36, setLimitAvgMonths)" title="Своя глубина, месяцев" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
         </div> мес
       </div>
       <div id="limit-avg-total" style="font-size:11px;color:var(--muted);text-align:right"></div>
@@ -1305,7 +1311,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.75.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.76.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1853,6 +1859,57 @@ function _segActive(pairs){
     el.style.color      = on ? 'var(--text)' : '#888';
     el.style.fontWeight = on ? '600' : '';
   });
+}
+
+// ── Свой период на чипах (v1.76.0) ──────────────────────────────────
+// Последний чип каждой группы периодов — «…»: тап превращает его в поле числа.
+// Enter или уход фокуса применяет, пустое/меньше 1 — отмена, больше max — до max.
+// Нестандартное число висит на этом же чипе («9 мес»), совпавшее с готовым
+// чипом подсвечивает готовый. Значение хранится под прежним ключом группы.
+function _monthsVal(v, max, def){
+  const n = parseInt(v);
+  return n >= 1 ? Math.min(max, n) : def;
+}
+
+function _editChip(el, max, apply){
+  if(el.querySelector('input')) return;
+  const prev = el.textContent;
+  const inp = document.createElement('input');
+  // type=text + inputmode=numeric: та же цифровая клавиатура на iOS, но без стрелок
+  // number-поля, которые раздували чип и переносили всю группу на новую строку
+  inp.type = 'text'; inp.inputMode = 'numeric'; inp.pattern = '[0-9]*'; inp.maxLength = 3;
+  inp.autocomplete = 'off';
+  inp.setAttribute('aria-label', 'Свой период, месяцев (1–'+max+')');
+  inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, ''); });
+  // 16px: поле мельче iOS зумит; ширина — на три цифры
+  inp.style.cssText = 'width:2.1em;font:inherit;font-size:16px;line-height:1;padding:0;margin:0;border:none;outline:none;background:transparent;color:var(--text);text-align:center;-webkit-appearance:none;appearance:none';
+  let done = false;
+  const finish = ok => {
+    if(done) return;
+    done = true;
+    const n = parseInt(inp.value);
+    el.textContent = prev;
+    if(ok && n >= 1) apply(Math.min(max, n));
+  };
+  inp.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    else if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  inp.addEventListener('blur', () => finish(true));
+  inp.addEventListener('click', e => e.stopPropagation());
+  el.textContent = '';
+  el.appendChild(inp);
+  inp.focus();
+}
+
+// Подпись и подсветка чипа «…»: число вне presets — «9 мес», иначе «…»
+function _segCustom(id, v, presets, suffix){
+  const el = document.getElementById(id);
+  if(!el || el.querySelector('input')) return;
+  const n = parseInt(v);
+  const custom = String(v) === String(n) && n >= 1 && !presets.includes(n);
+  el.textContent = custom ? n + (suffix || '') : '…';
+  _segActive([[el, custom]]);
 }
 
 // ─── MODAL HELPERS ──────────────────────────────────────────────────
@@ -2530,7 +2587,7 @@ function _applyLimitAvg(i){
 function applyAllLimitAvgs(){
   const idx = _limitAvgs.map((v,i)=>v===null?-1:i).filter(i=>i>=0);
   if(!idx.length) return;
-  const n = parseInt(sessionStorage.getItem('limitAvgMonths')) || 3;
+  const n = _monthsVal(sessionStorage.getItem('limitAvgMonths'), 36, 3);
   const sum = idx.reduce((s,i)=>s+_limitAvgs[i],0);
   const key = document.getElementById('limit-month-sel');
   const [ky,km] = (key ? key.value : '').split('-').map(Number);
@@ -2555,8 +2612,9 @@ function loadLimitEditor(){
   const key = document.getElementById('limit-month-sel').value;
   const [y,m] = key.split('-').map(Number);
   const limits = getLimits(y,m-1);
-  const avgMonths = parseInt(sessionStorage.getItem('limitAvgMonths')) || 3;
+  const avgMonths = _monthsVal(sessionStorage.getItem('limitAvgMonths'), 36, 3);
   _segActive([3,6,12].map(n=>['lam-'+n, avgMonths===n]));
+  _segCustom('lam-c', avgMonths, [3,6,12], '');
   // Средние траты категории за последние N месяцев с данными (до месяца
   // лимита, глубина поиска 2N) — тап по подсказке подставляет в поле.
   // Один скан трат на месяц (бакет по категориям) вместо категории×месяцы
@@ -3513,8 +3571,9 @@ function _renderStatsSummary(lastN){
 // Период аналитики: хранится РЕЖИМ ('6'|'12'|'24'|'all'), statsPeriod — производное
 // число месяцев. 'all' пересчитывается на каждом рендере: данные прирастают.
 const _PERIOD_MODES = ['6','12','24','all'];
-let statsPeriodMode = uiGet('statsPeriod', '6');
-if(!_PERIOD_MODES.includes(statsPeriodMode)) statsPeriodMode = '6';
+// Режим периода: 'all' или целое число месяцев 1..240 — готовый чип или свой с «…»
+function _periodMode(m, def){ return m === 'all' ? 'all' : String(_monthsVal(m, 240, def)); }
+let statsPeriodMode = _periodMode(uiGet('statsPeriod', '6'), '6');
 let statsPeriod = statsPeriodMode === 'all' ? 12 : +statsPeriodMode;
 // Сколько месяцев покрывают данные: от самой ранней траты/дохода до текущего включительно.
 function _dataMonthsSpan(){
@@ -3548,7 +3607,7 @@ let _pieViewMode = uiGet('pieViewMode', 'cats');
 function setPieViewMode(m){ _pieViewMode=m; uiSet('pieViewMode', m); renderStats(); }
 
 function setStatsPeriod(n){
-  statsPeriodMode = String(n);
+  statsPeriodMode = _periodMode(String(n), '6');
   uiSet('statsPeriod', statsPeriodMode);
   statsPeriod = _periodMonths(statsPeriodMode);
   // Сбрасываем селект Структуры — он перестроится под новый период
@@ -3591,10 +3650,9 @@ function _chartColors(){
   };
 }
 
-let savingsPeriodMode = localStorage.getItem('savingsPeriod') || '6';
-if(!_PERIOD_MODES.includes(savingsPeriodMode)) savingsPeriodMode = '6';
+let savingsPeriodMode = _periodMode(localStorage.getItem('savingsPeriod') || '6', '6');
 function setSavingsPeriod(v){
-  savingsPeriodMode = String(v);
+  savingsPeriodMode = _periodMode(String(v), '6');
   localStorage.setItem('savingsPeriod', savingsPeriodMode);
   renderSavingsCharts();
 }
@@ -3606,6 +3664,8 @@ function renderSavingsCharts(){
   const per = _periodMonths(savingsPeriodMode);
   // Два ряда чипов (у обоих графиков) правят один и тот же период — подсвечиваем оба.
   _segActive([].concat(..._PERIOD_MODES.map(k=>[['svp-'+k, k===savingsPeriodMode],['svp2-'+k, k===savingsPeriodMode]])));
+  _segCustom('svp-c', savingsPeriodMode, [6,12,24], ' мес');
+  _segCustom('svp2-c', savingsPeriodMode, [6,12,24], ' мес');
   const now = new Date();
   const lastN = [];
   for(let i=per-1;i>=0;i--){
@@ -3943,7 +4003,7 @@ let _expCatFilter = null; // null = без фильтра; Set<number> = поз�
 
 function _expSearchPeriod(){
   const v = uiGet('expSearchPeriod', '6');
-  return v === 'all' ? 'all' : ([1,3,6,12].includes(parseInt(v)) ? parseInt(v) : 6);
+  return v === 'all' ? 'all' : _monthsVal(v, 240, 6);
 }
 function setExpSearchPeriod(n){
   uiSet('expSearchPeriod', n);
@@ -3982,6 +4042,7 @@ function renderExpenseSearch(){
   renderExpenseCatChips();
   const period = _expSearchPeriod();
   _segActive([...[1,3,6,12].map(n=>['esp-'+n, period===n]), ['esp-all', period==='all']]);
+  _segCustom('esp-c', period, [1,3,6,12], '');
   const q = (inp.value||'').trim().toLowerCase();
   const hasCatFilter = _expCatFilter !== null && _expCatFilter.size > 0;
   list.innerHTML = '';
@@ -4286,6 +4347,7 @@ function renderStats(){
 
   // Update period selector active state
   _segActive(_PERIOD_MODES.map(k=>['sp-'+k, k===statsPeriodMode]));
+  _segCustom('sp-c', statsPeriodMode, [6,12,24], ' мес');
 
   // Поиск по тратам — перерисовываем, чтобы выдача не протухала после правок
   renderExpenseSearch();
@@ -4349,7 +4411,7 @@ function renderStats(){
     const prevCum = cumByDay(prevExps, pY,   pM,   Math.min(daysInPrev, displayDays), displayDays);
 
     // Historical avg: N months before selected (3/6/12, sessionStorage), displayDays length
-    const avgMonths = parseInt(uiGet('dayAvgMonths', '6')) || 6;
+    const avgMonths = _monthsVal(uiGet('dayAvgMonths', '6'), 36, 6);
     const histCumByDay = Array.from({length: displayDays}, () => []);
     for (let i = 1; i <= avgMonths; i++) {
       let hm = selM - i, hy = selY;
@@ -4426,6 +4488,7 @@ function renderStats(){
       ['dsm-on', dayInclSpecial], ['dsm-off', !dayInclSpecial],
       ...[3,6,12].map(n=>['dam-'+n, avgMonths===n])
     ]);
+    _segCustom('dam-c', avgMonths, [3,6,12], '');
 
     if (charts.dayCompare) charts.dayCompare.destroy();
     const avgDataset = histMonthCount > 0 ? [{
@@ -5826,12 +5889,14 @@ function renderDepYield(){
   if(!wrap) return;
   const any = (DB.deposits||[]).some(d=>d && d.openDate && (!d._deleted || d.closedAt));
   wrap.style.display = any ? '' : 'none';
-  const mode = String(uiGet('depYieldPeriod', 'year'));
+  let mode = String(uiGet('depYieldPeriod', 'year'));
+  if(mode !== 'year' && mode !== 'all') mode = String(_monthsVal(mode, 240, 12)); // N месяцев: готовые 12 или свой с «…»
   const td = today();
   let from = '0000-01-01';
   if(mode === 'year') from = td.slice(0,4)+'-01-01';
-  else if(mode === '12'){ const d = new Date(td); d.setUTCFullYear(d.getUTCFullYear()-1); d.setUTCDate(d.getUTCDate()+1); from = d.toISOString().slice(0,10); }
+  else if(mode !== 'all'){ const d = new Date(td); d.setUTCMonth(d.getUTCMonth()-(+mode)); d.setUTCDate(d.getUTCDate()+1); from = d.toISOString().slice(0,10); }
   _segActive([['dyp-12', mode==='12'], ['dyp-year', mode==='year'], ['dyp-all', mode==='all']]);
+  _segCustom('dyp-c', mode, [12], ' мес');
   document.getElementById('dep-yield-body').innerHTML = _depYieldHtml(_depYield(from, '9999-12-31'));
 
   // Архив свёрнут по умолчанию: те же вклады уже видны строками в «Доходности»,

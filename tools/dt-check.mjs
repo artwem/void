@@ -1345,6 +1345,84 @@ suite(390, 'средние и период графиков', () => {
   });
 });
 
+suite(390, 'свой период на чипах «…»', () => {
+  // Тап по «…» → поле; how: 'enter' | 'esc' | 'blur'
+  const typeChip = (p, id, val, how = 'enter') => p.evaluate((id, val, how) => {
+    const chip = document.getElementById(id);
+    chip.click();
+    const inp = chip.querySelector('input');
+    if (!inp) return 'нет поля';
+    inp.value = val;
+    if (how === 'blur') inp.dispatchEvent(new FocusEvent('blur'));
+    else inp.dispatchEvent(new KeyboardEvent('keydown', { key: how === 'esc' ? 'Escape' : 'Enter' }));
+    return chip.querySelector('input') ? 'поле не закрылось' : 'ok';
+  }, id, val, how);
+  const on = (p, id) => p.evaluate(i => document.getElementById(i).style.background !== '', id);
+  const txt = (p, id) => p.evaluate(i => document.getElementById(i).textContent, id);
+
+  check('Аналитика: 9 месяцев с «…» — графики на 9 столбцов, чип «9 мес»', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    eq(await txt(p, 'sp-c'), '…', 'по умолчанию «…»');
+    eq(await typeChip(p, 'sp-c', '9'), 'ok', 'ввод');
+    const s = await p.evaluate(() => ({ mode: statsPeriodMode, per: statsPeriod, stored: uiGet('statsPeriod'),
+      bars: charts.incomeTags ? charts.incomeTags.data.labels.length : -1 }));
+    eq(s.mode + '|' + s.per + '|' + s.stored, '9|9|9', 'режим, месяцы, сохранено');
+    eq(s.bars, 9, 'столбцов на «Доходах по тегам»');
+    eq(await txt(p, 'sp-c'), '9 мес', 'подпись чипа');
+    eq(await on(p, 'sp-c'), true, 'свой чип подсвечен');
+    eq(await on(p, 'sp-6'), false, '«6 мес» погашен');
+  });
+
+  check('пустое поле и Escape — отмена, больше 240 — до 240, готовое число — готовый чип', async p => {
+    await p.evaluate(() => { window.showPage('stats', document.getElementById('nav-stats')); setStatsPeriod(9); });
+    await typeChip(p, 'sp-c', '', 'blur');
+    eq(await p.evaluate(() => statsPeriodMode), '9', 'пустое поле ничего не меняет');
+    await typeChip(p, 'sp-c', '5', 'esc');
+    eq(await p.evaluate(() => statsPeriodMode), '9', 'Escape ничего не меняет');
+    eq(await txt(p, 'sp-c'), '9 мес', 'подпись вернулась');
+    await typeChip(p, 'sp-c', '999');
+    eq(await p.evaluate(() => statsPeriodMode), '240', 'обрезано до 240');
+    await typeChip(p, 'sp-c', '12');
+    eq(await p.evaluate(() => statsPeriodMode), '12', '12 с клавиатуры');
+    eq(await on(p, 'sp-12'), true, 'подсвечен готовый «12 мес»');
+    eq(await txt(p, 'sp-c') + (await on(p, 'sp-c')), '…false', 'свой чип снова «…» и погашен');
+  });
+
+  check('поиск, глубина средней, накопления, доходность, лимиты', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    await typeChip(p, 'esp-c', '9');
+    eq(await p.evaluate(() => _expSearchPeriod()), 9, 'поиск по тратам: 9');
+    eq(await txt(p, 'esp-c'), '9', 'подпись в поиске');
+    await typeChip(p, 'dam-c', '40');
+    eq(await p.evaluate(() => uiGet('dayAvgMonths')), '36', 'глубина средней обрезана до 36');
+    eq(await txt(p, 'dam-c'), '36', 'подпись глубины');
+    await typeChip(p, 'svp-c', '9');
+    eq(await p.evaluate(() => savingsPeriodMode), '9', 'накопления: 9');
+    eq(await txt(p, 'svp2-c'), '9 мес', 'второй ряд накоплений подписан тоже');
+    await typeChip(p, 'dyp-c', '9');
+    eq(await p.evaluate(() => uiGet('depYieldPeriod')), '9', 'доходность вкладов: 9');
+    eq(await txt(p, 'dyp-c'), '9 мес', 'подпись доходности');
+    await p.evaluate(() => {
+      const k = monthKey(currentMonth.y, currentMonth.m);
+      const sel = document.getElementById('limit-month-sel');
+      sel.innerHTML = `<option value="${k}">${k}</option>`; sel.value = k;
+    });
+    await typeChip(p, 'lam-c', '7');
+    eq(await p.evaluate(() => sessionStorage.getItem('limitAvgMonths')), '7', 'лимиты: 7');
+    eq(await txt(p, 'lam-c'), '7', 'подпись в редакторе лимитов');
+  });
+
+  check('при старте свой период проходит проверку, мусор — к умолчанию', async p => {
+    const r = await p.evaluate(() => {
+      const out = [_periodMode('9', '6'), _periodMode('500', '6'), _periodMode('abc', '6'), _periodMode('all', '6')];
+      uiSet('expSearchPeriod', '0'); out.push(_expSearchPeriod());
+      uiSet('expSearchPeriod', '18'); out.push(_expSearchPeriod());
+      return out.join('|');
+    });
+    eq(r, '9|240|6|all|6|18', '_periodMode и _expSearchPeriod');
+  });
+});
+
 suite(390, 'доходность вкладов и архив закрытых', () => {
   // 100 000 ровно на 365 дней, фактические проценты 10 000 → 10% годовых.
   const CLOSED = { id: 'y1', name: 'Тест', amount: 100000, rate: 10, openDate: '2025-01-01', endDate: '2026-01-01',

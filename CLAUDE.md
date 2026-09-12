@@ -234,9 +234,18 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 делает `localStorage.clear()` в `evaluateOnNewDocument`**: origin у страниц общий, без очистки
 выбор одной сюиты протекал бы в следующую.
 
+**Свой период на чипах «…» (since v1.76.0).** В каждой группе чипов периода/глубины последний
+чип «…» превращается в поле числа (`_editChip(el, max, apply)` рядом с `_segActive`): Enter или
+уход фокуса применяет, пустое/<1 — отмена, больше `max` — обрезается. Подпись и подсветку чипа
+ставит `_segCustom(id, value, presets, suffix)` в том же рендере, что зовёт `_segActive`: число
+вне готовых чипов — «9 мес», иначе «…». Потолок: 240 для периодов, 36 для глубины средних
+(«День за днём», лимиты — там история смотрится на 2N назад). Читать сохранённое значение —
+только через `_monthsVal(v, max, def)` / `_periodMode(m, def)`: белые списки вида
+`[3,6,12].includes(...)` молча сбрасывали бы свой период на умолчание при каждом старте.
+
 Ключи (все — `uiGet`/`uiSet`, кроме отдельно помеченных):
 - `expViewMode` (`'cats'`|`'groups'`), `pieViewMode` — breakdown views in Аналитика
-- `statsPeriod` — период графиков Аналитики. Хранится РЕЖИМ (`'6'`|`'12'`|`'24'`|`'all'`) в
+- `statsPeriod` — период графиков Аналитики. Хранится РЕЖИМ (`'6'`|`'12'`|`'24'`|`'all'`|любое `'N'` 1..240) в
   `statsPeriodMode`; `statsPeriod` — производное число месяцев, пересчитывается `_periodMonths()`
   в начале `renderStats()` (для `'all'` — `_dataMonthsSpan()`: от самой ранней траты/дохода до
   текущего месяца, потолок 240). Присваивать `statsPeriod` напрямую нельзя — только
@@ -247,18 +256,19 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
   переключателя из «Активов» не видно. Чипов два ряда (у каждого графика свой), период у них один —
   `renderSavingsCharts()` подсвечивает оба ряда (`svp-*` и `svp2-*`)
 - `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Affects the fact/average lines and the drawn «Прогноз» line; the printed «Прогноз на конец месяца» total always includes specials (see the forecast section above)
-- `dayAvgMonths` (`3`|`6`|`12`, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
+- `dayAvgMonths` (`3`|`6`|`12`|свой 1..36, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
 - `dayCompareMode` (`'today'`|`'full'`) — «Сегодня / Месяц» на «Дне за днём» (`setDayCompareMode`).
   До v1.73.0 режим хранился в `data-mode` самого переключателя и умирал вместе с разметкой;
   `renderStats()` теперь наоборот проставляет атрибут из переменной
-- `expSearchPeriod` (`1`|`3`|`6`|`12`|`'all'`, default 6) — период карточки поиска по тратам
+- `expSearchPeriod` (`1`|`3`|`6`|`12`|свой 1..240|`'all'`, default 6) — период карточки поиска по тратам
+- `depYieldPeriod` (`'12'`|свой `'N'` 1..240|`'year'`|`'all'`, default `'year'`) — период карточки «Доходность» на странице вкладов
 - `reportYear` — выбранный год годового отчёта (`'2026'` … | `'all'`); при рендере значение
   селекта побеждает сохранённое, сохранённое подхватывается только на первой отрисовке
 - `showZeroBanks` (`'0'`|`'1'`) — раскрыт ли список нулевых счетов на «Накоплениях» (`_showZeroBanks`)
 - `assetsChartParts` (`'banks,deps,inv'`), `assetsChartScale` (`'raw'`|`'month'`|`'year'`),
   `assetsFxCur` — чипы и шкала графика «Рост накоплений», валюта итога. Читаются напрямую через
   `localStorage` со своими миграциями (см. `_assetsChartParts`), а не через `uiGet`
-- `limitAvgMonths` (`3`|`6`|`12`, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`). **Единственный оставшийся на `sessionStorage`** — это «Бюджет», а не «Аналитика»/«Накопления»
+- `limitAvgMonths` (`3`|`6`|`12`|свой 1..36, default 3) — depth of «⌀ подставить» hints in the limit editor (`setLimitAvgMonths`); header shows the sum of suggested averages + «подставить все» (`applyAllLimitAvgs`). **Единственный оставшийся на `sessionStorage`** — это «Бюджет», а не «Аналитика»/«Накопления»
 
 **Средние за месяц (v1.65.0).** Под «Доходы vs Расходы» (`#inc-exp-avg`), «Расходы по группам»
 (`#grouped-avg`) и «Доходы по тегам» (`#income-tags-avg`) печатается «⌀ в месяц». Везде считается
