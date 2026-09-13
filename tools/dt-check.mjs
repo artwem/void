@@ -250,6 +250,28 @@ suite(390, 'годовой отчёт на мобиле не изменился'
   });
 });
 
+suite(390, 'бейдж проверки данных не лезет под чип синхронизации', () => {
+  check('бейдж стоит за заголовком и не пересекается с #sync-widget', async p => {
+    await p.evaluate(() => {
+      window.showPage('assets', document.getElementById('nav-assets'));
+      document.getElementById('assets-audit-badge').style.display = 'inline-flex';
+      document.getElementById('assets-audit-badge-n').textContent = '3';
+      document.getElementById('sync-widget').style.display = 'flex';
+    });
+    const r = await p.evaluate(() => {
+      const a = document.getElementById('assets-audit-badge').getBoundingClientRect();
+      const s = document.getElementById('sync-widget').getBoundingClientRect();
+      const h = document.querySelector('#page-assets > .hdr h1').getBoundingClientRect();
+      document.getElementById('assets-audit-badge').style.display = 'none';
+      document.getElementById('sync-widget').style.display = 'none';
+      return { overlap: a.right > s.left && a.left < s.right && a.bottom > s.top && a.top < s.bottom,
+               afterTitle: a.left >= h.right && a.left - h.right < 20, a: [a.left, a.right], s: [s.left, s.right] };
+    });
+    eq(r.overlap, false, 'бейдж ' + r.a.join('–') + ' и чип ' + r.s.join('–') + ' не пересекаются');
+    eq(r.afterTitle, true, 'бейдж сразу за заголовком');
+  });
+});
+
 // «День за днём»: на широком экране ось подписывает каждый день, тултип
 // ловится наведением в любую точку (mode:'index'), а не попаданием в
 // невидимую точку линии — при pointRadius 0 дефолтный nearest+intersect молчит.
