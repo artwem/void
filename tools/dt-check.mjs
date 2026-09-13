@@ -1277,6 +1277,41 @@ suite(390, 'средние и период графиков', () => {
     await p.evaluate(() => { DB.expenses = DB.expenses.filter(e => e.id !== 'old1'); saveDB(); });
   });
 
+  check('доход за месяц до первой траты: не «0 расходов и 100%», а «не вносились»', async p => {
+    // Реальный случай: доходы за февраль внесли задним числом, траты — нет.
+    const r = await p.evaluate(() => {
+      const d = new Date();
+      const y = d.getMonth() < 2 ? d.getFullYear() - 1 : d.getFullYear();
+      const ds = y + '-' + String((d.getMonth() + 10) % 12 + 1).padStart(2, '0') + '-15';
+      DB.incomes.push({ id: 'feb1', date: ds, source: 'X', amount: 100000, tag: '', updatedAt: 1 }); saveDB();
+      setSavingsPeriod('all');
+      const out = {
+        n: charts.incVsExp.data.labels.length,
+        exp0: charts.incVsExp.data.datasets[1].data[0],
+        rate0: charts.savingsRate.data.datasets[0].data[0],
+        bs: [...document.querySelectorAll('#inc-exp-avg b')].map(b => (b.textContent.match(/\d/g) || []).join('')).join('|'),
+      };
+      window.showPage('stats', document.getElementById('nav-stats'));
+      setStatsPeriod('all');
+      out.grouped = charts.grouped.data.labels.length;
+      out.note = (document.querySelector('#stats-summary .ss-note') || {}).textContent || '';
+      uiSet('reportYear', String(y));
+      const sel = document.getElementById('report-year'); sel.innerHTML = '';
+      window.showPage('report');
+      out.dashRows = [...document.querySelectorAll('#report-body tr')].filter(tr => tr.textContent.includes('—')).length;
+      DB.incomes = DB.incomes.filter(x => x.id !== 'feb1'); saveDB();
+      sel.innerHTML = ''; uiSet('reportYear', ''); window.showPage('stats', document.getElementById('nav-stats'));
+      return out;
+    });
+    eq(r.n, 3, 'на «Доходы vs Расходы» месяц с доходом остался');
+    eq(r.exp0, 50000, 'на месте расхода — штриховка высотой в средний расход');
+    eq(r.rate0, null, 'нормы у такого месяца нет');
+    eq(r.bs, '50000|50000', '⌀ доход по двум месяцам, ⌀ расход — только с начала учёта');
+    eq(r.grouped, 2, '«Расходы по группам» в режиме «всё» начинаются с первой траты');
+    eq(/учёт трат с/.test(r.note), true, 'в сводке подписано, откуда считается «Накоплено»: ' + r.note);
+    eq(r.dashRows >= 1, true, 'в таблице отчёта у месяца прочерки');
+  });
+
   check('период «Накоплений» не трогает период «Аналитики»', async p => {
     await p.evaluate(() => { setSavingsPeriod(6); setStatsPeriod(24); });
     eq(await p.evaluate(() => localStorage.getItem('savingsPeriod')), '6', 'период накоплений device-local');
@@ -1305,8 +1340,9 @@ suite(390, 'средние и период графиков', () => {
 
   check('выключение ряда в легенде пересчитывает среднее и подписи над столбцами', async p => {
     await p.evaluate(() => setStatsPeriod(6));
-    // Из шести месяцев завершены пять, траты есть только в прошлом: 50 000 ₽.
-    eq(await avgDigits(p, '#grouped-avg'), '10000', 'среднее по всем группам');
+    // Из шести месяцев завершены пять, но траты вносятся только с прошлого (50 000 ₽):
+    // четыре месяца до первой траты — «не вносились», а не нули (v1.77.0).
+    eq(await avgDigits(p, '#grouped-avg'), '50000', 'среднее по всем группам');
     // Сумма — по ВСЕМ столбцам графика, включая текущий неполный месяц (в отличие
     // от среднего), поэтому она строго больше суммы завершённых месяцев.
     eq(await sumDigits(p, '#grouped-avg'), await chartSum(p, 'grouped'), 'сумма = все столбцы графика');
@@ -1318,7 +1354,7 @@ suite(390, 'средние и период графиков', () => {
       return { i, prev: _stackVisTotals(c)[c.data.labels.length - 2], n: c.data.datasets.length };
     });
     eq(hidden.prev, 20000, 'подпись над столбцом прошлого месяца без «Аренды»');
-    eq(await avgDigits(p, '#grouped-avg'), '4000', 'среднее пересчиталось под выбор');
+    eq(await avgDigits(p, '#grouped-avg'), '20000', 'среднее пересчиталось под выбор');
     eq(await sumDigits(p, '#grouped-avg'), await chartSum(p, 'grouped'), 'сумма пересчиталась под выбор');
     const txt = await p.evaluate(() => document.getElementById('grouped-avg').textContent);
     eq(/выбрано 4 из 5/.test(txt), true, 'подписано, сколько рядов осталось: ' + txt);
@@ -1455,7 +1491,7 @@ suite(390, 'доходность вкладов и архив закрытых',
     eq(rate, 18.3, 'средняя доходность');
   });
 
-  check('строки: закрытые сверху с «факт», открытые ниже с «ожидается» и «~»', async p => {
+  check('строки: закрытые сверху с «факт», открытые ниже с полным доходом за срок', async p => {
     const r = await p.evaluate(c => {
       DB.deposits = [{ ...c, id: 'o1', name: 'Открытый', openDate: '2025-06-01', endDate: '2099-01-01', closedAt: undefined, closedInterest: undefined, _deleted: false }, c];
       const y = _depYield('0000-01-01', '9999-12-31');
@@ -1465,7 +1501,43 @@ suite(390, 'доходность вкладов и архив закрытых',
     }, CLOSED);
     eq(r.order, 'y1,o1', 'закрытый первым');
     eq(/закрыт · факт 10\.0%/.test(r.rows[0]), true, 'закрытый: ' + r.rows[0]);
-    eq(/открыт · ожидается/.test(r.rows[1]) && /~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);
+    eq(/открыт · [\d.]+% год\./.test(r.rows[1]) && /из \+.* за срок/.test(r.rows[1]) && !/~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);
+  });
+
+  check('вкладка «Выплачено»: закрытые в периоде и открытые в «Ожидается»', async p => {
+    const r = await p.evaluate(c => {
+      DB.deposits = [c, { ...c, id: 'o2', name: 'Открытый', openDate: '2025-06-01', endDate: '2099-01-01', closedAt: undefined, closedInterest: undefined, _deleted: false }];
+      window.showPage('deposits');
+      setDepYieldPeriod('all');
+      const accRate = !!document.querySelector('#dep-yield-body .dy-rate');
+      setDepYieldTab('rec');
+      const body = document.getElementById('dep-yield-body');
+      const out = { accRate, saved: uiGet('depYieldTab'), rec: (body.querySelector('.dy-rec').textContent.match(/\d/g) || []).join(''),
+        closed: body.querySelectorAll('.dy-row').length, open: body.querySelectorAll('.dy-open').length,
+        noRate: !body.querySelector('.dy-rate'), recOn: document.getElementById('dyt-rec').style.fontWeight };
+      setDepYieldTab('acc');
+      return out;
+    }, CLOSED);
+    eq(r.accRate, true, 'по умолчанию «Начислено» со средней доходностью');
+    eq(r.saved, 'rec', 'выбор вкладки сохранён');
+    eq(r.rec, '10000', 'выплачено = проценты закрытого');
+    eq(r.closed + '|' + r.open, '1|1', 'одна строка закрытого, одна в «Ожидается»');
+    eq(r.noRate, true, 'на «Выплачено» начисленных цифр нет');
+    eq(r.recOn, '600', 'чип вкладки подсвечен');
+  });
+
+  check('отчёт за текущий год: начислено + ещё до 31.12 = доход за год', async p => {
+    const r = await p.evaluate(() => {
+      const Y = +today().slice(0, 4);
+      DB.deposits = [{ id: 'cy', name: 'Год', amount: 100000, rate: 10, openDate: Y + '-01-01', endDate: (Y + 1) + '-01-01', capitalization: 'end', updatedAt: 1 }];
+      const y = _depYield(Y + '-01-01', (Y + 1) + '-01-01');
+      const I = depositValueAt(DB.deposits[0], (Y + 1) + '-01-01') - 100000;
+      const html = _depYieldHtml(y, 'report', { per: 'за год', restLbl: 'ещё до 31.12' });
+      return { sum: y.accrued + y.expected, I, rest: y.expected, full: html.includes('dy-full'), rec: html.includes('dy-rec') };
+    });
+    eq(r.rest > 0, true, 'ещё набежит: ' + r.rest);
+    eq(Math.abs(r.sum - r.I) <= 1, true, 'итого ' + r.sum + ' ≈ доход за год ' + r.I);
+    eq(r.full && r.rec, true, 'в отчёте строки «Итого за год» и «Выплачено за год»');
   });
 
   check('архив закрытых свёрнут по умолчанию, раскрывается и запоминается', async p => {
