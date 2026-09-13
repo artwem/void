@@ -1518,12 +1518,15 @@ suite(390, 'доходность вкладов и архив закрытых',
       DB.deposits = [{ ...c, id: 'o1', name: 'Открытый', openDate: '2025-06-01', endDate: '2099-01-01', closedAt: undefined, closedInterest: undefined, _deleted: false }, c];
       const y = _depYield('0000-01-01', '9999-12-31');
       const html = _depYieldHtml(y);
-      const rows = [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('.dy-row')].map(el => el.textContent.replace(/\s+/g, ' '));
-      return { order: y.rows.map(x => x.d.id).join(','), rows };
+      const els = [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('.dy-row')];
+      return { order: y.rows.map(x => x.d.id).join(','), rows: els.map(el => el.textContent.replace(/\s+/g, ' ')),
+               bars: els.map(el => !!el.querySelector('.dy-bar')).join(','), cells: els.map(el => el.children.length).join(',') };
     }, CLOSED);
     eq(r.order, 'y1,o1', 'закрытый первым');
-    eq(/закрыт · факт 10\.0%/.test(r.rows[0]), true, 'закрытый: ' + r.rows[0]);
-    eq(/открыт · [\d.]+% год\./.test(r.rows[1]) && /из \+.* за срок/.test(r.rows[1]) && !/~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);
+    eq(r.cells, '4,4', 'строки — таблица из четырёх колонок: вклад, ставка, за период, за срок');
+    eq(/закрыт 01\.01\.26 .*10\.0%/.test(r.rows[0]), true, 'закрытый: ' + r.rows[0]);
+    eq(/до 01\.01\.99 .*[\d.]+%/.test(r.rows[1]) && !/~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);
+    eq(r.bars, 'false,true', 'полоска «сколько набежало» только у открытого');
   });
 
   check('вкладка «Выплачено»: закрытые в периоде и открытые в «Ожидается»', async p => {
