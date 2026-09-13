@@ -1315,7 +1315,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.77.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.77.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3423,7 +3423,11 @@ function _renderStatsSummary(lastN){
   const totalIncAll = lastN.reduce((s,x)=>s+x.totalInc,0);
   const totalInc = lastN.reduce((s,x)=>s+(x.tracked?x.totalInc:0),0);
   const firstT = lastN.find(x=>x.tracked);
-  const expNote = totalInc < totalIncAll && firstT ? 'учёт трат с '+SHORT_MONTHS[firstT.m] : '';
+  // Граница касается всей сводки (проценты, «Накоплено», «Из чего накоплено») — поэтому
+  // подпись общая, под плашкой по центру, а не мелко под одной цифрой
+  const _MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const expNote = totalInc < totalIncAll && firstT
+    ? 'Расходы учитываются с '+_MONTHS_GEN[firstT.m]+' '+firstT.y+' — доходы до этого в «Накоплено» не входят' : '';
   const balance  = totalInc - totalExp;
   const expPct   = totalInc > 0 ? totalExp / totalInc * 100 : null;
   const savePct  = totalInc > 0 ? balance  / totalInc * 100 : null;
@@ -3486,16 +3490,16 @@ function _renderStatsSummary(lastN){
     +[
       {label:'Расходы',   val:totalExp, color:'var(--red,#d85a30)',                                         pct:expPct},
       {label:'Доходы',    val:totalIncAll, color:'var(--green,#1d9e75)',                                     pct:null},
-      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue,#185fa5)':'var(--red,#d85a30)', abs:true, pct:savePct, note:expNote}
+      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue,#185fa5)':'var(--red,#d85a30)', abs:true, pct:savePct}
     ].map((s,si)=>
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
       +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmtH(s.abs?Math.abs(s.val):s.val)}</div>`
       +(s.pct!==null ? `<div style="font-size:10px;color:${s.color};opacity:0.8;margin-top:2px">${s.pct.toFixed(1)}%</div>` : '')
-      +(s.note ? `<div class="ss-note" style="font-size:10px;color:var(--muted);margin-top:2px">${s.note}</div>` : '')
       +`</div>`
     ).join('')
     +`</div>`;
+  if(expNote) html += `<div class="ss-note" style="font-size:11px;color:var(--muted);text-align:center;margin:-4px 0 10px">${expNote}</div>`;
 
   // Savings split bar — expenses (red) | накоплено (blue)
   if(totalInc > 0){
