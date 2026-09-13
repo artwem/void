@@ -1009,19 +1009,22 @@ suite(390, 'ручная бронь особых', () => {
   const setup = p => p.evaluate(() => {
     const n = new Date();
     const mk = (y, m) => y + '-' + String(m + 1).padStart(2, '0');
-    // Две точки истории по «Хотелкам» (cat 4) — иначе категория не попадёт
-    // в прогноз: одна точка закономерностью не считается.
+    // Две точки истории по «Маме» (cat 5) и «Подпискам» (cat 6) — иначе категория
+    // не попадёт в прогноз: одна точка закономерностью не считается.
     // Две забронированные категории: одну гасит чек с галочкой, второй правит
     // сумму следующий чек. С одной строкой второй проверке нечего было бы найти.
+    // С v1.79.0 обязательность — у категории, и ВСЕ её траты месяца идут в
+    // «оплачено»: поэтому категории без трат в текущем месяце фикстуры.
     for (const k of [1, 2]) {
       const d = new Date(n.getFullYear(), n.getMonth() - k, 12);
       const key = mk(d.getFullYear(), d.getMonth()) + '-12';
       DB.expenses.push({ id: 'sp' + k, date: key,
-        cat: 4, catId: 'cat0005', amount: 12000, comment: '', special: true, updatedAt: 1 });
+        cat: 5, catId: 'cat0006', amount: 12000, comment: '', updatedAt: 1 });
       DB.expenses.push({ id: 'sq' + k, date: key,
-        cat: 2, catId: 'cat0003', amount: 6000, comment: '', special: true, updatedAt: 1 });
+        cat: 6, catId: 'cat0007', amount: 6000, comment: '', updatedAt: 1 });
     }
     DB.limits[mk(n.getFullYear(), n.getMonth())] = DB.categories.map(() => 30000);
+    DB.catOblig = { cat0001: true, cat0006: true, cat0007: true };
     saveDB();
     sessionStorage.setItem('oblOpen', '1');
     window.showPage('budget', document.getElementById('nav-budget'));
@@ -1119,15 +1122,141 @@ suite(390, 'ручная бронь особых', () => {
       // Локальная правка после «синка»: baseline пуст, значит удалённое значение
       // для этого месяца применяться не должно — иначе своя бронь гибнет.
       DB._lastSyncedSpecPlan = {};
-      DB.specPlan = { [mk]: { cat0005: 0 } };
+      DB.specPlan = { [mk]: { cat0006: 0 } };
       const p = buildPayload();
-      mergePullData({ specPlan: { [mk]: { cat0005: 7777 } } });
+      mergePullData({ specPlan: { [mk]: { cat0006: 7777 } } });
       return { inPayload: !!p.specPlan, baselineStripped: p._lastSyncedSpecPlan === undefined,
-        kept: DB.specPlan[mk].cat0005 };
+        kept: DB.specPlan[mk].cat0006 };
     });
     eq(g.inPayload, true, 'specPlan уходит в payload');
     eq(g.baselineStripped, true, '_lastSyncedSpecPlan вырезан из payload');
     eq(g.kept, 0, 'локальная правка пережила merge');
+  });
+});
+
+// Обязательные и разовые (v1.79.0): одна галочка «особое» разделена на свойство
+// категории (обязательная — бронируется по истории) и отметку траты (разовая —
+// вне темпа, но вперёд не бронируется). Сторожим миграцию старых особых, то,
+// что разовая не создаёт брони, и экран разметки.
+suite(390, 'обязательные и разовые', () => {
+  check('миграция: особые в ≥3 месяцах → обязательная категория, остальные — разовые', async p => {
+    const g = await p.evaluate(() => {
+      const saved = { exp: DB.expenses, obl: DB.catOblig };
+      const ms = ['2026-03', '2026-04', '2026-05'];
+      DB.expenses = [
+        ...ms.map((m, i) => ({ id: 'mA' + i, date: m + '-01', cat: 0, catId: 'cat0001', amount: 33000, special: true, updatedAt: 1 })),
+        ...ms.slice(0, 2).map((m, i) => ({ id: 'mB' + i, date: m + '-10', cat: 4, catId: 'cat0005', amount: 20000, special: true, updatedAt: 1 })),
+      ];
+      delete DB.catOblig;
+      _ensureCatIds();
+      const r = {
+        obl: Object.keys(DB.catOblig).sort().join(','),
+        rentFlag: DB.expenses.filter(e => e.catId === 'cat0001').some(e => e.special),
+        wishOneoff: DB.expenses.filter(e => e.catId === 'cat0005').every(e => _isOneoff(e)),
+      };
+      DB.expenses = saved.exp; DB.catOblig = saved.obl;
+      return r;
+    });
+    eq(g.obl, 'cat0001', 'обязательные после миграции');
+    eq(g.rentFlag, false, 'у трат обязательной категории снята отметка');
+    eq(g.wishOneoff, true, 'двухмесячные «Хотелки» остались разовыми');
+  });
+
+  check('миграция ждёт данных: без трат catOblig не создаётся', async p => {
+    const g = await p.evaluate(() => {
+      const saved = { exp: DB.expenses, obl: DB.catOblig };
+      DB.expenses = []; delete DB.catOblig;
+      _ensureCatIds();
+      const r = DB.catOblig === undefined;
+      DB.expenses = saved.exp; DB.catOblig = saved.obl;
+      return r;
+    });
+    eq(g, true, 'catOblig не создан на пустых данных');
+  });
+
+  check('разовая в истории не бронируется, обязательная — бронируется', async p => {
+    const g = await p.evaluate(() => {
+      const hist = [1, 2].map(k => ({ exps: [
+        { cat: 0, amount: 30000, date: '2026-0' + k + '-02' },                  // Аренда — обязательная
+        { cat: 4, amount: 15000, date: '2026-0' + k + '-12', special: true },   // Хотелки — разовая
+      ] }));
+      return _specialForecastByCat([], hist).map(f => f.cat).join(',');
+    });
+    eq(g, '0', 'в брони только обязательная категория');
+  });
+
+  check('разовая сегодня не входит в «потрачено сегодня»', async p => {
+    const g = await p.evaluate(() => {
+      const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+      DB.limits[monthKey(y, m)] = DB.categories.map(() => 30000);
+      const env = () => {
+        let ts = 0; getMonthExpenses(y, m).forEach(e => { ts += e.amount; });
+        const f = _budgetFree(y, m, ts, DB.categories.length * 30000, _monthForecast(y, m));
+        return { spent: _dayEnvelopeFrom(y, m, f, 5).spentToday, one: f.oneoffSpent };
+      };
+      const before = env();
+      DB.expenses.push({ id: 'oneT', date: today(), cat: 4, catId: 'cat0005', amount: 9000, special: true, updatedAt: 1 });
+      const after = env();
+      DB.expenses = DB.expenses.filter(e => e.id !== 'oneT');
+      return { before, after };
+    });
+    eq(g.after.spent, g.before.spent, '«потрачено сегодня» без разовой');
+    eq(g.after.one - g.before.one, 9000, 'разовая учтена в oneoffSpent');
+  });
+
+  check('модалка траты: в обязательной категории выбора нет, крупная сумма даёт подсказку', async p => {
+    const g = await p.evaluate(() => {
+      openAddExpense();
+      const sel = document.getElementById('exp-cat'), amt = document.getElementById('exp-amount');
+      const seg = document.getElementById('exp-spec-seg'), note = document.getElementById('exp-kind-note');
+      sel.value = '0'; _expKindUi();
+      const oblig = { seg: seg.style.display, note: note.style.display };
+      sel.value = '2'; amt.value = '7 000'; _expKindUi();
+      const big = { seg: seg.style.display, note: note.style.display };
+      amt.value = '500'; _expKindUi();
+      const small = note.style.display;
+      closeModal('modal-expense');
+      return { oblig, big, small };
+    });
+    eq(g.oblig.seg, 'none', 'сегмент скрыт в обязательной');
+    eq(g.oblig.note, 'block', 'пояснение про обязательную');
+    eq(g.big.seg + '|' + g.big.note, 'flex|block', 'крупная трата: сегмент и подсказка');
+    eq(g.small, 'none', 'мелкая трата без подсказки');
+  });
+
+  check('экран разметки: крупная без отметки видна, тап отмечает разовой; категорию можно сделать обязательной', async p => {
+    const g = await p.evaluate(() => {
+      DB.expenses.push({ id: 'bigU', date: today(), cat: 3, catId: 'cat0004', amount: 12000, comment: 'Куртка', updatedAt: 1 });
+      saveDB();
+      openKindsManager();
+      const btn = [...document.querySelectorAll('#kinds-history .kind-tgl')]
+        .find(b => b.getAttribute('onclick').includes('bigU'));
+      const label = btn && btn.textContent;
+      btn && btn.click();
+      const marked = !!DB.expenses.find(e => e.id === 'bigU').special;
+      const meta0 = (DB.listsMeta || {}).categories || 0;
+      document.querySelectorAll('#kinds-cats .kind-tgl')[6].click();   // «Подписки»
+      const r = { label, marked, obl: !!DB.catOblig.cat0007, touched: (DB.listsMeta.categories || 0) > meta0,
+        catLabel: document.querySelectorAll('#kinds-cats .kind-tgl')[6].textContent };
+      closeModal('modal-kinds');
+      return r;
+    });
+    eq(g.label, 'разовая?', 'крупная без отметки предложена');
+    eq(g.marked, true, 'тап отметил разовой');
+    eq(g.obl, true, 'категория стала обязательной');
+    eq(g.touched, true, 'listsMeta.categories обновлён для синка');
+    eq(g.catLabel, 'обязательная', 'подпись переключателя');
+  });
+
+  check('синк: catOblig приходит вместе с выигравшим списком категорий', async p => {
+    const g = await p.evaluate(() => {
+      const d = JSON.parse(JSON.stringify(buildPayload()));
+      d.catOblig = { cat0002: true };
+      d.listsMeta = { ...(d.listsMeta || {}), categories: Date.now() + 60000 };
+      mergePullData(d);
+      return Object.keys(DB.catOblig).join(',');
+    });
+    eq(g, 'cat0002', 'обязательность взята с удалённого устройства');
   });
 });
 
@@ -1764,7 +1893,7 @@ suite(390, 'демо-набор покрывает всё приложение',
   check('бронь особых заполнена и видна в шапке «Бюджета»', async p => {
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
     const txt = await p.evaluate(() => document.getElementById('budget-days-row').parentElement.textContent);
-    eq(/особые/.test(txt), true, 'строка особых на месте');
+    eq(/обязательные/.test(txt), true, 'строка обязательных на месте');
     eq(await p.evaluate(() => Object.keys(DB.specPlan[monthKey(new Date().getFullYear(), new Date().getMonth())] || {}).length), 2, 'категорий в брони');
   });
 
@@ -1851,10 +1980,10 @@ suite(390, 'дни недели и подушка', () => {
     const got = await p.evaluate(() => {
       const saved = DB.expenses;
       DB.expenses = [
-        {id:'w1', date:'2026-06-01', cat:0, catId:DB.catIds[0], amount:1000},               // Пн
-        {id:'w2', date:'2026-06-08', cat:0, catId:DB.catIds[0], amount:3000},               // Пн
-        {id:'w3', date:'2026-06-02', cat:0, catId:DB.catIds[0], amount:500, special:true},  // Вт — особая, вне
-        {id:'w4', date:'2026-06-03', cat:0, catId:DB.catIds[0], amount:700, _deleted:true}, // Ср — удалена, вне
+        {id:'w1', date:'2026-06-01', cat:1, catId:DB.catIds[1], amount:1000},               // Пн
+        {id:'w2', date:'2026-06-08', cat:1, catId:DB.catIds[1], amount:3000},               // Пн
+        {id:'w3', date:'2026-06-02', cat:1, catId:DB.catIds[1], amount:500, special:true},  // Вт — особая, вне
+        {id:'w4', date:'2026-06-03', cat:1, catId:DB.catIds[1], amount:700, _deleted:true}, // Ср — удалена, вне
       ];
       const wd = _weekdayAvgs('2026-06-01', '2026-06-14'); // две полные недели Пн–Вс
       DB.expenses = saved;
@@ -1886,8 +2015,8 @@ suite(390, 'дни недели и подушка', () => {
     const got = await p.evaluate(() => {
       const saved = DB.expenses;
       DB.expenses = [
-        {id:'w1', date:'2026-06-01', cat:0, catId:DB.catIds[0], amount:1000}, // Пн
-        {id:'w2', date:'2026-06-08', cat:0, catId:DB.catIds[0], amount:3000}, // Пн
+        {id:'w1', date:'2026-06-01', cat:1, catId:DB.catIds[1], amount:1000}, // Пн
+        {id:'w2', date:'2026-06-08', cat:1, catId:DB.catIds[1], amount:3000}, // Пн
       ];
       // Аналитика зовёт с первого числа раннего месяца, отчёт — с даты первой
       // траты; движок обязан привести оба к одному началу

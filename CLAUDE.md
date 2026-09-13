@@ -99,7 +99,8 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   categories:      ['ЖКУ + аренда', ...],    // ordered list
   catIds:          ['k3x9a1b2', ...],         // stable id per category, same position as categories[]
   catColors:       {k3x9a1b2: '#185fa5', ...}, // catId → hex color
-  expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index
+  catOblig:        {k3x9a1b2: true},          // обязательные категории (since v1.79.0); мержится вместе с categories по listsMeta.categories; undefined = миграция ещё не прошла
+  expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index; special = «разовая» (since v1.79.0)
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],  // point-in-time balance per bank per date
   banks:           ['Сбербанк', ...],         // debit bank names
@@ -167,6 +168,22 @@ Each tab has a `render*()` function called after any data change:
 **Month-end spend forecast — one engine, two consumers (since v1.49.0).** `_monthForecast(y, m)` (in `═══ stats.js ═══`, right before `function renderStats(){`) is the single source for both the «Прогноз» line/total on «День за днём» and the «прогноз» chip in the Budget header; `_budgetFree(y, m, …, fc)` takes the same `fc`. Formulas, the mean×frequency reserve, what was tried and rejected — skill `void-forecast` (`.claude/skills/void-forecast/SKILL.md`). **Инварианты, которые нельзя нарушать без чтения скилла:** не ослаблять фильтр «≥2 месяцев истории» в `_specialForecastByCat` (смещение переворачивается с −10.7% на +11%); печатаемая сумма прогноза всегда полная (`fc.total`), тумблер «Особые» влияет только на нарисованную линию.
 
 **Дневной конверт «Остаток на сегодня» (since v1.60.0).** `_dayEnvelopeFrom(y, m, f, daysLeft)` (в `═══ budget.js ═══`, сразу за `_budgetFree`) — единственный источник цифры для двух мест: плашки `#day-envelope` на вкладке «День» (`_renderDayEnvelope()`, обёртка `_dayEnvelope()` считает `f`/`daysLeft` сама) и первой строки `#budget-days-row` в шапке «Бюджета». Потолок дня = `(f.varLeft + потрачено_сегодня) / daysLeft`, остаток = потолок − потрачено сегодня. **Инварианты:** знаменатель («из N ₽») в течение дня не меняется — сегодняшние траты уже вычтены из `varLeft`, поэтому прибавка их обратно даёт ту же величину; особые в «потрачено сегодня» не входят (они в резерве `_budgetFree`), но превышение резерва честно размазывается по оставшимся дням; на не-сегодняшней дате плашки нет вовсе. До v1.60.0 в шапке «Бюджета» стояла норма `varLeft / daysLeft` — то же деление, но она не убывала по мере трат дня и читалась как «столько надо тратить».
+
+**Обязательные и разовые вместо «особых» (since v1.79.0).** Одна галочка «особое» отвечала на
+два вопроса сразу — вынуть трату из темпа «в день» и ждать ли её в следующих месяцах, — и прогноз
+бронировал деньги под разовые покупки. Теперь: **обязательная** — свойство категории
+(`DB.catOblig[catId]`), бронируется по истории; **разовая** — `expense.special` в обычной категории,
+вынута из темпа, но вперёд не бронируется. Хелперы в `═══ db.js ═══` перед `getMonthExpenses`:
+`_isObligCat(i)`, `_isOblig(e)`, `_isOneoff(e)`, `_isSpec(e)` (любой из двух — «вне темпа»),
+`_kindBadge(e)`. **Инварианты:** `_specialCatStats` (бронь) смотрит только `_isOblig`, всё
+«вне темпа» (pace, конверт дня, дни недели, тумблер «Все / Повседн.») — `_isSpec`; `e.special`
+напрямую больше нигде не читать. Миграция `_migrateOblig()` (конец `_ensureCatIds`): категория с
+особыми в ≥3 разных месяцах → обязательная, у её трат `special` снимается; до первой траты не
+запускается (иначе свежее устройство до pull зафиксировало бы пустую разметку). Порог подсказки
+«разовая?» — `uiGet('oneoffThreshold', 6000)`, device-local: подсказка в модалке траты
+(`_expKindUi`) и тост с кнопкой после быстрого ввода/шаблона (`_offerOneoff`). Экран разметки и
+истории — `#modal-kinds` (`renderKinds`, `toggleCatOblig`, `toggleExpOneoff`), вход из Настроек и
+из модалки брони. Сюита `обязательные и разовые` в `tools/dt-check.mjs`.
 
 **Ручная бронь особых (since v1.61.0, UI переехал в модалку в v1.62.0).** Строка «особые» в шапке Бюджета — целиком тап-зона (без слова «править»: строкой ниже висит «Лимиты ✎», и две ссылки правки спорили), открывает модалку `#modal-spec` «Ожидаемые особые»: сумма и кнопка «не будет / вернуть» на каждую забронированную категорию, «Всё оплачено», «Вернуть прогноз», «Отмена»/«Сохранить». Правки живут в черновике `_specDraftRows` и уходят в базу только по «Сохранить» — как в редакторе лимитов. Хранится в `DB.specPlan[monthKey][catId]`, применяется одной точкой в `_monthForecast` через `_applySpecPlan`, синкается 3-way как `limits` (baseline `_lastSyncedSpecPlan`). Подробности и мотивация — скилл `void-forecast`.
 

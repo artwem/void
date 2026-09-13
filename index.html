@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.73.1">
+<link rel="stylesheet" href="css/app.css?v=1.79.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -201,9 +201,9 @@ if ('serviceWorker' in navigator) {
           <span id="dcm-full" onclick="setDayCompareMode('full')" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
           <span id="dcm-today" onclick="setDayCompareMode('today')" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
         </div>
-        <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Особые расходы">
-          <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Особые</span>
-          <span id="dsm-off" onclick="setDayInclSpecial(false)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Без</span>
+        <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Обязательные и разовые траты: показывать или только повседневные">
+          <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Все</span>
+          <span id="dsm-off" onclick="setDayInclSpecial(false)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Повседн.</span>
         </div>
         <div id="day-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Глубина средней линии, месяцев">
           <span id="dam-3" onclick="setDayAvgMonths(3)" style="padding:2px 5px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
@@ -542,6 +542,11 @@ if ('serviceWorker' in navigator) {
       <span class="setting-value" id="cat-count-display"></span>
       <span class="setting-chevron">›</span>
     </div>
+    <div class="setting-row" onclick="openKindsManager()">
+      <span class="setting-label" style="flex:1">Обязательные и разовые</span>
+      <span class="setting-value" id="kinds-count-display"></span>
+      <span class="setting-chevron">›</span>
+    </div>
     <div class="setting-row" onclick="openTemplatesManager()">
       <span class="setting-label" style="flex:1">Шаблоны трат</span>
       <span class="setting-value" id="tmpl-count-display"></span>
@@ -739,16 +744,17 @@ if ('serviceWorker' in navigator) {
     <h2 id="expense-modal-title">Добавить расход</h2>
     <div class="fgrp">
       <label class="flbl">Категория</label>
-      <select id="exp-cat"></select>
+      <select id="exp-cat" onchange="_expKindUi()"></select>
     </div>
-    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="exp-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
+    <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="exp-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this);_expKindUi()"/></div>
     <div class="fgrp"><label class="flbl">Дата</label><input type="date" id="exp-date"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="exp-comment" placeholder="Необязательно"/></div>
-    <div class="fgrp"><label class="flbl">Тип</label>
+    <div class="fgrp"><label class="flbl">Вид</label>
       <div class="spec-seg" id="exp-spec-seg">
-        <span data-v="" onclick="setExpSpecial('')">Обычный</span>
-        <span data-v="1" onclick="setExpSpecial('1')">Особое</span>
+        <span data-v="" onclick="setExpSpecial('')">Обычная</span>
+        <span data-v="1" onclick="setExpSpecial('1')">Разовая</span>
       </div>
+      <div id="exp-kind-note" class="kind-note" style="display:none"></div>
     </div>
     <div class="btn-row">
       <button class="btn danger small" id="exp-delete-btn" onclick="deleteExpense()" style="display:none">Удалить</button>
@@ -768,11 +774,12 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Сумма, ₽</label><input type="text" id="tmpl-amount" placeholder="0" inputmode="decimal" oninput="formatMoneyInput(this)"/></div>
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="tmpl-comment" placeholder="Необязательно"/></div>
     <div class="fgrp"><label class="flbl">Цвет</label><div id="tmpl-color-picker" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px"></div></div>
-    <div class="fgrp"><label class="flbl">Тип</label>
+    <div class="fgrp"><label class="flbl">Вид</label>
       <div class="spec-seg" id="tmpl-spec-seg">
-        <span data-v="" onclick="setTmplSpecial('')">Обычный</span>
-        <span data-v="1" onclick="setTmplSpecial('1')">Особое</span>
+        <span data-v="" onclick="setTmplSpecial('')">Обычная</span>
+        <span data-v="1" onclick="setTmplSpecial('1')">Разовая</span>
       </div>
+      <div class="kind-note">Обязательность задаётся категорией — «Обязательные и разовые» в Настройках.</div>
     </div>
     <div class="btn-row">
       <button class="btn danger small" id="tmpl-delete-btn" onclick="deleteTemplate()" style="display:none">Удалить</button>
@@ -823,22 +830,58 @@ if ('serviceWorker' in navigator) {
 <div class="overlay" data-dt="dialog" id="modal-spec">
   <div class="sheet">
     <button class="close-btn" onclick="closeModal('modal-spec')"><svg class="ico"><use href="#i-close"/></svg></button>
-    <h2>Ожидаемые особые</h2>
+    <h2>Ожидаемые обязательные</h2>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.45">
-      Прогноз берёт их из истории категории и держит эти деньги в резерве — на них
-      уменьшается дневной остаток. Что в этом месяце уже не случится — обнулите,
-      деньги вернутся в бюджет.
+      Прогноз берёт их из истории обязательных категорий и держит эти деньги в
+      резерве — на них уменьшается дневной остаток. Что в этом месяце уже не
+      случится — обнулите, деньги вернутся в бюджет. Разовые не бронируются.
     </p>
     <div id="spec-editor-rows"></div>
+    <div id="spec-editor-empty" style="display:none;font-size:13px;color:var(--muted);padding:8px 0">Ждать в этом месяце нечего.</div>
     <div id="spec-editor-total" style="font-size:13px;color:var(--muted);padding:10px 0 2px;text-align:right"></div>
     <div class="btn-row">
       <button class="btn small" style="white-space:nowrap" onclick="specDraftAllPaid()">Всё оплачено</button>
       <button class="btn small" style="white-space:nowrap" onclick="specDraftReset()">Вернуть прогноз</button>
     </div>
+    <div class="setting-row" style="margin-top:10px;padding-left:0;padding-right:0" onclick="closeModal('modal-spec');openKindsManager()">
+      <span class="setting-label" style="flex:1">История и разметка</span>
+      <span class="setting-chevron">›</span>
+    </div>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn" onclick="closeModal('modal-spec')">Отмена</button>
       <button class="btn primary" onclick="saveSpecPlan()">Сохранить</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: KINDS — обязательные категории, история разовых, порог -->
+<div class="overlay" data-dt="dialog" id="modal-kinds">
+  <div class="sheet">
+    <button class="close-btn" onclick="closeModal('modal-kinds')"><svg class="ico"><use href="#i-close"/></svg></button>
+    <h2>Обязательные и разовые</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.45">
+      <b>Обязательные</b> — категории, которые повторяются каждый месяц (аренда, связь):
+      прогноз ждёт их и держит деньги в резерве. <b>Разовые</b> — отметка на отдельной
+      трате (подарок, ремонт): она не портит темп «в день», но и не ждётся в следующих месяцах.
+    </p>
+    <div class="fgrp" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <label class="flbl" style="margin:0;flex:1">Предлагать отметить разовой от</label>
+      <input type="text" id="kinds-threshold" inputmode="decimal" class="finp" oninput="formatMoneyInput(this)" onchange="setOneoffThreshold(this.value)" style="width:96px;text-align:right;padding:7px 8px">
+      <span style="color:var(--muted)">₽</span>
+    </div>
+    <div class="kinds-sec">Категории</div>
+    <div id="kinds-cats"></div>
+    <div class="kinds-sec" style="display:flex;align-items:center;gap:8px">
+      <span style="flex:1">История за</span>
+      <div class="spec-seg" id="kinds-period" style="font-size:11px">
+        <span data-v="3" onclick="setKindsPeriod(3)">3</span>
+        <span data-v="6" onclick="setKindsPeriod(6)">6</span>
+        <span data-v="12" onclick="setKindsPeriod(12)">12</span>
+      </div>
+      <span>мес</span>
+    </div>
+    <div id="kinds-history"></div>
+    <div class="btn-row" style="margin-top:12px"><button class="btn primary" onclick="closeModal('modal-kinds')">Готово</button></div>
   </div>
 </div>
 
@@ -1316,7 +1359,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.78.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1412,15 +1455,35 @@ let currentMonth = {y:0,m:0};
 let currentDay = '';
 let editingExpenseId = null;
 let _selectedExpSpecial = '';
-// Тег особого расхода булев. Старые значения 'oneoff'/'recurring' остаются
-// в базе и читаются как truthy — миграция не нужна.
+// Вид траты (v1.79.0): обычная / обязательная / разовая. См. _isOblig рядом с
+// getMonthExpenses. expense.special теперь значит «разовая» — старые значения
+// 'oneoff'/'recurring' остаются в базе и читаются как truthy.
 const SPEC_BADGE = '✦';
-const SPEC_LABEL = 'особое';
 function setExpSpecial(v){
   _selectedExpSpecial = v||'';
   document.querySelectorAll('#exp-spec-seg span').forEach(s=>{
     s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedExpSpecial);
   });
+  _expKindUi();
+}
+// Сегмент «Обычная / Разовая» в модалке траты: в обязательной категории выбора
+// нет (вид задан категорией), в обычной — при сумме от порога подсказка.
+function _expKindUi(){
+  const seg = document.getElementById('exp-spec-seg');
+  const note = document.getElementById('exp-kind-note');
+  if(!seg || !note) return;
+  const cat = parseInt(document.getElementById('exp-cat').value);
+  const amt = parseMoney(document.getElementById('exp-amount').value) || 0;
+  if(_isObligCat(cat)){
+    seg.style.display = 'none';
+    note.style.display = 'block';
+    note.textContent = 'Категория обязательная — трата учитывается в резерве, а не в темпе «в день».';
+    return;
+  }
+  seg.style.display = 'flex';
+  const big = !_selectedExpSpecial && amt >= _oneoffThreshold();
+  note.style.display = big ? 'block' : 'none';
+  if(big) note.textContent = 'Крупная трата. Если разовая — отметьте: она не исказит темп «в день» и прогноз.';
 }
 let _selectedTmplSpecial = '';
 function setTmplSpecial(v){
@@ -1737,6 +1800,7 @@ function _ensureCatIds(){
   }));
   _migrateCatKeyed();
   _reindexCats();
+  _migrateOblig();
 }
 
 // ─── ЛИМИТЫ И ЦВЕТА КАТЕГОРИЙ — КЛЮЧ catId (since v1.64.0) ──────────
@@ -1802,6 +1866,62 @@ function _reindexCats(){
 }
 
 
+// ─── ВИД ТРАТЫ: ОБЯЗАТЕЛЬНАЯ / РАЗОВАЯ (since v1.79.0) ──────────────
+// До v1.79.0 одна галочка «особое» отвечала на два разных вопроса: вынуть ли
+// трату из темпа «в день» и ждать ли её в следующих месяцах. Аренде нужно
+// и то и другое, велосипеду — только первое, а прогноз отвечал «да» на оба:
+// «Хотелки» с двумя покупками бронировали ~10к каждый месяц.
+//   обязательная — свойство КАТЕГОРИИ (DB.catOblig[catId]); прогноз бронирует
+//                  по истории, трата вне темпа;
+//   разовая      — отметка на трате (expense.special) в обычной категории;
+//                  вне темпа, но НЕ бронируется вперёд.
+// _isSpec — «отдельная» трата любого из двух видов: всё, что вынуто из темпа.
+function _isObligCat(ci){
+  const id = (DB.catIds||[])[ci];
+  return !!(id && DB.catOblig && DB.catOblig[id]);
+}
+function _isOblig(e){ return _isObligCat(e.cat); }
+function _isOneoff(e){ return !!e.special && !_isObligCat(e.cat); }
+function _isSpec(e){ return !!e.special || _isObligCat(e.cat); }
+function _kindBadge(e){
+  if(_isObligCat(e.cat)) return '<span class="spec-badge">обяз.</span>';
+  return e.special ? '<span class="spec-badge">' + SPEC_BADGE + ' разовая</span>' : '';
+}
+// Порог «предложить отметить разовой» — настройка устройства, как тема.
+function _oneoffThreshold(){ return Math.max(0, parseInt(uiGet('oneoffThreshold', '6000')) || 0); }
+
+// Перенос старых «особых»: категория, где особые были в ≥3 разных месяцах,
+// становится обязательной, остальные особые остаются на трате как разовые.
+// На данных пользователя: Аренда, Связь, Мама, Спорт → обязательные;
+// Хотелки (2 мес), Подарки, МРТ → разовые. Порог 3, а не 2: при двух
+// месяцах «Хотелки» с велосипедом и курсом стали бы обязательными.
+// Отметка special на тратах обязательных категорий снимается — иначе снятие
+// обязательности с категории молча превратило бы всю её аренду в разовые.
+// Пока трат нет (свежее устройство до первого pull), миграцию откладываем:
+// DB.catOblig остаётся undefined, и _ensureCatIds после merge повторит попытку.
+function _migrateOblig(){
+  if(DB.catOblig && typeof DB.catOblig === 'object') return;
+  const live = (DB.expenses||[]).filter(e => e && !e._deleted);
+  if(!live.length) return;
+  const months = {};
+  live.forEach(e => {
+    if(!e.special || !e.catId || !e.date) return;
+    (months[e.catId] = months[e.catId] || new Set()).add(e.date.slice(0, 7));
+  });
+  const map = {};
+  Object.keys(months).forEach(id => {
+    if(months[id].size >= 3 && (DB.catIds||[]).includes(id)) map[id] = true;
+  });
+  DB.catOblig = map;
+  const now = Date.now();
+  (DB.expenses||[]).forEach(e => {
+    if(e && e.special && map[e.catId]){ e.special = null; e.updatedAt = now; }
+  });
+  (DB.templates||[]).forEach(t => {
+    if(t && t.special && map[t.catId]){ t.special = null; t.updatedAt = now; }
+  });
+}
+
 function getMonthExpenses(y,m){
   const k = monthKey(y,m);
   return DB.expenses.filter(e=>e.date.startsWith(k) && !e._deleted);
@@ -1831,7 +1951,7 @@ function toast(msg, type){
   _toastTimer=setTimeout(()=>{ el.classList.remove('show','ok','err'); },2200);
 }
 // Toast with an "Отменить" action button. onUndo fires if tapped within `ms`.
-function toastUndo(msg, onUndo, ms=5000){
+function toastUndo(msg, onUndo, ms=5000, label='Отменить'){
   const el=document.getElementById('toast');
   if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
   el.innerHTML='';
@@ -1839,7 +1959,7 @@ function toastUndo(msg, onUndo, ms=5000){
   span.textContent=msg;
   const btn=document.createElement('button');
   btn.className='toast-undo';
-  btn.textContent='Отменить';
+  btn.textContent=label;
   el.appendChild(span); el.appendChild(btn);
   el.classList.add('show','action');
   const hide=()=>{ el.classList.remove('show','action'); };
@@ -2069,9 +2189,15 @@ function changeDay(d){
 // в день оплаты аренды. Прогноз — МИНИМУМ особых за 3 прошлых месяца, а не
 // среднее: минимум приближает повторяющуюся часть (аренда, ЖКУ, подписки)
 // и отсекает разовые всплески — холодильник попадёт лишь в один месяц из трёх.
+// v1.79.0: «особые» = обязательные + разовые. Обе вынуты из темпа (specSpent),
+// но бронь (specRemain, фолбэк-план) строится только по обязательным.
 function _budgetFree(y, m, totalSpent, totalLimit, fc){
-  let specSpent = 0;
-  getMonthExpenses(y,m).forEach(e => { if(e.special) specSpent += e.amount; });
+  let specSpent = 0, oneoffSpent = 0;
+  getMonthExpenses(y,m).forEach(e => {
+    if(!_isSpec(e)) return;
+    specSpent += e.amount;
+    if(_isOneoff(e)) oneoffSpent += e.amount;
+  });
   // Резерв особых берём из общего движка прогноза (_monthForecast): факт этого
   // месяца + покатегорийные ещё не оплаченные. Так «особые» в бюджете совпадают
   // с тем, что прогноз «День за днём» добавляет к концу месяца.
@@ -2085,15 +2211,16 @@ function _budgetFree(y, m, totalSpent, totalLimit, fc){
       const exps = getMonthExpenses(d.getFullYear(), d.getMonth());
       if(!exps.length) continue;
       let sum = 0;
-      exps.forEach(e => { if(e.special) sum += e.amount; });
+      exps.forEach(e => { if(_isOblig(e)) sum += e.amount; });
       if(specPlan === null || sum < specPlan) specPlan = sum;
     }
+    if(specPlan !== null) specPlan += oneoffSpent;
   }
   if(specPlan === null) specPlan = 0;
   const reserve  = Math.max(specSpent, specPlan);
   const varSpent = totalSpent - specSpent;
   const varLimit = totalLimit - reserve;
-  return {specSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
+  return {specSpent, oneoffSpent, specPlan, reserve, varSpent, varLimit, varLeft: varLimit - varSpent};
 }
 
 // Дневной конверт (v1.60.0): сколько ещё можно потратить сегодня, чтобы уложиться
@@ -2109,7 +2236,7 @@ function _dayEnvelopeFrom(y, m, f, daysLeft){
   if(!f || f.varLimit <= 0 || daysLeft <= 0) return null;
   const todayStr = today();
   let spentToday = 0;
-  getMonthExpenses(y, m).forEach(e => { if(!e.special && e.date === todayStr) spentToday += e.amount; });
+  getMonthExpenses(y, m).forEach(e => { if(!_isSpec(e) && e.date === todayStr) spentToday += e.amount; });
   const cap = Math.round((f.varLeft + spentToday) / daysLeft);
   return {cap, spentToday, left: cap - spentToday, daysLeft};
 }
@@ -2134,16 +2261,18 @@ function _dayEnvelope(){
 // Разворот держим в sessionStorage, как остальные UI-состояния.
 function _oblRowHtml(f, list){
   const remain = Math.max(0, f.reserve - f.specSpent);
-  const clickable = list.length > 0;
+  const oblPaid = f.specSpent - (f.oneoffSpent || 0);
   // Вся строка — одна тап-зона, без слова «править»: строкой ниже висит
   // «Лимиты ✎» у секции категорий, и две ссылки правки в двух сантиметрах
-  // друг от друга читались как одно и то же действие.
-  return '<div' + (clickable ? ' onclick="openSpecEditor()"' : '') +
-    ' style="display:flex;gap:8px;align-items:baseline' + (clickable ? ';cursor:pointer' : '') + '">' +
-    '<span>особые ' + fmtH(f.reserve) + '</span>' +
-    '<span style="color:var(--hint)">оплачено ' + fmtH(f.specSpent) +
-      (remain > 0 ? ' · ждём ' + fmtH(remain) : ' · резерв выбран') + '</span>' +
-    (clickable ? '<span style="margin-left:auto;color:var(--muted);font-size:15px;line-height:1">›</span>' : '') +
+  // друг от друга читались как одно и то же действие. С v1.79.0 кликабельна
+  // всегда: в модалке, кроме брони, вход в историю и разметку.
+  return '<div onclick="openSpecEditor()"' +
+    ' style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;cursor:pointer">' +
+    '<span>обязательные ' + fmtH(oblPaid + remain) + '</span>' +
+    '<span style="color:var(--hint)">оплачено ' + fmtH(oblPaid) +
+      (remain > 0 ? ' · ждём ' + fmtH(remain) : '') +
+      (f.oneoffSpent > 0 ? ' · разовые ' + fmtH(f.oneoffSpent) : '') + '</span>' +
+    '<span style="margin-left:auto;color:var(--muted);font-size:15px;line-height:1">›</span>' +
     '</div>';
 }
 
@@ -2185,7 +2314,9 @@ function renderSpecEditor(){
   }).join('');
   const total = _specDraftRows.reduce((s, r) => s + Math.max(0, r.val), 0);
   const tot = document.getElementById('spec-editor-total');
-  if(tot) tot.innerHTML = 'Итого в резерве: <b style="color:var(--text)">' + fmtH(total) + '</b>';
+  if(tot) tot.innerHTML = _specDraftRows.length ? 'Итого в резерве: <b style="color:var(--text)">' + fmtH(total) + '</b>' : '';
+  const empty = document.getElementById('spec-editor-empty');
+  if(empty) empty.style.display = _specDraftRows.length ? 'none' : 'block';
 }
 
 function specDraftSet(i, str){
@@ -2216,7 +2347,7 @@ function saveSpecPlan(){
   saveDB();
   closeModal('modal-spec');
   renderBudget();
-  toast('Резерв особых сохранён');
+  toast('Сохранено');
 }
 
 function _specPlanWrite(catId, val, mk){
@@ -2226,6 +2357,125 @@ function _specPlanWrite(catId, val, mk){
   if(val == null) delete DB.specPlan[mk][catId];
   else DB.specPlan[mk][catId] = Math.max(0, Math.round(val));
   if(!Object.keys(DB.specPlan[mk]).length) delete DB.specPlan[mk];
+}
+
+// ─── ОБЯЗАТЕЛЬНЫЕ И РАЗОВЫЕ: разметка и история (v1.79.0) ───────────
+// Одно место, где видно, что куда отнесено, и где это чинится: переключатель
+// обязательности у категорий, история разовых по месяцам и крупные траты без
+// отметки (от порога) — чтобы пропущенная отметка не терялась. Правки пишутся
+// сразу, без черновика: каждая — одно действие, которое тут же видно в списке.
+function _kindsPeriod(){ const n = parseInt(uiGet('kindsPeriod', '6')); return [3, 6, 12].includes(n) ? n : 6; }
+function setKindsPeriod(n){ uiSet('kindsPeriod', n); renderKinds(); }
+
+function openKindsManager(){
+  renderKinds();
+  openModal('modal-kinds');
+}
+
+function setOneoffThreshold(str){
+  uiSet('oneoffThreshold', Math.max(0, Math.round(parseMoney(str) || 0)));
+  renderKinds();
+}
+
+function toggleCatOblig(i){
+  const id = (DB.catIds||[])[i];
+  if(!id) return;
+  if(!DB.catOblig) DB.catOblig = {};
+  if(DB.catOblig[id]) delete DB.catOblig[id];
+  else {
+    DB.catOblig[id] = true;
+    // Разовые отметки внутри ставшей обязательной категории теряют смысл:
+    // снимаем, иначе при обратном переключении всплыли бы старые разовые.
+    const now = Date.now();
+    DB.expenses.forEach(e => { if(e.catId === id && e.special){ e.special = null; e.updatedAt = now; } });
+  }
+  touchList('categories'); // catOblig мержится вместе со списком категорий
+  saveDB();
+  renderKinds();
+  renderCurrentPage();
+}
+
+function toggleExpOneoff(id){
+  const e = DB.expenses.find(x => x.id === id);
+  if(!e || _isObligCat(e.cat)) return;
+  e.special = e.special ? null : true;
+  e.updatedAt = Date.now();
+  saveDB();
+  renderKinds();
+  renderCurrentPage();
+}
+
+function renderKinds(){
+  const thr = _oneoffThreshold();
+  const thrInp = document.getElementById('kinds-threshold');
+  if(thrInp && document.activeElement !== thrInp) thrInp.value = thr.toLocaleString('ru-RU');
+  const N = _kindsPeriod();
+  document.querySelectorAll('#kinds-period span').forEach(s => s.classList.toggle('on', Number(s.dataset.v) === N));
+
+  const now = new Date();
+  const months = [];
+  for(let k = 0; k < N; k++){
+    const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
+    months.push({y: d.getFullYear(), m: d.getMonth(), exps: getMonthExpenses(d.getFullYear(), d.getMonth())});
+  }
+
+  // Категории: переключатель + сколько в среднем за месяц с тратами
+  const catBox = document.getElementById('kinds-cats');
+  if(catBox){
+    catBox.innerHTML = DB.categories.map((c, i) => {
+      let sum = 0, mcnt = 0;
+      months.forEach(mo => {
+        const s = mo.exps.reduce((a, e) => a + (e.cat === i ? e.amount : 0), 0);
+        if(s > 0){ sum += s; mcnt++; }
+      });
+      const on = _isObligCat(i);
+      const hint = mcnt ? mcnt + ' из ' + N + ' мес · ⌀ ' + fmtH(Math.round(sum / mcnt)) : 'нет трат';
+      return '<div class="kinds-row">' +
+        '<span class="entry-dot" style="background:' + getCatColor(i) + '"></span>' +
+        '<span class="kinds-name">' + esc(c) + '<span class="kinds-hint">' + hint + '</span></span>' +
+        '<button class="kind-tgl' + (on ? ' on' : '') + '" onclick="toggleCatOblig(' + i + ')">' +
+          (on ? 'обязательная' : 'обычная') + '</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  // История по месяцам: сводка обязательных, разовые и крупные без отметки
+  const hist = document.getElementById('kinds-history');
+  if(!hist) return;
+  let html = '';
+  months.forEach(mo => {
+    const oblByCat = {};
+    let oblSum = 0, oneSum = 0;
+    const rows = [];
+    mo.exps.forEach(e => {
+      if(_isOblig(e)){ oblByCat[e.cat] = (oblByCat[e.cat] || 0) + e.amount; oblSum += e.amount; }
+      else if(e.special){ oneSum += e.amount; rows.push(e); }
+      else if(thr > 0 && e.amount >= thr) rows.push(e);
+    });
+    if(!oblSum && !rows.length) return;
+    rows.sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+    html += '<div class="kinds-month">' +
+      '<div class="kinds-mhdr"><span>' + MONTHS_RU[mo.m] + ' ' + mo.y + '</span>' +
+      '<span>обяз. ' + fmtH(oblSum) + ' · разовые ' + fmtH(oneSum) + '</span></div>';
+    const oblCats = Object.keys(oblByCat).map(Number).sort((a, b) => oblByCat[b] - oblByCat[a]);
+    if(oblCats.length){
+      html += '<div class="kinds-obl">' + oblCats.map(ci => esc(DB.categories[ci] || '—') + ' ' + fmtH(oblByCat[ci])).join(' · ') + '</div>';
+    }
+    rows.forEach(e => {
+      const on = !!e.special;
+      const [, mm, dd] = e.date.split('-');
+      html += '<div class="kinds-row' + (on ? '' : ' unmarked') + '">' +
+        '<span class="kinds-date">' + dd + '.' + mm + '</span>' +
+        '<span class="kinds-name">' + esc(DB.categories[e.cat] || '—') +
+          (e.comment ? '<span class="kinds-hint">' + esc(e.comment) + '</span>' : '') + '</span>' +
+        '<span class="kinds-amt">' + fmtH(e.amount) + '</span>' +
+        '<button class="kind-tgl' + (on ? ' on' : '') + '" onclick="toggleExpOneoff(\'' + e.id + '\')">' +
+          (on ? 'разовая' : 'разовая?') + '</button>' +
+        '</div>';
+    });
+    html += '</div>';
+  });
+  hist.innerHTML = html || '<div style="font-size:13px;color:var(--muted);padding:8px 0">За ' + N + ' мес нет ни обязательных, ни разовых, ни трат от порога.</div>';
 }
 
 function renderBudget(){
@@ -2357,7 +2607,7 @@ function renderBudget(){
       daysRow.innerHTML = html;
       if(oblRow){
         const specList = (fc && fc.forecast) || [];
-        if(f.reserve > 0 || specList.length){
+        if(f.reserve > 0 || specList.length || Object.keys(DB.catOblig || {}).length){
           oblRow.style.display = 'block';
           oblRow.innerHTML = _oblRowHtml(f, specList);
         } else oblRow.style.display = 'none';
@@ -2441,7 +2691,7 @@ function openAddExpense(prefillCat){
   document.getElementById('exp-comment').value='';
   setExpSpecial('');
   openModal('modal-expense');
-  if(prefillCat !== undefined) setTimeout(()=>{ document.getElementById('exp-cat').value = prefillCat; }, 50);
+  if(prefillCat !== undefined) setTimeout(()=>{ document.getElementById('exp-cat').value = prefillCat; _expKindUi(); }, 50);
 }
 
 function editExpense(id, e){
@@ -2466,7 +2716,8 @@ function saveExpense(){
   const cat  = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value || today();
   const comment = document.getElementById('exp-comment').value;
-  const special = _selectedExpSpecial ? true : null;
+  // В обязательной категории разовой не бывает — вид задан категорией
+  const special = (_selectedExpSpecial && !_isObligCat(cat)) ? true : null;
 
   const catId = (DB.catIds||[])[cat];
   if(editingExpenseId){
@@ -2533,7 +2784,7 @@ function renderCatExpensesList(catIdx, y, m) {
     return `<div class="exp-list-item">
       <div class="exp-list-date">${dy}.${mo}</div>
       <div class="exp-list-body">
-        <div class="exp-list-amount">${fmtH(e.amount)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
+        <div class="exp-list-amount">${fmtH(e.amount)}${_kindBadge(e)}</div>
         ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
       <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
@@ -2734,8 +2985,7 @@ function renderDay(){
   document.getElementById('day-label').textContent =
     weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
   const allEntries = getDayExpenses(currentDay);
-  const entries = allEntries.filter(e=>!e.special);
-  const specialEntries = allEntries.filter(e=>e.special);
+  const entries = allEntries.filter(e=>!_isSpec(e));
   const total = entries.reduce((s,e)=>s+e.amount,0);
   document.getElementById('day-total').innerHTML = fmtH(total);
   _renderDayEnvelope();
@@ -2806,22 +3056,21 @@ function renderDay(){
     }
   });
 
-  // Особые расходы — отдельная приглушённая секция, не в сумме дня
-  if(specialEntries.length){
-    const specTotal = specialEntries.reduce((s,e)=>s+e.amount,0);
+  // Обязательные и разовые — отдельные приглушённые секции, не в сумме дня
+  [['Обязательные', allEntries.filter(_isOblig)], ['Разовые', allEntries.filter(_isOneoff)]].forEach(([title, arr]) => {
+    if(!arr.length) return;
     const hdr = document.createElement('div');
     hdr.className = 'entry-special-hdr';
-    hdr.innerHTML = `<span>Особые</span><span>${fmtH(specTotal)}</span>`;
+    hdr.innerHTML = `<span>${title}</span><span>${fmtH(arr.reduce((s,e)=>s+e.amount,0))}</span>`;
     list.appendChild(hdr);
-    specialEntries.sort((a,b)=>b.amount-a.amount).forEach(e => {
+    arr.sort((a,b)=>b.amount-a.amount).forEach(e => {
       const catName = DB.categories[e.cat]||'Неизвестно';
-      const color = getCatColor(e.cat);
       const row = document.createElement('div');
       row.className = 'entry-row entry-special';
       row.innerHTML = `
-        <div class="entry-dot" style="background:${color}"></div>
+        <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
         <div class="entry-info">
-          <div class="entry-cat">${esc(catName)}<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span></div>
+          <div class="entry-cat">${esc(catName)}</div>
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
@@ -2830,7 +3079,23 @@ function renderDay(){
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
     });
-  }
+  });
+}
+
+// Трата от порога в обычной категории, внесённая мимо модалки (быстрый ввод,
+// шаблон), — предложить отметить разовой. В модалке то же делает подсказка
+// под сегментом «Обычная / Разовая».
+function _offerOneoff(rec){
+  if(!rec || rec.special || _isObligCat(rec.cat) || rec.amount < _oneoffThreshold() || _oneoffThreshold() <= 0) return false;
+  toastUndo(fmt(rec.amount) + ' — разовая трата?', () => {
+    const e = DB.expenses.find(x => x.id === rec.id);
+    if(!e) return;
+    e.special = true; e.updatedAt = Date.now();
+    saveDB();
+    renderCurrentPage();
+    toast('Отмечено разовой');
+  }, 6000, 'Разовая');
+  return true;
 }
 
 // ─── EXPENSE TEMPLATES ──────────────────────────────────────────────
@@ -2856,7 +3121,7 @@ function renderTemplateChips(){
     const color = t.color || getCatColor(t.cat);
     return `<button onclick="addFromTemplate('${t.id}',this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${t.special?' '+SPEC_BADGE:''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${_isOneoff(t)?' '+SPEC_BADGE:''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
     </button>`;
   }).join('');
 }
@@ -2868,10 +3133,11 @@ function addFromTemplate(id,btn){
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
   const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
-  DB.expenses.push({id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, special:t.special?true:null, updatedAt:Date.now()});
+  const rec = {id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, special:_isOneoff(t)?true:null, updatedAt:Date.now()};
+  DB.expenses.push(rec);
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
-  toast(t.name+' добавлено');
+  if(!_offerOneoff(rec)) toast(t.name+' добавлено');
   checkBudgetNotifications();
 }
 
@@ -3013,11 +3279,12 @@ function quickAddSave(btn){
   const cat = parseInt(document.getElementById('qa-cat').value);
   if(isNaN(cat)){ toast('Выберите категорию'); return; }
   const comment = (document.getElementById('qa-comment').value || '').trim();
-  DB.expenses.push({id: uid(), cat, catId: DB.catIds[cat], amount: amt, date: currentDay, comment, updatedAt: Date.now()});
+  const rec = {id: uid(), cat, catId: DB.catIds[cat], amount: amt, date: currentDay, comment, updatedAt: Date.now()};
+  DB.expenses.push(rec);
   saveDB();
   checkBudgetNotifications();
   vibe(); flash(btn);
-  toast(fmt(amt) + ' добавлено');
+  if(!_offerOneoff(rec)) toast(fmt(amt) + ' добавлено');
   amtInp.value = '';
   document.getElementById('qa-comment').value = '';
   document.getElementById('qa-comment-row').style.display = 'none';
@@ -3630,7 +3897,7 @@ function setDayInclSpecial(v){
   uiSet('dayInclSpecial', v?'1':'0');
   renderStats();
 }
-function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!e.special); }
+function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!_isSpec(e)); }
 function setDayAvgMonths(n){ uiSet('dayAvgMonths', n); renderStats(); }
 // «Месяц / Сегодня» на «Дне за днём»: до v1.73.0 режим жил в data-атрибуте
 // самого переключателя и обнулялся вместе с разметкой при каждой перезагрузке.
@@ -3820,10 +4087,11 @@ function renderSavingsCharts(){
 // Группирует special-траты месяца по категории: cat idx → {sum, topDay, topAmt}.
 // topDay — день месяца самой крупной special-траты этой категории (представитель
 // месяца для угадывания повторяющейся даты, напр. аренда).
+// С v1.79.0 — только траты ОБЯЗАТЕЛЬНЫХ категорий: разовые вперёд не бронируются.
 function _specialCatStats(exps){
   const map = {};
   exps.forEach(e => {
-    if(!e.special) return;
+    if(!_isOblig(e)) return;
     if(!map[e.cat]) map[e.cat] = {sum:0, topDay:0, topAmt:-1};
     map[e.cat].sum += e.amount;
     if(e.amount > map[e.cat].topAmt){
@@ -3878,7 +4146,9 @@ function _specPlanFor(y, m){ return (DB.specPlan || {})[monthKey(y, m)] || {}; }
 
 function _applySpecPlan(y, m, forecast){
   const ov = _specPlanFor(y, m);
-  const ids = Object.keys(ov);
+  // Бронь бывает только у обязательных: оверрайд категории, с которой сняли
+  // обязательность, молча бронировал бы деньги под то, чего прогноз уже не ждёт.
+  const ids = Object.keys(ov).filter(id => _isObligCat((DB.catIds||[]).indexOf(id)));
   if(!ids.length) return forecast;
   const out = forecast.map(f => {
     const id = DB.catIds[f.cat];
@@ -3992,11 +4262,11 @@ function _monthForecast(y, m){
       if(!(d >= 1 && d <= daysInMonth)) return;
       futPlanned += e.amount;
       futCum[d-1] += e.amount;
-      if(!e.special) futCumReg[d-1] += e.amount;
+      if(!_isSpec(e)) futCumReg[d-1] += e.amount;
       return;
     }
     fact += e.amount;
-    if(!e.special) regular += e.amount;
+    if(!_isSpec(e)) regular += e.amount;
   });
   if(fact + futPlanned <= 0) return null;
   let accF = 0, accR = 0;
@@ -4024,7 +4294,7 @@ function _monthForecast(y, m){
       if(!h.exps.length) return;
       const cut = monthKey(h.y, h.m) + '-' + String(cD).padStart(2, '0');
       let s = 0;
-      h.exps.forEach(e => { if(!e.special && e.date && e.date <= cut) s += e.amount; });
+      h.exps.forEach(e => { if(!_isSpec(e) && e.date && e.date <= cut) s += e.amount; });
       paces.push(s / cD);
     });
     if(paces.length) pace = paces.reduce((s, v) => s + v, 0) / paces.length;
@@ -4154,7 +4424,7 @@ function renderExpenseSearch(){
     row.innerHTML = `
       <div class="entry-dot" style="background:${getCatColor(e.cat)}"></div>
       <div class="entry-info">
-        <div class="entry-cat">${esc(catName)}${e.special?`<span class="spec-badge">${SPEC_BADGE} ${SPEC_LABEL}</span>`:''}</div>
+        <div class="entry-cat">${esc(catName)}${_kindBadge(e)}</div>
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmtH(e.amount)}</div>
@@ -4234,14 +4504,14 @@ function _weekdayAvgs(from, to){
   // а первый год использования занижался месяцами до начала записей.
   let firstExp = null;
   (DB.expenses||[]).forEach(e => {
-    if(e._deleted || e.special || !e.date) return;
+    if(e._deleted || _isSpec(e) || !e.date) return;
     if(!firstExp || e.date < firstExp) firstExp = e.date;
   });
   if(firstExp && from < firstExp) from = firstExp;
   if(from > to) return null;
   const sums = Array(7).fill(0); // 0=Пн … 6=Вс
   (DB.expenses||[]).forEach(e => {
-    if(e._deleted || e.special || !e.date) return;
+    if(e._deleted || _isSpec(e) || !e.date) return;
     if(e.date < from || e.date > to) return;
     sums[(new Date(e.date+'T12:00:00').getDay()+6)%7] += e.amount;
   });
@@ -4311,7 +4581,7 @@ function _renderWeekdayChart(lastN){
   const avgs = wd.avgs.map(v=>Math.round(v));
   let iMin = 0, iMax = 0;
   wd.avgs.forEach((v,i)=>{ if(v < wd.avgs[iMin]) iMin = i; if(v > wd.avgs[iMax]) iMax = i; });
-  if(sumEl) sumEl.innerHTML = `Дешевле всего — ${_WEEKDAY_LABELS[iMin]} · ⌀ ${fmtH(avgs[iMin])}, дороже — ${_WEEKDAY_LABELS[iMax]} · ⌀ ${fmtH(avgs[iMax])} <span style="color:var(--hint)">· без особых</span>`;
+  if(sumEl) sumEl.innerHTML = `Дешевле всего — ${_WEEKDAY_LABELS[iMin]} · ⌀ ${fmtH(avgs[iMin])}, дороже — ${_WEEKDAY_LABELS[iMax]} · ⌀ ${fmtH(avgs[iMax])} <span style="color:var(--hint)">· без обязательных и разовых</span>`;
   const cc = _chartColors();
   charts.weekday = new Chart(el, {
     type:'bar',
@@ -7313,6 +7583,8 @@ function renderSettings(){
   renderNotifToggle();
   const catCount = document.getElementById('cat-count-display');
   if(catCount) catCount.textContent = DB.categories.length + ' шт.';
+  const kindsCount = document.getElementById('kinds-count-display');
+  if(kindsCount) kindsCount.textContent = DB.categories.filter((_, i) => _isObligCat(i)).length + ' обяз.';
   const tmplCount = document.getElementById('tmpl-count-display');
   if(tmplCount) tmplCount.textContent = (DB.templates||[]).filter(t=>!t._deleted).length + ' шт.';
   const incTagsCount = document.getElementById('income-tags-count-display');
@@ -8257,6 +8529,7 @@ function _applyRestoredData(d, makeAuthoritative){
   const curNotifs = DB.notifsEnabled, curThresh = DB.notifThreshold;
   const curTheme = DB.theme, curPrivacy = DB.privacyMode;
   Object.assign(DB, d);
+  if(d.catOblig === undefined) delete DB.catOblig; // бэкап до v1.79.0 — пусть миграция разметит его данные
   DB.syncUrl = curUrl;     if(curUrl)   saveSyncUrlEverywhere(curUrl);
   DB.syncToken = curToken; if(curToken) saveSyncTokenEverywhere(curToken);
   DB.notifsEnabled = curNotifs; DB.notifThreshold = curThresh;
@@ -8855,7 +9128,7 @@ function buildDemoDB(now){
   // Профиль категории: сколько трат в месяц, на какую сумму, с чем в
   // комментарии. freq < 1 — категория появляется не каждый месяц.
   const PROFILE = [
-    { freq: 2,   sum: 35000, sum2: 4800, spread: .02, special: true, cmt: ['Аренда квартиры', 'ЖКУ'] },
+    { freq: 2,   sum: 35000, sum2: 4800, spread: .02, cmt: ['Аренда квартиры', 'ЖКУ'] },
     { freq: 1.4, sum: 2400,  spread: .5,  cmt: ['Моющие средства', 'Лампочки', 'Фильтр для воды', 'Мелочи в дом'] },
     { freq: 9,   sum: 2600,  spread: .55, cmt: ['Пятёрочка', 'Магнит', 'ВкусВилл', 'Перекрёсток', 'Большая закупка', 'Ашан'] },
     { freq: 6,   sum: 1300,  spread: .7,  cmt: ['Кофейня', 'Яндекс Еда', 'Ресторан', 'Обед на работе', 'Ужин с друзьями'] },
@@ -8866,7 +9139,7 @@ function buildDemoDB(now){
     { freq: 1.5, sum: 3400,  spread: .8,  cmt: ['Кроссовки', 'Стрижка', 'Куртка', 'Косметика'] },
     { freq: 3,   sum: 420,   spread: .4,  cmt: ['Яндекс Плюс', 'Телефон', 'Облако', 'Музыка'] },
     { freq: .5,  sum: 3500,  spread: .6,  cmt: ['День рождения', 'Подарок к празднику'] },
-    { freq: .6,  sum: 6000,  spread: .7,  special: true, cmt: ['Ремонт телефона', 'Штраф', 'Замена стекла'] },
+    { freq: .6,  sum: 6000,  spread: .7,  oneoff: true, cmt: ['Ремонт телефона', 'Штраф', 'Замена стекла'] },
   ];
 
   const expenses = [];
@@ -8877,13 +9150,13 @@ function buildDemoDB(now){
       let n = Math.floor(times);
       if(rnd() < times - n) n++;
       for(let k = 0; k < n; k++){
-        const day = p.special && k === 0 ? 1 + Math.floor(rnd() * 3) : 1 + Math.floor(rnd() * 28);
+        const day = p.sum2 && k === 0 ? 1 + Math.floor(rnd() * 3) : 1 + Math.floor(rnd() * 28);
         const rec = {
           id: nid('e'), date: dstr(back, day), cat: ci, catId: catIds[ci],
           amount: near(k === 0 ? p.sum : (p.sum2 || p.sum), p.spread),
           comment: p.sum2 ? p.cmt[Math.min(k, p.cmt.length - 1)] : pick(p.cmt), updatedAt: TS
         };
-        if(p.special && k === 0) rec.special = true;
+        if(p.oneoff && k === 0) rec.special = true;   // разовая; обязательность — у категории (catOblig ниже)
         expenses.push(rec);
       }
     });
@@ -9019,12 +9292,15 @@ function buildDemoDB(now){
     limits[mkey(back)] = row;
   }
 
-  // Бронь особых текущего месяца: аренду уже заплатили (0 = «не будет»),
-  // непредвиденные ещё ждём.
-  const specPlan = { [mkey(0)]: { [catIds[0]]: 0, [catIds[11]]: 6000 } };
+  // Обязательные категории: жильё и подписки/связь. «Непредвиденные» — обычная
+  // категория с разовыми отметками на тратах.
+  const catOblig = { [catIds[0]]: true, [catIds[9]]: true };
+  // Бронь обязательных текущего месяца: аренду уже заплатили (0 = «не будет»),
+  // подписки ещё ждём.
+  const specPlan = { [mkey(0)]: { [catIds[0]]: 0, [catIds[9]]: 900 } };
 
   return {
-    categories, catIds, catColors, expenses, incomes, assets,
+    categories, catIds, catColors, catOblig, expenses, incomes, assets,
     banks, creditBanks, limits, templates, deposits, investments, credits,
     incomeTags, incomeTagColors,
     incomeTagOrder: ['Оплата труда', 'Подработка', 'Проценты', 'Кэшбэк', ''],
@@ -9596,7 +9872,7 @@ function renderReport(){
       wd.avgs.forEach((v,i)=>{ if(v < wd.avgs[iMin]) iMin = i; if(v > wd.avgs[iMax]) iMax = i; });
       const maxV = Math.max(...avgs, 1);
       h += `<div class="chart-card" style="margin-bottom:14px">
-        <div class="chart-title">Дни недели <span style="font-size:11px;font-weight:400;color:var(--muted)">⌀ расход, без особых</span></div>
+        <div class="chart-title">Дни недели <span style="font-size:11px;font-weight:400;color:var(--muted)">⌀ расход, без обязательных и разовых</span></div>
         <div style="display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:6px">
           ${avgs.map((v,i)=>`<div class="rb-wd" onclick="toast('${_WEEKDAY_LABELS[i]}: ⌀ '+fmtN(${v}))" title="${_WEEKDAY_LABELS[i]}: ⌀ ${DB.privacyMode?'—':fmt(v)}" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(v/maxV*100))}%;border-radius:3px 3px 0 0;background:${i===iMax?'var(--red)':i===iMin?'var(--green)':'var(--muted)'};${i===iMax||i===iMin?'':'opacity:.35'}"></div></div>`).join('')}
         </div>
@@ -10107,6 +10383,7 @@ function mergePullData(d){
   // прежнее правило «длиннее выигрывает» (добавления с другого устройства)
   const catRemoteWon = _mergeList(d, 'categories', 'catColors');
   if(catRemoteWon && d.catIds) DB.catIds = d.catIds; // catIds следуют за categories
+  if(catRemoteWon && d.catOblig) DB.catOblig = d.catOblig; // и обязательность — тоже по listsMeta.categories
   const listsChanged = catRemoteWon
     | _mergeList(d, 'banks', null)
     | _mergeList(d, 'creditBanks', null)
