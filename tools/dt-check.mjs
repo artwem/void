@@ -1204,6 +1204,26 @@ suite(390, 'обязательные и разовые', () => {
     eq(g.after.one - g.before.one, 9000, 'разовая учтена в oneoffSpent');
   });
 
+  check('итог дня: без отдельных трат одна цифра, с разовой — «всего» и «повседневные»', async p => {
+    const g = await p.evaluate(() => {
+      const nums = el => [...el.querySelectorAll('.dt-num')].map(n => Number(n.textContent.replace(/\D/g, '')));
+      currentDay = today();
+      DB.expenses = DB.expenses.filter(e => e.date !== today());
+      DB.expenses.push({ id: 'dA', date: today(), cat: 1, catId: 'cat0002', amount: 1200, comment: '', updatedAt: 1 });
+      renderDay();
+      const el = document.getElementById('day-total');
+      const one = { pair: !!el.querySelector('.dt-pair'), lbl: document.getElementById('day-total-lbl').style.display };
+      DB.expenses.push({ id: 'dB', date: today(), cat: 4, catId: 'cat0005', amount: 9000, comment: '', special: true, updatedAt: 1 });
+      renderDay();
+      const two = { nums: nums(el), lbl: document.getElementById('day-total-lbl').style.display };
+      return { one, two };
+    });
+    eq(g.one.pair, false, 'без отдельных трат пары нет');
+    eq(g.one.lbl, '', 'подпись «расходы за день» видна');
+    eq(g.two.nums.join('|'), '10200|1200', 'всего | повседневные');
+    eq(g.two.lbl, 'none', 'общая подпись скрыта при паре');
+  });
+
   check('модалка траты: в обязательной категории выбора нет, крупная сумма даёт подсказку', async p => {
     const g = await p.evaluate(() => {
       openAddExpense();
