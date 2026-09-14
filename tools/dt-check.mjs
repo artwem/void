@@ -1139,7 +1139,7 @@ suite(390, 'ручная бронь особых', () => {
 // вне темпа, но вперёд не бронируется). Сторожим миграцию старых особых, то,
 // что разовая не создаёт брони, и экран разметки.
 suite(390, 'обязательные и разовые', () => {
-  check('миграция: особые в ≥3 месяцах → обязательная категория, остальные — разовые', async p => {
+  check('миграция: особые в ≥3 месяцах → обязательная категория, остальные — разовые, траты не штампуются', async p => {
     const g = await p.evaluate(() => {
       const saved = { exp: DB.expenses, obl: DB.catOblig };
       const ms = ['2026-03', '2026-04', '2026-05'];
@@ -1151,14 +1151,18 @@ suite(390, 'обязательные и разовые', () => {
       _ensureCatIds();
       const r = {
         obl: Object.keys(DB.catOblig).sort().join(','),
-        rentFlag: DB.expenses.filter(e => e.catId === 'cat0001').some(e => e.special),
+        rentOneoff: DB.expenses.filter(e => e.catId === 'cat0001').some(e => _isOneoff(e)),
+        stamped: DB.expenses.some(e => e.updatedAt !== 1),
+        meta: (DB.listsMeta || {}).catOblig || 0,
         wishOneoff: DB.expenses.filter(e => e.catId === 'cat0005').every(e => _isOneoff(e)),
       };
       DB.expenses = saved.exp; DB.catOblig = saved.obl;
       return r;
     });
     eq(g.obl, 'cat0001', 'обязательные после миграции');
-    eq(g.rentFlag, false, 'у трат обязательной категории снята отметка');
+    eq(g.rentOneoff, false, 'траты обязательной категории не читаются разовыми');
+    eq(g.stamped, false, 'миграция не штампует updatedAt — не затрёт разметку других устройств');
+    eq(g.meta, 0, 'авторазметка без LWW-метки');
     eq(g.wishOneoff, true, 'двухмесячные «Хотелки» остались разовыми');
   });
 
@@ -1254,9 +1258,9 @@ suite(390, 'обязательные и разовые', () => {
       const label = btn && btn.textContent;
       btn && btn.click();
       const marked = !!DB.expenses.find(e => e.id === 'bigU').special;
-      const meta0 = (DB.listsMeta || {}).categories || 0;
+      const meta0 = (DB.listsMeta || {}).catOblig || 0;
       document.querySelectorAll('#kinds-cats .kind-tgl')[6].click();   // «Подписки»
-      const r = { label, marked, obl: !!DB.catOblig.cat0007, touched: (DB.listsMeta.categories || 0) > meta0,
+      const r = { label, marked, obl: !!DB.catOblig.cat0007, touched: (DB.listsMeta.catOblig || 0) > meta0,
         catLabel: document.querySelectorAll('#kinds-cats .kind-tgl')[6].textContent };
       closeModal('modal-kinds');
       return r;
@@ -1264,19 +1268,46 @@ suite(390, 'обязательные и разовые', () => {
     eq(g.label, 'разовая?', 'крупная без отметки предложена');
     eq(g.marked, true, 'тап отметил разовой');
     eq(g.obl, true, 'категория стала обязательной');
-    eq(g.touched, true, 'listsMeta.categories обновлён для синка');
+    eq(g.touched, true, 'listsMeta.catOblig обновлён для синка');
     eq(g.catLabel, 'обязательная', 'подпись переключателя');
   });
 
-  check('синк: catOblig приходит вместе с выигравшим списком категорий', async p => {
+  check('синк: разметка и порог — LWW по своим меткам, не по списку категорий', async p => {
     const g = await p.evaluate(() => {
-      const d = JSON.parse(JSON.stringify(buildPayload()));
-      d.catOblig = { cat0002: true };
-      d.listsMeta = { ...(d.listsMeta || {}), categories: Date.now() + 60000 };
-      mergePullData(d);
-      return Object.keys(DB.catOblig).join(',');
+      const saved = { obl: DB.catOblig, meta: { ...(DB.listsMeta || {}) }, thr: DB.oneoffThreshold };
+      const remote = (obl, meta, thr) => {
+        const d = JSON.parse(JSON.stringify(buildPayload()));
+        d.catOblig = obl; d.oneoffThreshold = thr;
+        d.listsMeta = { ...(d.listsMeta || {}), ...meta };
+        return d;
+      };
+      const out = {};
+      // 1. Обе стороны без метки (авторазметка) и разные — сходимся к версии с Drive,
+      //    хотя список категорий на удалённой стороне НЕ новее
+      DB.catOblig = { cat0001: true }; delete DB.listsMeta.catOblig;
+      mergePullData(remote({ cat0006: true }, {}, 6000));
+      out.tie = Object.keys(DB.catOblig).join(',');
+      // 2. Явная правка на удалённом устройстве новее — берём
+      DB.listsMeta.catOblig = 1000;
+      mergePullData(remote({ cat0002: true }, { catOblig: 2000 }, 6000));
+      out.newer = Object.keys(DB.catOblig).join(',');
+      // 3. Локальная правка новее — удалённая старая не перетирает
+      DB.listsMeta.catOblig = Date.now();
+      mergePullData(remote({ cat0004: true }, { catOblig: 3000 }, 6000));
+      out.localWins = Object.keys(DB.catOblig).join(',');
+      // 4. Порог с другого устройства
+      DB.listsMeta.oneoffThreshold = 10;
+      mergePullData(remote(DB.catOblig, { oneoffThreshold: 20 }, 9000));
+      out.thr = _oneoffThreshold();
+      out.inPayload = buildPayload().oneoffThreshold === 9000 && !!buildPayload().catOblig;
+      DB.catOblig = saved.obl; DB.listsMeta = saved.meta; DB.oneoffThreshold = saved.thr;
+      return out;
     });
-    eq(g, 'cat0002', 'обязательность взята с удалённого устройства');
+    eq(g.tie, 'cat0006', 'без меток — версия с Drive');
+    eq(g.newer, 'cat0002', 'более свежая удалённая правка');
+    eq(g.localWins, 'cat0002', 'свежая локальная правка не перетёрта');
+    eq(g.thr, 9000, 'порог пришёл с другого устройства');
+    eq(g.inPayload, true, 'порог и разметка уходят в payload');
   });
 });
 

@@ -99,7 +99,8 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   categories:      ['ЖКУ + аренда', ...],    // ordered list
   catIds:          ['k3x9a1b2', ...],         // stable id per category, same position as categories[]
   catColors:       {k3x9a1b2: '#185fa5', ...}, // catId → hex color
-  catOblig:        {k3x9a1b2: true},          // обязательные категории (since v1.79.0); мержится вместе с categories по listsMeta.categories; undefined = миграция ещё не прошла
+  catOblig:        {k3x9a1b2: true},          // обязательные категории (since v1.79.0); LWW по listsMeta.catOblig, при равных метках — удалённое (v1.79.3, _mergeKinds); undefined = миграция ещё не прошла
+  oneoffThreshold: 6000,                      // порог подсказки «разовая?»; LWW по listsMeta.oneoffThreshold (синкается с v1.79.3)
   expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index; special = «разовая» (since v1.79.0)
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],  // point-in-time balance per bank per date
@@ -178,9 +179,14 @@ Each tab has a `render*()` function called after any data change:
 `_kindBadge(e)`. **Инварианты:** `_specialCatStats` (бронь) смотрит только `_isOblig`, всё
 «вне темпа» (pace, конверт дня, дни недели, тумблер «Все / Повседн.») — `_isSpec`; `e.special`
 напрямую больше нигде не читать. Миграция `_migrateOblig()` (конец `_ensureCatIds`): категория с
-особыми в ≥3 разных месяцах → обязательная, у её трат `special` снимается; до первой траты не
-запускается (иначе свежее устройство до pull зафиксировало бы пустую разметку). Порог подсказки
-«разовая?» — `uiGet('oneoffThreshold', 6000)`, device-local: подсказка в модалке траты
+особыми в ≥3 разных месяцах → обязательная; сами траты не трогает и LWW-метку не ставит (v1.79.3 —
+раньше снимала `special` со штампом `updatedAt`, и устройство с устаревшими данными стирало
+разовые отметки на остальных); до первой траты не запускается (иначе свежее устройство до pull
+зафиксировало бы пустую разметку). Синк разметки и порога — `_mergeKinds(d)`: LWW по
+`listsMeta.catOblig` / `listsMeta.oneoffThreshold`, при равных метках побеждает Drive, чтобы
+авторазметки разных устройств сошлись; до v1.79.3 `catOblig` ехал только за выигравшим списком
+`categories` и не сходился никогда. Порог подсказки «разовая?» — `DB.oneoffThreshold` (старое
+значение из `localStorage` — только стартовое): подсказка в модалке траты
 (`_expKindUi`) и тост с кнопкой после быстрого ввода/шаблона (`_offerOneoff`). Экран разметки и
 истории — `#modal-kinds` (`renderKinds`, `toggleCatOblig`, `toggleExpOneoff`), вход из Настроек и
 из модалки брони. Сюита `обязательные и разовые` в `tools/dt-check.mjs`.
@@ -199,7 +205,7 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Optional shared secret (since v1.11.0):** `Code.gs` has a `SECRET` constant (empty = no auth). If set, the same string is stored device-locally as `DB.syncToken` (localStorage + sessionStorage + cookie, same pattern as `syncUrl`) and sent as `token` in every `syncRequest`.
 
-**What syncs (both directions):** `expenses`, `incomes`, `assets`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, `specPlan`, plus `listsMeta` (LWW timestamps).
+**What syncs (both directions):** `expenses`, `incomes`, `assets`, `templates`, `deposits`, `credits`, `categories`, `catColors`, `catOblig`, `banks`, `creditBanks`, `limits`, `incomeTags`, `incomeTagColors`, `incomeTagOrder`, `specPlan`, `oneoffThreshold`, plus `listsMeta` (LWW timestamps).
 
 **What does NOT sync:** `syncUrl`, `syncToken`, `notifsEnabled`, `notifThreshold`, `theme`, `privacyMode`, `_lastSyncedLimits`, `_lastSyncedSpecPlan` (device-local). `buildPayload()` strips exactly these eight fields plus `_dirty`. Since v1.63.0 `backupDB()` serializes `buildPayload()` too, not raw `DB` — the downloaded copy used to carry `syncToken` (the Apps Script shared secret) into a file people forward to themselves.
 

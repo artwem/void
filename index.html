@@ -1359,7 +1359,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1887,16 +1887,25 @@ function _kindBadge(e){
   if(_isObligCat(e.cat)) return '<span class="spec-badge">обяз.</span>';
   return e.special ? '<span class="spec-badge">' + SPEC_BADGE + ' разовая</span>' : '';
 }
-// Порог «предложить отметить разовой» — настройка устройства, как тема.
-function _oneoffThreshold(){ return Math.max(0, parseInt(uiGet('oneoffThreshold', '6000')) || 0); }
+// Порог «предложить отметить разовой». С v1.79.3 синкается (DB.oneoffThreshold,
+// LWW по listsMeta.oneoffThreshold); до этого жил в localStorage устройства —
+// оттуда он читается только как стартовое значение, пока в базе порога нет.
+function _oneoffThreshold(){
+  const v = DB.oneoffThreshold != null ? DB.oneoffThreshold : uiGet('oneoffThreshold', '6000');
+  return Math.max(0, parseInt(v) || 0);
+}
 
 // Перенос старых «особых»: категория, где особые были в ≥3 разных месяцах,
 // становится обязательной, остальные особые остаются на трате как разовые.
 // На данных пользователя: Аренда, Связь, Мама, Спорт → обязательные;
 // Хотелки (2 мес), Подарки, МРТ → разовые. Порог 3, а не 2: при двух
 // месяцах «Хотелки» с велосипедом и курсом стали бы обязательными.
-// Отметка special на тратах обязательных категорий снимается — иначе снятие
-// обязательности с категории молча превратило бы всю её аренду в разовые.
+// Сами траты миграция НЕ трогает (v1.79.3): до этого она снимала special у
+// трат обязательных категорий со штампом updatedAt, и устройство, разметившее
+// устаревшие локальные данные, пушило эти штампы и стирало разовые отметки
+// на остальных. Лишний special в обязательной категории безвреден — _isOneoff
+// его не видит. Метку listsMeta.catOblig миграция не ставит: при синке любая
+// явная правка с другого устройства и версия на Drive главнее авторазметки.
 // Пока трат нет (свежее устройство до первого pull), миграцию откладываем:
 // DB.catOblig остаётся undefined, и _ensureCatIds после merge повторит попытку.
 function _migrateOblig(){
@@ -1913,13 +1922,6 @@ function _migrateOblig(){
     if(months[id].size >= 3 && (DB.catIds||[]).includes(id)) map[id] = true;
   });
   DB.catOblig = map;
-  const now = Date.now();
-  (DB.expenses||[]).forEach(e => {
-    if(e && e.special && map[e.catId]){ e.special = null; e.updatedAt = now; }
-  });
-  (DB.templates||[]).forEach(t => {
-    if(t && t.special && map[t.catId]){ t.special = null; t.updatedAt = now; }
-  });
 }
 
 function getMonthExpenses(y,m){
@@ -2373,7 +2375,9 @@ function openKindsManager(){
 }
 
 function setOneoffThreshold(str){
-  uiSet('oneoffThreshold', Math.max(0, Math.round(parseMoney(str) || 0)));
+  DB.oneoffThreshold = Math.max(0, Math.round(parseMoney(str) || 0));
+  touchList('oneoffThreshold');
+  saveDB();
   renderKinds();
 }
 
@@ -2389,7 +2393,7 @@ function toggleCatOblig(i){
     const now = Date.now();
     DB.expenses.forEach(e => { if(e.catId === id && e.special){ e.special = null; e.updatedAt = now; } });
   }
-  touchList('categories'); // catOblig мержится вместе со списком категорий
+  touchList('catOblig'); // своя LWW-метка, см. _mergeKinds
   saveDB();
   renderKinds();
   renderCurrentPage();
@@ -7923,6 +7927,7 @@ function removeCategory(i){
   // Лимиты и цвет удалённой категории адресуются её catId — сдвигать соседей
   // не нужно, достаточно убрать её собственные ключи.
   if(DB.catColors) delete DB.catColors[deletedId];
+  if(DB.catOblig && DB.catOblig[deletedId]){ delete DB.catOblig[deletedId]; touchList('catOblig'); }
   Object.keys(DB.limits).forEach(k=>{
     if(DB.limits[k] && !Array.isArray(DB.limits[k])) delete DB.limits[k][deletedId];
   });
@@ -10403,7 +10408,7 @@ function mergePullData(d){
   // прежнее правило «длиннее выигрывает» (добавления с другого устройства)
   const catRemoteWon = _mergeList(d, 'categories', 'catColors');
   if(catRemoteWon && d.catIds) DB.catIds = d.catIds; // catIds следуют за categories
-  if(catRemoteWon && d.catOblig) DB.catOblig = d.catOblig; // и обязательность — тоже по listsMeta.categories
+  if(_mergeKinds(d)) changed = true;
   const listsChanged = catRemoteWon
     | _mergeList(d, 'banks', null)
     | _mergeList(d, 'creditBanks', null)
@@ -10441,6 +10446,37 @@ function mergePullData(d){
   // Пришедшие записи могут нести catId из чужого списка — пересчитать индексы.
   // Только если merge что-то менял: _reindexCats внутри — indexOf на каждую запись.
   if(changed) _ensureCatIds();
+  return changed;
+}
+
+// Разметка «обязательные / разовые» (v1.79.3): catOblig и порог подсказки —
+// LWW по собственным меткам listsMeta.catOblig / listsMeta.oneoffThreshold.
+// До v1.79.3 catOblig ехал только за выигравшим списком categories, а миграция
+// метку не ставила — два устройства, разметившие данные сами, так и жили с
+// разной разметкой. При равных метках (обе стороны — миграция, метки нет)
+// побеждает удалённое: pull идёт до push, поэтому все устройства сходятся к
+// версии, которая уже лежит на Drive, а не пушат свою по кругу.
+function _mergeKinds(d){
+  let changed = false;
+  if(!DB.listsMeta) DB.listsMeta = {};
+  const rMeta = k => (d.listsMeta || {})[k] || 0;
+  const lMeta = k => DB.listsMeta[k] || 0;
+  if(d.catOblig && typeof d.catOblig === 'object'){
+    const r = rMeta('catOblig'), l = lMeta('catOblig');
+    if(r > l || (r === l && _canonJSON(d.catOblig) !== _canonJSON(DB.catOblig || null))){
+      DB.catOblig = d.catOblig;
+      if(r) DB.listsMeta.catOblig = r;
+      changed = true;
+    }
+  }
+  if(d.oneoffThreshold != null){
+    const r = rMeta('oneoffThreshold'), l = lMeta('oneoffThreshold');
+    if((r > l || r === l) && d.oneoffThreshold !== DB.oneoffThreshold){
+      DB.oneoffThreshold = d.oneoffThreshold;
+      if(r) DB.listsMeta.oneoffThreshold = r;
+      changed = true;
+    }
+  }
   return changed;
 }
 
