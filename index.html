@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.79.1">
+<link rel="stylesheet" href="css/app.css?v=1.79.4">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -859,26 +859,25 @@ if ('serviceWorker' in navigator) {
   <div class="sheet">
     <button class="close-btn" onclick="closeModal('modal-kinds')"><svg class="ico"><use href="#i-close"/></svg></button>
     <h2>Обязательные и разовые</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.45">
-      <b>Обязательные</b> — категории, которые повторяются каждый месяц (аренда, связь):
-      прогноз ждёт их и держит деньги в резерве. <b>Разовые</b> — отметка на отдельной
-      трате (подарок, ремонт): она не портит темп «в день», но и не ждётся в следующих месяцах.
+    <p class="kinds-intro">
+      Обязательные повторяются каждый месяц — прогноз держит под них резерв.
+      Разовые не портят темп «в день» и не ждутся снова.
     </p>
-    <div class="fgrp" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <label class="flbl" style="margin:0;flex:1">Предлагать отметить разовой от</label>
-      <input type="text" id="kinds-threshold" inputmode="decimal" class="finp" oninput="formatMoneyInput(this)" onchange="setOneoffThreshold(this.value)" style="width:96px;text-align:right;padding:7px 8px">
-      <span style="color:var(--muted)">₽</span>
-    </div>
-    <div class="kinds-sec">Категории</div>
-    <div id="kinds-cats"></div>
-    <div class="kinds-sec" style="display:flex;align-items:center;gap:8px">
-      <span style="flex:1">История за</span>
-      <div class="spec-seg" id="kinds-period" style="font-size:11px">
-        <span data-v="3" onclick="setKindsPeriod(3)">3</span>
-        <span data-v="6" onclick="setKindsPeriod(6)">6</span>
-        <span data-v="12" onclick="setKindsPeriod(12)">12</span>
+    <label class="kinds-thr">
+      <span>Спрашивать «разовая?» от</span>
+      <input type="text" id="kinds-threshold" inputmode="decimal" class="finp" oninput="formatMoneyInput(this)" onchange="setOneoffThreshold(this.value)">
+      <span>₽</span>
+    </label>
+    <div class="kinds-h">Обязательные категории</div>
+    <div id="kinds-cats" class="kinds-chips"></div>
+    <div class="kinds-hint">Нажмите на категорию, чтобы включить или выключить.</div>
+    <div class="kinds-h kinds-h-row">
+      <span>История</span>
+      <div class="spec-seg" id="kinds-period">
+        <span data-v="3" onclick="setKindsPeriod(3)">3 мес</span>
+        <span data-v="6" onclick="setKindsPeriod(6)">6 мес</span>
+        <span data-v="12" onclick="setKindsPeriod(12)">12 мес</span>
       </div>
-      <span>мес</span>
     </div>
     <div id="kinds-history"></div>
     <div class="btn-row" style="margin-top:12px"><button class="btn primary" onclick="closeModal('modal-kinds')">Готово</button></div>
@@ -1359,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.4</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2423,7 +2422,9 @@ function renderKinds(){
     months.push({y: d.getFullYear(), m: d.getMonth(), exps: getMonthExpenses(d.getFullYear(), d.getMonth())});
   }
 
-  // Категории: переключатель + сколько в среднем за месяц с тратами
+  // Категории — облако чипов: обязательная залита оттенком своего цвета.
+  // Порядок как в списке категорий: сортировка «обязательные вперёд» заставляла
+  // бы чип прыгать из-под пальца после нажатия.
   const catBox = document.getElementById('kinds-cats');
   if(catBox){
     catBox.innerHTML = DB.categories.map((c, i) => {
@@ -2433,53 +2434,75 @@ function renderKinds(){
         if(s > 0){ sum += s; mcnt++; }
       });
       const on = _isObligCat(i);
-      const hint = mcnt ? mcnt + ' из ' + N + ' мес · ⌀ ' + fmtH(Math.round(sum / mcnt)) : 'нет трат';
-      return '<div class="kinds-row">' +
-        '<span class="entry-dot" style="background:' + getCatColor(i) + '"></span>' +
-        '<span class="kinds-name">' + esc(c) + '<span class="kinds-hint">' + hint + '</span></span>' +
-        '<button class="kind-tgl' + (on ? ' on' : '') + '" onclick="toggleCatOblig(' + i + ')">' +
-          (on ? 'обязательная' : 'обычная') + '</button>' +
-        '</div>';
+      const hint = mcnt ? mcnt + ' из ' + N + ' мес, в среднем ' + fmt(Math.round(sum / mcnt)) : 'нет трат за ' + N + ' мес';
+      return '<button class="kind-chip' + (on ? ' on' : '') + '" style="--cc:' + getCatColor(i) + '"' +
+        ' aria-pressed="' + on + '" title="' + esc(hint) + '" onclick="toggleCatOblig(' + i + ')">' +
+        '<span class="kc-dot"></span>' + esc(c) + '</button>';
     }).join('');
   }
 
-  // История по месяцам: сводка обязательных, разовые и крупные без отметки
+  // История: месяц — блок с полоской состава (обязательные цветами категорий,
+  // разовые штриховкой) и тремя подразделами. Подзаголовки подразделов работают
+  // легендой полоски: точки и штриховка у них те же.
   const hist = document.getElementById('kinds-history');
   if(!hist) return;
+  const expRow = e => {
+    const on = !!e.special;
+    const [, mm, dd] = e.date.split('-');
+    return '<div class="km-row">' +
+      '<span class="km-date">' + dd + '.' + mm + '</span>' +
+      '<span class="km-lbl">' + esc(DB.categories[e.cat] || '—') +
+        (e.comment ? '<small>' + esc(e.comment) + '</small>' : '') + '</span>' +
+      '<span class="km-amt">' + fmtH(e.amount) + '</span>' +
+      '<button class="km-mark' + (on ? ' on' : '') + '" data-exp="' + e.id + '" aria-pressed="' + on + '"' +
+        ' onclick="toggleExpOneoff(\'' + e.id + '\')">' + (on ? SPEC_BADGE + ' разовая' : 'отметить') + '</button>' +
+      '</div>';
+  };
+  const sub = (label, sum, mark) => '<div class="km-sub"><span>' + mark + label + '</span>' +
+    (sum != null ? '<b>' + fmtH(sum) + '</b>' : '') + '</div>';
+
   let html = '';
   months.forEach(mo => {
     const oblByCat = {};
     let oblSum = 0, oneSum = 0;
-    const rows = [];
+    const oneoffs = [], unmarked = [];
     mo.exps.forEach(e => {
       if(_isOblig(e)){ oblByCat[e.cat] = (oblByCat[e.cat] || 0) + e.amount; oblSum += e.amount; }
-      else if(e.special){ oneSum += e.amount; rows.push(e); }
-      else if(thr > 0 && e.amount >= thr) rows.push(e);
+      else if(e.special){ oneSum += e.amount; oneoffs.push(e); }
+      else if(thr > 0 && e.amount >= thr) unmarked.push(e);
     });
-    if(!oblSum && !rows.length) return;
-    rows.sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
-    html += '<div class="kinds-month">' +
-      '<div class="kinds-mhdr"><span>' + MONTHS_RU[mo.m] + ' ' + mo.y + '</span>' +
-      '<span>обяз. ' + fmtH(oblSum) + ' · разовые ' + fmtH(oneSum) + '</span></div>';
+    if(!oblSum && !oneoffs.length && !unmarked.length) return;
+    const byDate = (a, b) => b.date.localeCompare(a.date) || b.amount - a.amount;
+    oneoffs.sort(byDate); unmarked.sort(byDate);
     const oblCats = Object.keys(oblByCat).map(Number).sort((a, b) => oblByCat[b] - oblByCat[a]);
-    if(oblCats.length){
-      html += '<div class="kinds-obl">' + oblCats.map(ci => esc(DB.categories[ci] || '—') + ' ' + fmtH(oblByCat[ci])).join(' · ') + '</div>';
+    const total = oblSum + oneSum;
+
+    html += '<section class="km">' +
+      '<div class="km-h"><span class="km-name">' + MONTHS_RU[mo.m] + ' ' + mo.y + '</span>' +
+        '<span class="km-total">' + fmtH(total) + '</span></div>';
+    if(total > 0){
+      html += '<div class="km-strip" aria-hidden="true">' +
+        oblCats.map(ci => '<i style="flex:' + oblByCat[ci] + ';background:' + getCatColor(ci) + '"></i>').join('') +
+        (oneSum > 0 ? '<i class="ks-one" style="flex:' + oneSum + '"></i>' : '') + '</div>';
     }
-    rows.forEach(e => {
-      const on = !!e.special;
-      const [, mm, dd] = e.date.split('-');
-      html += '<div class="kinds-row' + (on ? '' : ' unmarked') + '">' +
-        '<span class="kinds-date">' + dd + '.' + mm + '</span>' +
-        '<span class="kinds-name">' + esc(DB.categories[e.cat] || '—') +
-          (e.comment ? '<span class="kinds-hint">' + esc(e.comment) + '</span>' : '') + '</span>' +
-        '<span class="kinds-amt">' + fmtH(e.amount) + '</span>' +
-        '<button class="kind-tgl' + (on ? ' on' : '') + '" onclick="toggleExpOneoff(\'' + e.id + '\')">' +
-          (on ? 'разовая' : 'разовая?') + '</button>' +
-        '</div>';
-    });
-    html += '</div>';
+    if(oblCats.length){
+      html += sub('Обязательные', oblSum, '');
+      html += oblCats.map(ci => '<div class="km-row">' +
+        '<span class="kc-dot" style="--cc:' + getCatColor(ci) + '"></span>' +
+        '<span class="km-lbl">' + esc(DB.categories[ci] || '—') + '</span>' +
+        '<span class="km-amt">' + fmtH(oblByCat[ci]) + '</span></div>').join('');
+    }
+    if(oneoffs.length){
+      html += sub('Разовые', oneSum, '<i class="ks-one ks-swatch"></i>');
+      html += oneoffs.map(expRow).join('');
+    }
+    if(unmarked.length){
+      html += sub('Крупные без отметки', null, '');
+      html += unmarked.map(expRow).join('');
+    }
+    html += '</section>';
   });
-  hist.innerHTML = html || '<div style="font-size:13px;color:var(--muted);padding:8px 0">За ' + N + ' мес нет ни обязательных, ни разовых, ни трат от порога.</div>';
+  hist.innerHTML = html || '<div class="kinds-hint">За ' + N + ' мес нет ни обязательных, ни разовых, ни трат от ' + fmt(thr) + '.</div>';
 }
 
 function renderBudget(){

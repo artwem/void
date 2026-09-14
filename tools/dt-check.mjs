@@ -1253,23 +1253,28 @@ suite(390, 'обязательные и разовые', () => {
       DB.expenses.push({ id: 'bigU', date: today(), cat: 3, catId: 'cat0004', amount: 12000, comment: 'Куртка', updatedAt: 1 });
       saveDB();
       openKindsManager();
-      const btn = [...document.querySelectorAll('#kinds-history .kind-tgl')]
-        .find(b => b.getAttribute('onclick').includes('bigU'));
+      const btn = document.querySelector('#kinds-history .km-mark[data-exp="bigU"]');
       const label = btn && btn.textContent;
       btn && btn.click();
       const marked = !!DB.expenses.find(e => e.id === 'bigU').special;
+      const after = document.querySelector('#kinds-history .km-mark[data-exp="bigU"]');
       const meta0 = (DB.listsMeta || {}).catOblig || 0;
-      document.querySelectorAll('#kinds-cats .kind-tgl')[6].click();   // «Подписки»
-      const r = { label, marked, obl: !!DB.catOblig.cat0007, touched: (DB.listsMeta.catOblig || 0) > meta0,
-        catLabel: document.querySelectorAll('#kinds-cats .kind-tgl')[6].textContent };
+      document.querySelectorAll('#kinds-cats .kind-chip')[6].click();   // «Подписки»
+      const chip = document.querySelectorAll('#kinds-cats .kind-chip')[6];
+      const r = { label, marked, markedOn: !!after && after.classList.contains('on'),
+        obl: !!DB.catOblig.cat0007, touched: (DB.listsMeta.catOblig || 0) > meta0,
+        catOn: chip.classList.contains('on') && chip.getAttribute('aria-pressed') === 'true',
+        strip: !!document.querySelector('#kinds-history .km-strip .ks-one') };
       closeModal('modal-kinds');
       return r;
     });
-    eq(g.label, 'разовая?', 'крупная без отметки предложена');
+    eq(g.label, 'отметить', 'крупная без отметки предложена');
     eq(g.marked, true, 'тап отметил разовой');
+    eq(g.markedOn, true, 'после отметки кнопка в состоянии «разовая»');
+    eq(g.strip, true, 'разовая появилась штриховкой в полоске месяца');
     eq(g.obl, true, 'категория стала обязательной');
     eq(g.touched, true, 'listsMeta.catOblig обновлён для синка');
-    eq(g.catLabel, 'обязательная', 'подпись переключателя');
+    eq(g.catOn, true, 'чип категории включён и помечен aria-pressed');
   });
 
   check('синк: разметка и порог — LWW по своим меткам, не по списку категорий', async p => {
