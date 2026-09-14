@@ -1470,6 +1470,8 @@ suite(390, 'средние и период графиков', () => {
       const sel = document.getElementById('report-year'); sel.innerHTML = '';
       window.showPage('report');
       out.dashRows = [...document.querySelectorAll('#report-body tr')].filter(tr => tr.textContent.includes('—')).length;
+      out.repNote = (document.querySelector('#rep-summary > .rep-note') || {}).textContent || '';
+      out.inCard = [...document.querySelectorAll('#rep-summary .s-card')].some(c => /учит|учёт/.test(c.textContent));
       DB.incomes = DB.incomes.filter(x => x.id !== 'feb1'); saveDB();
       sel.innerHTML = ''; uiSet('reportYear', ''); window.showPage('stats', document.getElementById('nav-stats'));
       return out;
@@ -1481,6 +1483,8 @@ suite(390, 'средние и период графиков', () => {
     eq(r.grouped, 2, '«Расходы по группам» в режиме «всё» начинаются с первой траты');
     eq(/Расходы учитываются с \S+ \d{4}/.test(r.note), true, 'в сводке общей строкой подписано, откуда считается «Накоплено»: ' + r.note);
     eq(r.dashRows >= 1, true, 'в таблице отчёта у месяца прочерки');
+    eq(/Расходы учитываются с \S+ \d{4}/.test(r.repNote), true, 'в отчёте та же общая строка под карточками: ' + r.repNote);
+    eq(r.inCard, false, 'внутри карточек сводки отчёта подписи нет');
   });
 
   check('период «Накоплений» не трогает период «Аналитики»', async p => {
