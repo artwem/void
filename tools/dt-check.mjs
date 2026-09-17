@@ -1719,6 +1719,12 @@ suite(390, 'доходность вкладов и архив закрытых',
                bars: els.map(el => !!el.querySelector('.dy-bar')).join(','), cells: els.map(el => el.children.length).join(',') };
     }, CLOSED);
     eq(r.order, 'y1,o1', 'закрытый первым');
+    const ord = await p.evaluate(c => {
+      const o = (id, openDate, endDate) => ({ ...c, id, openDate, endDate, closedAt: undefined, closedInterest: undefined, _deleted: false });
+      DB.deposits = [o('late', '2025-02-01', '2099-06-01'), o('soon', '2025-09-01', '2099-01-01'), { ...c, id: 'old', closedAt: '2025-06-01', endDate: '2026-01-01' }, c];
+      return _depYield('0000-01-01', '9999-12-31').rows.map(x => x.d.id).join(',');
+    }, CLOSED);
+    eq(ord, 'old,y1,soon,late', 'по дате закрытия: closedAt у закрытых, endDate у открытых — не по открытию');
     eq(r.cells, '4,4', 'строки — таблица из четырёх колонок: вклад, ставка, за период, за срок');
     eq(/закрыт 01\.01\.26 .*10\.0%/.test(r.rows[0]), true, 'закрытый: ' + r.rows[0]);
     eq(/до 01\.01\.99 .*[\d.]+%/.test(r.rows[1]) && !/~/.test(r.rows[1]), true, 'открытый: ' + r.rows[1]);

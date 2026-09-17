@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.7</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.8</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6230,9 +6230,11 @@ function _depYield(from, to){
     rows.push({d, accrued:acc, received:rec, life:I, accLife, rate, closed:!!d.closedAt});
   });
   open.sort((a,b)=>a.d.endDate.localeCompare(b.d.endDate));
-  // закрытые сверху (свежие первыми) — их цифры фактические; открытые ниже — ожидаемые
-  rows.sort((a,b)=> a.closed !== b.closed ? (a.closed ? -1 : 1)
-    : a.closed ? b.d.closedAt.localeCompare(a.d.closedAt) : a.d.openDate.localeCompare(b.d.openDate));
+  // Строки в порядке закрытия: закрытые — по closedAt, открытые — по endDate, одной
+  // хронологией. Закрытые так и так оказываются сверху: их дата в прошлом. До v1.79.8
+  // открытые шли по openDate, а закрытые — свежие первыми, и таблица читалась вразнобой.
+  const endOf = r => r.d.closedAt || r.d.endDate;
+  rows.sort((a,b)=> endOf(a).localeCompare(endOf(b)) || (a.closed === b.closed ? 0 : a.closed ? -1 : 1));
   // «в среднем на вкладах» = деньго-дни ÷ дни окна [pFrom, pTo). У периода с началом (год,
   // N мес) окно целиком, по сегодня — тогда «средняя × ставка × дни/365 = начислено» читается
   // как «эту сумму положили с 01.01 по сегодня». До v1.79.7 окно обрезалось первым открытием
