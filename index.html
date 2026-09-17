@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.5</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.6</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1720,6 +1720,18 @@ function fmtShort(n){
   const a = Math.abs(n);
   if(a >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'М';
   if(a >= 1000)    return (n/1000).toFixed(0)+'к';
+  return Math.round(n)+'';
+}
+// Сумма в узкой колонке таблицы (история активов). fmtShort для этого груб:
+// миллионы с одним знаком, а тысячи целыми, и в соседних строках 1 023 000
+// читалось «1М», а 1 070 000 — «1.1М», хотя колонка счетов рядом показывала
+// разницу в 40к. Здесь миллионы всегда с двумя знаками («1.02М»), до 10к —
+// с одним («1.4к»), чтобы 1 400 не превращалось в «1к».
+function fmtCompact(n){
+  const a = Math.abs(n);
+  if(a >= 1000000) return (n/1000000).toFixed(2)+'М';
+  if(a >= 10000)   return Math.round(n/1000)+'к';
+  if(a >= 1000)    return (n/1000).toFixed(1).replace(/\.0$/,'')+'к';
   return Math.round(n)+'';
 }
 // Подпись деления оси Y. Единица (к/М) — одна на всю ось, по самому крупному
@@ -5581,17 +5593,17 @@ function renderAssetsHistory(rows, showAll){
     if(hasDeps || hasInv){
       const tdB = tr.insertCell();
       tdB.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--text)';
-      tdB.innerHTML = '<span class="prv">'+fmtShort(r.banks)+'₽</span>';
+      tdB.innerHTML = '<span class="prv">'+fmtCompact(r.banks)+'₽</span>';
     }
     if(hasDeps){
       const tdD = tr.insertCell();
       tdD.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--muted)';
-      tdD.innerHTML = r.deps ? '<span class="prv">'+fmtShort(r.deps)+'₽</span>' : '—';
+      tdD.innerHTML = r.deps ? '<span class="prv">'+fmtCompact(r.deps)+'₽</span>' : '—';
     }
     if(hasInv){
       const tdI = tr.insertCell();
       tdI.style.cssText = 'padding:12px 4px;font-size:12px;text-align:right;color:var(--muted)';
-      tdI.innerHTML = r.inv ? '<span class="prv">'+fmtShort(r.inv)+'₽</span>' : '—';
+      tdI.innerHTML = r.inv ? '<span class="prv">'+fmtCompact(r.inv)+'₽</span>' : '—';
     }
 
     const td2 = tr.insertCell();
@@ -5600,7 +5612,7 @@ function renderAssetsHistory(rows, showAll){
 
     const tdDiff = tr.insertCell();
     tdDiff.style.cssText = 'padding:12px 4px;font-size:11px;text-align:right;color:'+(diff!==null&&diff<0?'var(--red)':'#1d9e75');
-    tdDiff.innerHTML = diff===null ? '' : '<span class="prv">'+(diff>=0?'+':'')+fmtShort(diff)+'₽</span>';
+    tdDiff.innerHTML = diff===null ? '' : '<span class="prv">'+(diff>=0?'+':'')+fmtCompact(diff)+'₽</span>';
 
     // Edit button — separate cell, big tap target
     const td3 = tr.insertCell();
