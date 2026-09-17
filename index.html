@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.6</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.7</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6233,16 +6233,22 @@ function _depYield(from, to){
   // закрытые сверху (свежие первыми) — их цифры фактические; открытые ниже — ожидаемые
   rows.sort((a,b)=> a.closed !== b.closed ? (a.closed ? -1 : 1)
     : a.closed ? b.d.closedAt.localeCompare(a.d.closedAt) : a.d.openDate.localeCompare(b.d.openDate));
-  // «в среднем на вкладах» = деньго-дни ÷ дни, пока вклады были: период обрезается
-  // первым открытием и последним закрытием — иначе «всё» разбавлялось бы месяцами без вкладов
-  const firstOpen = rows.reduce((m,r)=> !m || r.d.openDate < m ? r.d.openDate : m, '');
-  const lastEnd = rows.reduce((m,r)=>{ const e = r.d.closedAt || r.d.endDate; return e > m ? e : m; }, '');
-  const pFrom = firstOpen > from ? firstOpen : from;
-  const pTo = lastEnd < accTo ? lastEnd : accTo;
+  // «в среднем на вкладах» = деньго-дни ÷ дни окна [pFrom, pTo). У периода с началом (год,
+  // N мес) окно целиком, по сегодня — тогда «средняя × ставка × дни/365 = начислено» читается
+  // как «эту сумму положили с 01.01 по сегодня». До v1.79.7 окно обрезалось первым открытием
+  // и последним закрытием, и «с 01.01» молча означало «с марта». Обрезка осталась только у
+  // «всего времени» (from = 0000-01-01): иначе оно начиналось бы с нулевого года.
+  let pFrom = from, pTo = accTo;
+  if(from === '0000-01-01'){
+    const firstOpen = rows.reduce((m,r)=> !m || r.d.openDate < m ? r.d.openDate : m, '');
+    const lastEnd = rows.reduce((m,r)=>{ const e = r.d.closedAt || r.d.endDate; return e > m ? e : m; }, '');
+    if(firstOpen > pFrom) pFrom = firstOpen;
+    if(lastEnd && lastEnd < pTo) pTo = lastEnd;
+  }
   const pDays = pFrom < pTo ? _depDays(pFrom, pTo) : 0;
   return {accrued:Math.round(accrued), received:Math.round(received), expected:Math.round(expected),
           rate: cdSum > 0 ? accrued/(cdSum/365)*100 : null,
-          avgBody: pDays > 0 ? Math.round(cdSum/pDays) : 0, rows, open};
+          avgBody: pDays > 0 ? Math.round(cdSum/pDays) : 0, pFrom, pTo, pDays, rows, open};
 }
 
 // Разметка доходности — общая для страницы вкладов и годового отчёта.
@@ -6313,7 +6319,14 @@ function _depYieldHtml(y, mode, o){
   }
   if(rep) t.push({cls:'dy-rec', lbl:'Выплачено '+per, val:'+'+fmtH(y.received), col:G, sub:'при закрытии'});
   t.push({cls:'dy-rate', lbl:'Средняя ставка', val:_depRatePct(y.rate), sub:'годовых'});
-  t.push({cls:'dy-avg', lbl:'В среднем на вкладах', val:fmtH(y.avgBody)});
+  // Подпись окна усреднения: «01.01–17.09.26» (последний день включительно)
+  let win = '';
+  if(y.pDays > 0){
+    const e = new Date(y.pTo); e.setUTCDate(e.getUTCDate()-1);
+    const eS = e.toISOString().slice(0,10);
+    win = (y.pFrom.slice(0,4) === eS.slice(0,4) ? dS(y.pFrom).slice(0,5) : dS(y.pFrom)) + '–' + dS(eS);
+  }
+  t.push({cls:'dy-avg', lbl:'В среднем на вкладах', val:fmtH(y.avgBody), sub:win});
   let h = tiles(t);
   // Строка вклада: за период и полный доход за срок; у открытого под именем полоска «сколько уже набежало»
   const body = y.rows.map(r=>{
