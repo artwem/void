@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.79.8</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1455,8 +1455,9 @@ let currentDay = '';
 let editingExpenseId = null;
 let _selectedExpSpecial = '';
 // Вид траты (v1.79.0): обычная / обязательная / разовая. См. _isOblig рядом с
-// getMonthExpenses. expense.special теперь значит «разовая» — старые значения
-// 'oneoff'/'recurring' остаются в базе и читаются как truthy.
+// getMonthExpenses. Разовость с v1.80.0 пишется в expense.oneoff; старое поле
+// expense.special ('oneoff'/'recurring'/true) читается только в необязательных
+// категориях — почему именно так, объяснено там же.
 const SPEC_BADGE = '✦';
 function setExpSpecial(v){
   _selectedExpSpecial = v||'';
@@ -1465,21 +1466,26 @@ function setExpSpecial(v){
   });
   _expKindUi();
 }
-// Сегмент «Обычная / Разовая» в модалке траты: в обязательной категории выбора
-// нет (вид задан категорией), в обычной — при сумме от порога подсказка.
+// Сегмент «Обычная / Разовая» в модалке траты. В обязательной категории левый
+// чип называется «Обязательная»: вид по умолчанию задан категорией, но оплата
+// вперёд бывает и здесь — тогда правый чип вынимает её из резерва на будущие
+// месяцы. В обычной категории при сумме от порога — подсказка.
 function _expKindUi(){
   const seg = document.getElementById('exp-spec-seg');
   const note = document.getElementById('exp-kind-note');
   if(!seg || !note) return;
   const cat = parseInt(document.getElementById('exp-cat').value);
   const amt = parseMoney(document.getElementById('exp-amount').value) || 0;
-  if(_isObligCat(cat)){
-    seg.style.display = 'none';
+  const oblig = _isObligCat(cat);
+  seg.style.display = 'flex';
+  seg.querySelector('span').textContent = oblig ? 'Обязательная' : 'Обычная';
+  if(oblig){
     note.style.display = 'block';
-    note.textContent = 'Категория обязательная — трата учитывается в резерве, а не в темпе «в день».';
+    note.textContent = _selectedExpSpecial
+      ? 'Разовая: вне темпа «в день» и без резерва на следующие месяцы.'
+      : 'Категория обязательная — трата в резерве, а не в темпе «в день». Оплата вперёд — отметьте «Разовая».';
     return;
   }
-  seg.style.display = 'flex';
   const big = !_selectedExpSpecial && amt >= _oneoffThreshold();
   note.style.display = big ? 'block' : 'none';
   if(big) note.textContent = 'Крупная трата. Если разовая — отметьте: она не исказит темп «в день» и прогноз.';
@@ -1884,19 +1890,32 @@ function _reindexCats(){
 // «Хотелки» с двумя покупками бронировали ~10к каждый месяц.
 //   обязательная — свойство КАТЕГОРИИ (DB.catOblig[catId]); прогноз бронирует
 //                  по истории, трата вне темпа;
-//   разовая      — отметка на трате (expense.special) в обычной категории;
-//                  вне темпа, но НЕ бронируется вперёд.
+//   разовая      — отметка на трате (expense.oneoff); вне темпа, но НЕ
+//                  бронируется вперёд.
 // _isSpec — «отдельная» трата любого из двух видов: всё, что вынуто из темпа.
+//
+// Разовая ВНУТРИ обязательной категории (v1.80.0) — не противоречие, а пустая
+// клетка: обязательность говорит «здесь деньги уходят каждый месяц», разовость —
+// «вот эта сумма не повторится». Подписка на связь, оплаченная на два года
+// вперёд, ехала в историю резерва и полгода бронировала деньги под то, чего уже
+// не будет. Такая трата вне темпа (как всё обязательное), но из брони выпадает.
+//
+// Поле новое, а не прежний expense.special, и миграции НЕТ намеренно: в базе
+// остались special-отметки v1.78 на траты обязательных категорий (у автора — 34
+// штуки: вся аренда и связь). Снять их можно только со штампом updatedAt, а это
+// ровно та ошибка, которую чинили в v1.79.3 — устройство с устаревшими данными
+// разослало бы штампы и стёрло разовые отметки на остальных. Поэтому старое
+// поле читается только там, где значило разовость: в НЕобязательной категории.
 function _isObligCat(ci){
   const id = (DB.catIds||[])[ci];
   return !!(id && DB.catOblig && DB.catOblig[id]);
 }
-function _isOblig(e){ return _isObligCat(e.cat); }
-function _isOneoff(e){ return !!e.special && !_isObligCat(e.cat); }
-function _isSpec(e){ return !!e.special || _isObligCat(e.cat); }
+function _isOneoff(e){ return !!e.oneoff || (!!e.special && !_isObligCat(e.cat)); }
+function _isOblig(e){ return _isObligCat(e.cat) && !_isOneoff(e); }
+function _isSpec(e){ return _isOneoff(e) || _isObligCat(e.cat); }
 function _kindBadge(e){
-  if(_isObligCat(e.cat)) return '<span class="spec-badge">обяз.</span>';
-  return e.special ? '<span class="spec-badge">' + SPEC_BADGE + ' разовая</span>' : '';
+  if(_isOneoff(e)) return '<span class="spec-badge">' + SPEC_BADGE + ' разовая</span>';
+  return _isObligCat(e.cat) ? '<span class="spec-badge">обяз.</span>' : '';
 }
 // Порог «предложить отметить разовой». С v1.79.3 синкается (DB.oneoffThreshold,
 // LWW по listsMeta.oneoffThreshold); до этого жил в localStorage устройства —
@@ -2397,13 +2416,10 @@ function toggleCatOblig(i){
   if(!id) return;
   if(!DB.catOblig) DB.catOblig = {};
   if(DB.catOblig[id]) delete DB.catOblig[id];
-  else {
-    DB.catOblig[id] = true;
-    // Разовые отметки внутри ставшей обязательной категории теряют смысл:
-    // снимаем, иначе при обратном переключении всплыли бы старые разовые.
-    const now = Date.now();
-    DB.expenses.forEach(e => { if(e.catId === id && e.special){ e.special = null; e.updatedAt = now; } });
-  }
+  // Разовые отметки внутри категории переживают переключение: с v1.80.0 оплата
+  // вперёд законна и в обязательной категории, а чистка со штампом updatedAt —
+  // ровно тот сценарий, что стирал отметки на других устройствах (v1.79.3).
+  else DB.catOblig[id] = true;
   touchList('catOblig'); // своя LWW-метка, см. _mergeKinds
   saveDB();
   renderKinds();
@@ -2412,8 +2428,9 @@ function toggleCatOblig(i){
 
 function toggleExpOneoff(id){
   const e = DB.expenses.find(x => x.id === id);
-  if(!e || _isObligCat(e.cat)) return;
-  e.special = e.special ? null : true;
+  if(!e) return;
+  e.oneoff = _isOneoff(e) ? null : true;
+  e.special = null;                       // снимаем legacy-поле, иначе оно вернёт отметку
   e.updatedAt = Date.now();
   saveDB();
   renderKinds();
@@ -2459,7 +2476,7 @@ function renderKinds(){
   const hist = document.getElementById('kinds-history');
   if(!hist) return;
   const expRow = e => {
-    const on = !!e.special;
+    const on = _isOneoff(e);
     const [, mm, dd] = e.date.split('-');
     return '<div class="km-row">' +
       '<span class="km-date">' + dd + '.' + mm + '</span>' +
@@ -2480,7 +2497,7 @@ function renderKinds(){
     const oneoffs = [], unmarked = [];
     mo.exps.forEach(e => {
       if(_isOblig(e)){ oblByCat[e.cat] = (oblByCat[e.cat] || 0) + e.amount; oblSum += e.amount; }
-      else if(e.special){ oneSum += e.amount; oneoffs.push(e); }
+      else if(_isOneoff(e)){ oneSum += e.amount; oneoffs.push(e); }
       else if(thr > 0 && e.amount >= thr) unmarked.push(e);
     });
     if(!oblSum && !oneoffs.length && !unmarked.length) return;
@@ -2745,7 +2762,7 @@ function editExpense(id, e){
   setMoneyInput('exp-amount', exp.amount);
   document.getElementById('exp-date').value = exp.date;
   document.getElementById('exp-comment').value = exp.comment||'';
-  setExpSpecial(exp.special ? '1' : '');
+  setExpSpecial(_isOneoff(exp) ? '1' : '');
   openModal('modal-expense');
 }
 
@@ -2755,17 +2772,18 @@ function saveExpense(){
   const cat  = parseInt(document.getElementById('exp-cat').value);
   const date = document.getElementById('exp-date').value || today();
   const comment = document.getElementById('exp-comment').value;
-  // В обязательной категории разовой не бывает — вид задан категорией
-  const special = (_selectedExpSpecial && !_isObligCat(cat)) ? true : null;
+  // Разовая бывает и в обязательной категории — это оплата вперёд, см. _isOneoff
+  const oneoff = _selectedExpSpecial ? true : null;
 
   const catId = (DB.catIds||[])[cat];
   if(editingExpenseId){
     const idx = DB.expenses.findIndex(e=>e.id===editingExpenseId);
     if(idx>=0){
-      DB.expenses[idx] = {...DB.expenses[idx], cat, catId, amount: amt, date, comment, special, _deleted:false, updatedAt:Date.now()};
+      // special — legacy-поле: снимаем, чтобы правка не оставила два источника вида
+      DB.expenses[idx] = {...DB.expenses[idx], cat, catId, amount: amt, date, comment, oneoff, special:null, _deleted:false, updatedAt:Date.now()};
     }
   } else {
-    DB.expenses.push({ id:uid(), cat, catId, amount:amt, date, comment, special, updatedAt:Date.now() });
+    DB.expenses.push({ id:uid(), cat, catId, amount:amt, date, comment, oneoff, updatedAt:Date.now() });
   }
   saveDB();
   closeModal('modal-expense');
@@ -3138,12 +3156,15 @@ function renderDay(){
 // Трата от порога в обычной категории, внесённая мимо модалки (быстрый ввод,
 // шаблон), — предложить отметить разовой. В модалке то же делает подсказка
 // под сегментом «Обычная / Разовая».
+// Обязательные категории тост обходит СПЕЦИАЛЬНО, хотя разовая там с v1.80.0
+// законна: аренда и связь выше порога каждый месяц, и предложение всплывало бы
+// на каждый обычный платёж. Разметить оплату вперёд можно в модалке траты.
 function _offerOneoff(rec){
-  if(!rec || rec.special || _isObligCat(rec.cat) || rec.amount < _oneoffThreshold() || _oneoffThreshold() <= 0) return false;
+  if(!rec || _isOneoff(rec) || _isObligCat(rec.cat) || rec.amount < _oneoffThreshold() || _oneoffThreshold() <= 0) return false;
   toastUndo(fmt(rec.amount) + ' — разовая трата?', () => {
     const e = DB.expenses.find(x => x.id === rec.id);
     if(!e) return;
-    e.special = true; e.updatedAt = Date.now();
+    e.oneoff = true; e.updatedAt = Date.now();
     saveDB();
     renderCurrentPage();
     toast('Отмечено разовой');
@@ -3186,7 +3207,7 @@ function addFromTemplate(id,btn){
   if(!t) return;
   const date = currentPage==='day' ? currentDay : today();
   const tmplNote = t.comment ? t.name + ': ' + t.comment : t.name;
-  const rec = {id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, special:_isOneoff(t)?true:null, updatedAt:Date.now()};
+  const rec = {id:uid(), cat:t.cat, catId:t.catId||(DB.catIds||[])[t.cat], amount:t.amount, date, comment:tmplNote, oneoff:_isOneoff(t)?true:null, updatedAt:Date.now()};
   DB.expenses.push(rec);
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
@@ -3208,7 +3229,7 @@ function openTemplateModal(id){
     document.getElementById('tmpl-comment').value = t.comment||'';
     document.getElementById('tmpl-delete-btn').style.display='block';
     _selectedTemplateColor = t.color || TEMPLATE_COLORS[0];
-    setTmplSpecial(t.special ? '1' : '');
+    setTmplSpecial(_isOneoff(t) ? '1' : '');
   } else {
     document.getElementById('template-modal-title').textContent='Новый шаблон';
     document.getElementById('tmpl-name').value='';
@@ -3229,14 +3250,14 @@ function saveTemplate(){
   if(!amt||amt<=0){toast('Введите сумму');return;}
   const cat = parseInt(document.getElementById('tmpl-cat').value);
   const comment = document.getElementById('tmpl-comment').value.trim();
-  const special = _selectedTmplSpecial ? true : null;
+  const oneoff = _selectedTmplSpecial ? true : null;
   if(!DB.templates) DB.templates=[];
   const catId = (DB.catIds||[])[cat];
   if(_editingTemplateId){
     const t = DB.templates.find(x=>x.id===_editingTemplateId);
-    if(t){ t.name=name; t.cat=cat; t.catId=catId; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; t.special=special; t._deleted=false; t.updatedAt=Date.now(); }
+    if(t){ t.name=name; t.cat=cat; t.catId=catId; t.amount=amt; t.comment=comment; t.color=_selectedTemplateColor; t.oneoff=oneoff; t.special=null; t._deleted=false; t.updatedAt=Date.now(); }
   } else {
-    DB.templates.push({id:uid(),name,cat,catId,amount:amt,comment,color:_selectedTemplateColor,special,updatedAt:Date.now()});
+    DB.templates.push({id:uid(),name,cat,catId,amount:amt,comment,color:_selectedTemplateColor,oneoff,updatedAt:Date.now()});
   }
   saveDB();
   closeModal('modal-template');
@@ -9225,7 +9246,7 @@ function buildDemoDB(now){
           amount: near(k === 0 ? p.sum : (p.sum2 || p.sum), p.spread),
           comment: p.sum2 ? p.cmt[Math.min(k, p.cmt.length - 1)] : pick(p.cmt), updatedAt: TS
         };
-        if(p.oneoff && k === 0) rec.special = true;   // разовая; обязательность — у категории (catOblig ниже)
+        if(p.oneoff && k === 0) rec.oneoff = true;   // разовая; обязательность — у категории (catOblig ниже)
         expenses.push(rec);
       }
     });

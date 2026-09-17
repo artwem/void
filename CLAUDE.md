@@ -101,7 +101,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   catColors:       {k3x9a1b2: '#185fa5', ...}, // catId → hex color
   catOblig:        {k3x9a1b2: true},          // обязательные категории (since v1.79.0); LWW по listsMeta.catOblig, при равных метках — удалённое (v1.79.3, _mergeKinds); undefined = миграция ещё не прошла
   oneoffThreshold: 6000,                      // порог подсказки «разовая?»; LWW по listsMeta.oneoffThreshold (синкается с v1.79.3)
-  expenses:        [{id, date, cat, catId, amount, comment, special?, _deleted?}, ...],  // catId authoritative; cat = derived index; special = «разовая» (since v1.79.0)
+  expenses:        [{id, date, cat, catId, amount, comment, oneoff?, special?, _deleted?}, ...],  // catId authoritative; cat = derived index; oneoff = «разовая» (since v1.80.0, законна и в обязательной категории); special = legacy-флаг v1.78—v1.79, читается только в НЕобязательных категориях
   incomes:         [{id, date, source, amount, tag?}, ...],  // tag = name string from incomeTags[]
   assets:          [{id, date, bankName, bank, amount, _deleted?}, ...],  // point-in-time balance per bank per date
   banks:           ['Сбербанк', ...],         // debit bank names
@@ -109,7 +109,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   limits:          {'2026-04': {k3x9a1b2: 15000}}, // monthKey() → catId → limit; missing catId = 0
   specPlan:        {'2026-04': {k3x9a1b2: 0}}, // ручная бронь особых: catId → сколько ещё ждём; 0 = «не будет»
   syncUrl:         'https://script.google.com/...',
-  templates:       [{id, name, cat, amount, comment, color}, ...],  // cat = category index
+  templates:       [{id, name, cat, amount, comment, color, oneoff?}, ...],  // cat = category index
   deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, closedAt?, closedInterest?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений; closedAt+_deleted = закрытый вклад, архив для доходности: 90-дневная чистка его не трогает (since v1.75.0, см. скилл void-assets)
   investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод; invValueAt = последний снимок ≤ даты + пополнения после него
   credits:         [{id, kind:'grace', bank, payoffAmount, graceEnd, _deleted?} | {id, kind:'split', name, payments:[{date,amount,paid}], _deleted?}, ...],  // грейс кредиток + BNPL-сплиты; информационные, в итоги активов не входят
@@ -170,15 +170,30 @@ Each tab has a `render*()` function called after any data change:
 
 **Дневной конверт «Остаток на сегодня» (since v1.60.0).** `_dayEnvelopeFrom(y, m, f, daysLeft)` (в `═══ budget.js ═══`, сразу за `_budgetFree`) — единственный источник цифры для двух мест: плашки `#day-envelope` на вкладке «День» (`_renderDayEnvelope()`, обёртка `_dayEnvelope()` считает `f`/`daysLeft` сама) и первой строки `#budget-days-row` в шапке «Бюджета». Потолок дня = `(f.varLeft + потрачено_сегодня) / daysLeft`, остаток = потолок − потрачено сегодня. **Инварианты:** знаменатель («из N ₽») в течение дня не меняется — сегодняшние траты уже вычтены из `varLeft`, поэтому прибавка их обратно даёт ту же величину; особые в «потрачено сегодня» не входят (они в резерве `_budgetFree`), но превышение резерва честно размазывается по оставшимся дням; на не-сегодняшней дате плашки нет вовсе. До v1.60.0 в шапке «Бюджета» стояла норма `varLeft / daysLeft` — то же деление, но она не убывала по мере трат дня и читалась как «столько надо тратить».
 
-**Обязательные и разовые вместо «особых» (since v1.79.0).** Одна галочка «особое» отвечала на
+**Обязательные и разовые вместо «особых» (since v1.79.0; разовые внутри обязательных — v1.80.0).** Одна галочка «особое» отвечала на
 два вопроса сразу — вынуть трату из темпа «в день» и ждать ли её в следующих месяцах, — и прогноз
 бронировал деньги под разовые покупки. Теперь: **обязательная** — свойство категории
-(`DB.catOblig[catId]`), бронируется по истории; **разовая** — `expense.special` в обычной категории,
+(`DB.catOblig[catId]`), бронируется по истории; **разовая** — `expense.oneoff`,
 вынута из темпа, но вперёд не бронируется. Хелперы в `═══ db.js ═══` перед `getMonthExpenses`:
 `_isObligCat(i)`, `_isOblig(e)`, `_isOneoff(e)`, `_isSpec(e)` (любой из двух — «вне темпа»),
 `_kindBadge(e)`. **Инварианты:** `_specialCatStats` (бронь) смотрит только `_isOblig`, всё
-«вне темпа» (pace, конверт дня, дни недели, тумблер «Все / Повседн.») — `_isSpec`; `e.special`
-напрямую больше нигде не читать. Миграция `_migrateOblig()` (конец `_ensureCatIds`): категория с
+«вне темпа» (pace, конверт дня, дни недели, тумблер «Все / Повседн.») — `_isSpec`; `e.oneoff` и
+`e.special` напрямую больше нигде не читать.
+
+**Разовая внутри обязательной категории законна (v1.80.0).** Оси ортогональны: обязательность —
+свойство КАТЕГОРИИ («здесь деньги уходят каждый месяц»), разовость — свойство СУММЫ («вот эта не
+повторится»). Подписка на связь, оплаченная на два года вперёд, ехала в историю резерва и полгода
+бронировала деньги под то, чего уже не будет. Такая трата вне темпа (как всё обязательное), но из
+брони выпадает: `_isOblig = _isObligCat(e.cat) && !_isOneoff(e)`. Разовость переехала в СВОЁ поле
+`oneoff`, и **миграции нет намеренно**: в базах остались `special`-отметки v1.78 на тратах
+обязательных категорий (у автора — 34 штуки, вся аренда и связь), а снять их можно только со
+штампом `updatedAt` — ровно тот сценарий, что чинили в v1.79.3. Поэтому `_isOneoff` читает
+legacy-поле только там, где оно значило разовость: `!!e.oneoff || (!!e.special && !_isObligCat(e.cat))`.
+Правка траты/шаблона через модалку обнуляет `special`, чтобы не осталось двух источников вида.
+`toggleCatOblig` больше НЕ стирает отметки внутри категории (раньше стирал, со штампом
+`updatedAt`). Тост `_offerOneoff` обходит обязательные категории специально: аренда и связь выше
+порога каждый месяц, и он всплывал бы на каждый обычный платёж — оплата вперёд размечается в
+модалке траты, где левый чип сегмента подписан «Обязательная». Миграция `_migrateOblig()` (конец `_ensureCatIds`): категория с
 особыми в ≥3 разных месяцах → обязательная; сами траты не трогает и LWW-метку не ставит (v1.79.3 —
 раньше снимала `special` со штампом `updatedAt`, и устройство с устаревшими данными стирало
 разовые отметки на остальных); до первой траты не запускается (иначе свежее устройство до pull

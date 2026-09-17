@@ -1228,23 +1228,26 @@ suite(390, 'обязательные и разовые', () => {
     eq(g.two.lbl, 'none', 'общая подпись скрыта при паре');
   });
 
-  check('модалка траты: в обязательной категории выбора нет, крупная сумма даёт подсказку', async p => {
+  check('модалка траты: в обязательной категории свой выбор, крупная сумма даёт подсказку', async p => {
     const g = await p.evaluate(() => {
       openAddExpense();
       const sel = document.getElementById('exp-cat'), amt = document.getElementById('exp-amount');
       const seg = document.getElementById('exp-spec-seg'), note = document.getElementById('exp-kind-note');
+      const first = () => seg.querySelector('span').textContent;
       sel.value = '0'; _expKindUi();
-      const oblig = { seg: seg.style.display, note: note.style.display };
+      const oblig = { seg: seg.style.display, note: note.style.display, first: first() };
       sel.value = '2'; amt.value = '7 000'; _expKindUi();
-      const big = { seg: seg.style.display, note: note.style.display };
+      const big = { seg: seg.style.display, note: note.style.display, first: first() };
       amt.value = '500'; _expKindUi();
       const small = note.style.display;
       closeModal('modal-expense');
       return { oblig, big, small };
     });
-    eq(g.oblig.seg, 'none', 'сегмент скрыт в обязательной');
-    eq(g.oblig.note, 'block', 'пояснение про обязательную');
+    eq(g.oblig.seg, 'flex', 'в обязательной категории выбор доступен');
+    eq(g.oblig.first, 'Обязательная', 'первый чип назван по виду категории');
+    eq(g.oblig.note, 'block', 'пояснение про резерв');
     eq(g.big.seg + '|' + g.big.note, 'flex|block', 'крупная трата: сегмент и подсказка');
+    eq(g.big.first, 'Обычная', 'в обычной категории первый чип прежний');
     eq(g.small, 'none', 'мелкая трата без подсказки');
   });
 
@@ -1256,7 +1259,7 @@ suite(390, 'обязательные и разовые', () => {
       const btn = document.querySelector('#kinds-history .km-mark[data-exp="bigU"]');
       const label = btn && btn.textContent;
       btn && btn.click();
-      const marked = !!DB.expenses.find(e => e.id === 'bigU').special;
+      const marked = _isOneoff(DB.expenses.find(e => e.id === 'bigU'));
       const after = document.querySelector('#kinds-history .km-mark[data-exp="bigU"]');
       const meta0 = (DB.listsMeta || {}).catOblig || 0;
       document.querySelectorAll('#kinds-cats .kind-chip')[6].click();   // «Подписки»
@@ -1275,6 +1278,96 @@ suite(390, 'обязательные и разовые', () => {
     eq(g.obl, true, 'категория стала обязательной');
     eq(g.touched, true, 'listsMeta.catOblig обновлён для синка');
     eq(g.catOn, true, 'чип категории включён и помечен aria-pressed');
+  });
+
+  // Разовая внутри ОБЯЗАТЕЛЬНОЙ категории (v1.80.0): подписка на два года вперёд
+  // в «Связи» — категория обязательная, а платёж не повторится. Раньше он ехал
+  // в историю резерва и полгода бронировал деньги под то, чего не будет.
+  check('разовая в обязательной категории: вне брони, но вне темпа', async p => {
+    const g = await p.evaluate(() => {
+      const hist = [1, 2].map(k => ({ exps: [
+        { cat: 0, amount: 30000, date: '2026-0' + k + '-02' },                 // Аренда — обязательная
+        { cat: 0, amount: 60000, date: '2026-0' + k + '-20', oneoff: true },   // оплата вперёд
+      ] }));
+      const fc = _specialForecastByCat([], hist);
+      const pre = { cat: 0, catId: 'cat0001', amount: 60000, date: today(), oneoff: true };
+      return { cats: fc.map(f => f.cat).join(','), plan: Math.round(fc[0].unpaid),
+        spec: _isSpec(pre), obl: _isOblig(pre), one: _isOneoff(pre), badge: _kindBadge(pre) };
+    });
+    eq(g.cats, '0', 'обязательная категория осталась в брони');
+    eq(g.plan, 30000, 'разовая оплата вперёд не задрала резерв');
+    eq(g.one, true, 'читается разовой');
+    eq(g.obl, false, 'в бронь по истории не идёт');
+    eq(g.spec, true, 'но остаётся вне темпа «в день»');
+    eq(g.badge.includes('разовая'), true, 'бейдж разовой перебивает «обяз.»');
+  });
+
+  check('старый special в обязательной категории разовым не стал', async p => {
+    const g = await p.evaluate(() => {
+      const e = DB.expenses.find(x => x.id === 'e01');   // фикстура: special:true в обязательной «Аренде»
+      return { one: _isOneoff(e), obl: _isOblig(e), badge: _kindBadge(e) };
+    });
+    eq(g.one, false, 'legacy-special в обязательной категории не разовая');
+    eq(g.obl, true, 'осталась обязательной');
+    eq(g.badge.includes('обяз.'), true, 'бейдж «обяз.»');
+  });
+
+  check('сохранение: разовость в обязательной категории пишется в e.oneoff', async p => {
+    const g = await p.evaluate(() => {
+      openAddExpense();
+      document.getElementById('exp-cat').value = '0';           // Аренда — обязательная
+      document.getElementById('exp-amount').value = '60 000';
+      document.getElementById('exp-date').value = today();
+      setExpSpecial('1');
+      saveExpense();
+      const e = DB.expenses.filter(x => x.cat === 0 && x.amount === 60000).pop();
+      const r = { has: !!e, field: !!(e && e.oneoff), legacy: !!(e && e.special), one: !!e && _isOneoff(e) };
+      DB.expenses = DB.expenses.filter(x => x !== e);
+      saveDB();
+      return r;
+    });
+    eq(g.has, true, 'трата сохранена');
+    eq(g.field, true, 'разовость в новом поле oneoff');
+    eq(g.legacy, false, 'legacy-поле special не пишется');
+    eq(g.one, true, 'читается разовой');
+  });
+
+  check('экран разметки: разовая обязательной категории — строка в «Разовых», тап снимает отметку', async p => {
+    const g = await p.evaluate(() => {
+      DB.expenses.push({ id: 'oblOne', date: today(), cat: 0, catId: 'cat0001', amount: 60000, comment: 'Год вперёд', oneoff: true, updatedAt: 1 });
+      saveDB();
+      openKindsManager();
+      const btn = document.querySelector('#kinds-history .km-mark[data-exp="oblOne"]');
+      const r = { row: !!btn, label: btn && btn.textContent, on: !!btn && btn.classList.contains('on') };
+      btn && btn.click();
+      const e = DB.expenses.find(x => x.id === 'oblOne');
+      r.off = !_isOneoff(e);
+      closeModal('modal-kinds');
+      DB.expenses = DB.expenses.filter(x => x.id !== 'oblOne');
+      saveDB();
+      return r;
+    });
+    eq(g.row, true, 'строка есть в «Разовых»');
+    eq(g.on, true, 'кнопка в состоянии «разовая»');
+    eq(g.off, true, 'тап вернул трату в обязательные');
+  });
+
+  check('обязательность категории не стирает разовые отметки внутри неё', async p => {
+    const g = await p.evaluate(() => {
+      const saved = { obl: { ...(DB.catOblig || {}) }, meta: (DB.listsMeta || {}).catOblig };
+      DB.expenses.push({ id: 'togOne', date: today(), cat: 3, catId: 'cat0004', amount: 12000, comment: '', oneoff: true, updatedAt: 1 });
+      toggleCatOblig(3);                                  // делаем категорию обязательной
+      const e = DB.expenses.find(x => x.id === 'togOne');
+      const r = { one: _isOneoff(e), stamped: e.updatedAt !== 1 };
+      DB.expenses = DB.expenses.filter(x => x.id !== 'togOne');
+      DB.catOblig = saved.obl;
+      if(saved.meta == null) delete DB.listsMeta.catOblig; else DB.listsMeta.catOblig = saved.meta;
+      saveDB();
+      closeModal('modal-kinds');
+      return r;
+    });
+    eq(g.one, true, 'отметка пережила включение обязательности');
+    eq(g.stamped, false, 'трата не перештампована');
   });
 
   check('синк: разметка и порог — LWW по своим меткам, не по списку категорий', async p => {
