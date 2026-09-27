@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1565,12 +1565,14 @@ function loadDB(){
   if(!DB.incomeTags || !DB.incomeTags.length) DB.incomeTags = ['Оплата труда','Продажи','Проценты','Кешбек'];
   if(!DB.incomeTagColors) DB.incomeTagColors = {};
   if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
-  // First run — no data at all: populate with defaults so app isn't empty
+  // First run — no data at all: populate with defaults so app isn't empty.
+  // Лимиты НЕ пишем: getLimits() сам отдаёт DEFAULT_LIMITS, пока месяца нет.
+  // Записанный месяц при пустом baseline считался «локально изменённым», 3-way
+  // merge отвергал лимиты с Drive, и дефолты под свежими случайными catId уходили
+  // на Drive — все устройства видели в текущем месяце нули (v1.80.1).
   if(!parsed && !DB.categories.length){
     DB.categories = [...DEFAULT_CATS];
     DB.catColors  = {...DEFAULT_COLORS};
-    const k = monthKey(new Date().getFullYear(), new Date().getMonth());
-    DB.limits[k]  = [...DEFAULT_LIMITS];
   }
   _migrateClosedDeposits(); // до чистки: закрытый вклад без closedAt иначе сотрётся как тумбстоун
   // Purge tombstones older than 90 days — even slow devices have synced by then.
@@ -9424,8 +9426,9 @@ function doClearData(){
   saveSyncUrlEverywhere('');
   DB.syncToken   = '';
   saveSyncTokenEverywhere('');
-  const _k = monthKey(new Date().getFullYear(), new Date().getMonth());
-  DB.limits[_k]  = [...DEFAULT_LIMITS];
+  // Лимиты не заполняем и baseline сбрасываем: иначе при повторном подключении
+  // синка месяцы старого baseline считались бы «локально удалёнными» (как в loadDB)
+  DB._lastSyncedLimits = {};
   DB.catIds = [];
   _ensureCatIds();
   saveDB();

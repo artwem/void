@@ -1530,6 +1530,31 @@ suite(390, 'лимиты и цвета по catId', () => {
     const got = await p.evaluate(() => getLimits(2026, 0));
     eq(JSON.stringify(got), JSON.stringify([111, 222, 333]), 'месяц признан нетронутым, удалённые лимиты приняты');
   });
+
+  check('новое устройство не затирает лимиты текущего месяца дефолтами', async p => {
+    // Первый запуск раньше писал DEFAULT_LIMITS в текущий месяц под свежими
+    // случайными catId. Baseline пустой → месяц «локально изменён» → удалённые
+    // лимиты отвергнуты, а дефолты с чужими id уходили на Drive. Все устройства
+    // принимали их и видели в текущем месяце нули.
+    const got = await p.evaluate(() => {
+      const n = new Date();
+      const cur = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
+      const saved = localStorage.getItem('budgetDB_v2');
+      localStorage.removeItem('budgetDB_v2');
+      Object.keys(DB).forEach(k => delete DB[k]);
+      DB.limits = {}; DB.expenses = [];
+      loadDB();                                            // первый запуск: пусто
+      if(saved) localStorage.setItem('budgetDB_v2', saved);
+      mergePullData({
+        categories: ['A', 'B', 'C'], catIds: ['i1', 'i2', 'i3'],
+        listsMeta:  { categories: 1000 },
+        limits:     { [cur]: { i1: 100, i2: 200, i3: 300 } },
+      });
+      return { read: getLimits(n.getFullYear(), n.getMonth()), push: buildPayload().limits[cur] };
+    });
+    eq(JSON.stringify(got.read), JSON.stringify([100, 200, 300]), 'лимиты текущего месяца пришли с Drive');
+    eq(JSON.stringify(got.push), JSON.stringify({ i1: 100, i2: 200, i3: 300 }), 'на Drive уйдут те же лимиты');
+  });
 });
 
 // Средние за месяц и период графиков. Две отдельные истории, но обе про одно:
