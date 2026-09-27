@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -8606,11 +8606,34 @@ function backupDB(){
   // device-local настроек, которые _applyRestoredData всё равно перетирает
   // текущими значениями устройства.
   const json = JSON.stringify(buildPayload(), null, 2);
+  _saveFile(json, 'budget_backup_' + today() + '.json', 'application/json')
+    .then(r => { if(r === 'shared') toast('Резервная копия сохранена'); else if(r === 'downloaded') toast('Резервная копия скачана'); })
+    .catch(() => toast('Не удалось сохранить копию', 'err'));
+}
+
+// Отдать файл пользователю. В установленной PWA на iOS <a download> молча
+// игнорируется (data:-ссылка никуда не сохраняется), поэтому там — системное
+// «Поделиться» с файлом (→ «Сохранить в Файлы»). В браузере и на десктопе —
+// обычная загрузка через blob-URL. Возвращает 'shared' | 'downloaded' | 'cancelled'.
+async function _saveFile(content, name, type){
+  const standalone = window.navigator.standalone === true ||
+    (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if(standalone && navigator.share && navigator.canShare && typeof File === 'function'){
+    // application/json есть не во всех списках разрешённых типов Web Share —
+    // запасной вариант text/plain, имя с расширением .json сохраняется
+    for(const t of [type, 'text/plain']){
+      const file = new File([content], name, {type: t});
+      if(!navigator.canShare({files: [file]})) continue;
+      try { await navigator.share({files: [file]}); return 'shared'; }
+      catch(e){ if(e && e.name === 'AbortError') return 'cancelled'; break; }
+    }
+  }
+  const url = URL.createObjectURL(new Blob([content], {type}));
   const a = document.createElement('a');
-  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
-  a.download = 'budget_backup_' + today() + '.json';
-  a.click();
-  toast('Резервная копия скачана');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return 'downloaded';
 }
 
 // Применить восстановленные данные: сохранить device-local поля,

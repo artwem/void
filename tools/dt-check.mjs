@@ -1557,6 +1557,45 @@ suite(390, 'лимиты и цвета по catId', () => {
   });
 });
 
+// В установленной PWA на iOS <a download> игнорируется — копия уходит через
+// системное «Поделиться» с файлом. iOS тут не воспроизвести, поэтому проверяем
+// развилку: standalone + Web Share → share(), иначе — загрузка blob-ссылкой.
+suite(390, 'резервная копия', () => {
+  check('в PWA копия уходит в «Поделиться» файлом .json', async p => {
+    const got = await p.evaluate(async () => {
+      const saved = { st: Object.getOwnPropertyDescriptor(navigator, 'standalone'),
+                      share: navigator.share, can: navigator.canShare };
+      Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+      let shared = null;
+      navigator.canShare = () => true;
+      navigator.share = async d => { shared = d; };
+      const r = await _saveFile('{"a":1}', 'budget_backup_x.json', 'application/json');
+      const f = shared && shared.files[0];
+      const out = { r, name: f && f.name, text: f && await f.text() };
+      delete navigator.standalone; if(saved.st) Object.defineProperty(navigator, 'standalone', saved.st);
+      navigator.share = saved.share; navigator.canShare = saved.can;
+      return out;
+    });
+    eq(got.r, 'shared', 'результат');
+    eq(got.name, 'budget_backup_x.json', 'имя файла');
+    eq(got.text, '{"a":1}', 'содержимое');
+  });
+
+  check('в браузере копия скачивается blob-ссылкой с именем файла', async p => {
+    const got = await p.evaluate(async () => {
+      let clicked = null;
+      const orig = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function(){ clicked = { href: this.href, dl: this.download }; };
+      const r = await _saveFile('{}', 'budget_backup_y.json', 'application/json');
+      HTMLAnchorElement.prototype.click = orig;
+      return { r, ...clicked };
+    });
+    eq(got.r, 'downloaded', 'результат');
+    eq(got.dl, 'budget_backup_y.json', 'имя файла');
+    eq(got.href.startsWith('blob:'), true, 'blob-ссылка, не data:');
+  });
+});
+
 // Средние за месяц и период графиков. Две отдельные истории, но обе про одно:
 // цифра под графиком обязана отвечать ровно за тот набор данных, который на
 // графике нарисован — за выбранный период и за невыключенные ряды легенды.
