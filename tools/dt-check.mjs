@@ -1596,6 +1596,29 @@ suite(390, 'резервная копия', () => {
   });
 });
 
+suite(390, 'экспорт Excel', () => {
+  check('в PWA xlsx уходит в «Поделиться» и читается обратно', async p => {
+    await p.waitForFunction(() => !!window.XLSX, { timeout: 15000 });
+    const got = await p.evaluate(async () => {
+      const saved = { st: Object.getOwnPropertyDescriptor(navigator, 'standalone'),
+                      share: navigator.share, can: navigator.canShare };
+      Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+      let shared = null;
+      navigator.canShare = () => true;
+      navigator.share = async d => { shared = d; };
+      exportExcel();
+      for(let i = 0; i < 50 && !shared; i++) await new Promise(r => setTimeout(r, 20));
+      const f = shared && shared.files[0];
+      const wb = f && XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
+      delete navigator.standalone; if(saved.st) Object.defineProperty(navigator, 'standalone', saved.st);
+      navigator.share = saved.share; navigator.canShare = saved.can;
+      return { name: f && f.name, sheets: wb ? wb.SheetNames.length : 0 };
+    });
+    eq(/^budget_\d{4}-\d{2}-\d{2}\.xlsx$/.test(got.name || ''), true, 'имя файла ' + got.name);
+    eq(got.sheets > 0, true, 'в книге есть листы');
+  });
+}, { demo: true });
+
 // Средние за месяц и период графиков. Две отдельные истории, но обе про одно:
 // цифра под графиком обязана отвечать ровно за тот набор данных, который на
 // графике нарисован — за выбранный период и за невыключенные ряды легенды.

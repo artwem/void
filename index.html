@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -8619,8 +8619,8 @@ async function _saveFile(content, name, type){
   const standalone = window.navigator.standalone === true ||
     (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   if(standalone && navigator.share && navigator.canShare && typeof File === 'function'){
-    // application/json есть не во всех списках разрешённых типов Web Share —
-    // запасной вариант text/plain, имя с расширением .json сохраняется
+    // json/xlsx есть не во всех списках разрешённых типов Web Share —
+    // запасной вариант text/plain; «Файлы» узнают формат по расширению имени
     for(const t of [type, 'text/plain']){
       const file = new File([content], name, {type: t});
       if(!navigator.canShare({files: [file]})) continue;
@@ -9170,8 +9170,11 @@ function exportExcel(){
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([iHdr,...iRows]), 'Инвестиции');
   }
 
-  X.writeFile(wb, 'budget_'+today()+'.xlsx');
-  toast('Excel скачан');
+  // Не X.writeFile: внутри тот же <a download>, который PWA на iOS игнорирует
+  const data = X.write(wb, {bookType: 'xlsx', type: 'array'});
+  _saveFile(data, 'budget_'+today()+'.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    .then(r => { if(r === 'shared') toast('Excel сохранён'); else if(r === 'downloaded') toast('Excel скачан'); })
+    .catch(() => toast('Не удалось сохранить Excel', 'err'));
 }
 
 function confirmClearData(){
