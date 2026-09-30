@@ -1212,6 +1212,9 @@ suite(390, 'обязательные и разовые', () => {
     const g = await p.evaluate(() => {
       const nums = el => [...el.querySelectorAll('.dt-num')].map(n => Number(n.textContent.replace(/\D/g, '')));
       currentDay = today();
+      // Чужие траты дня прячем на время проверки и возвращаем: 1-го числа под
+      // фильтр попадала фикстурная e01 (dd(1)), и следующая проверка её не находила.
+      const saved = DB.expenses;
       DB.expenses = DB.expenses.filter(e => e.date !== today());
       DB.expenses.push({ id: 'dA', date: today(), cat: 1, catId: 'cat0002', amount: 1200, comment: '', updatedAt: 1 });
       renderDay();
@@ -1220,6 +1223,8 @@ suite(390, 'обязательные и разовые', () => {
       DB.expenses.push({ id: 'dB', date: today(), cat: 4, catId: 'cat0005', amount: 9000, comment: '', special: true, updatedAt: 1 });
       renderDay();
       const two = { nums: nums(el), lbl: document.getElementById('day-total-lbl').style.display };
+      DB.expenses = saved;
+      renderDay();
       return { one, two };
     });
     eq(g.one.pair, false, 'без отдельных трат пары нет');

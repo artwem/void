@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.4</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4306,7 +4306,7 @@ function _specialForecastCumLine(forecast, cD, daysInMonth, displayDays){
 //         дней после сегодня + не оплаченные особые
 //   fact       — все траты месяца с датой ≤ сегодня (будущие даты в факт не идут)
 //   futPlanned — траты месяца с датой > сегодня: уже внесены, но ещё не наступили
-//   pace       — неособые траты / cD (сегодня уже прожит, поэтому в знаменателе)
+//   pace       — (неособые траты + медианный дневной темп истории × 10) / (cD + 10)
 //   specRemain — Σ unpaid из _specialForecastByCat (покатегорийное ожидание по
 //                истории: средняя сумма × частота, окно 6 месяцев)
 // Возвращает null для не-текущего месяца и для месяца без трат.
@@ -4361,19 +4361,25 @@ function _monthForecast(y, m){
     histMonths.push({y: hy, m: hm, exps: getMonthExpenses(hy, hm)});
   }
 
+  // Темп неособых — сглаженный к истории (v1.80.4): свои траты месяца плюс
+  // PACE_PRIOR_DAYS «виртуальных» дней по медианному дневному темпу прошлых
+  // месяцев. До этого 1-го числа темп был тратой одного дня × 30 (а при нуле
+  // своих трат — средним тратам 1-х чисел прошлых месяцев, которые у
+  // пользователя в 1.5–3 раза выше обычного дня), и прогноз показывал перерасход
+  // на пустом месте. Бэктест апр–сен 2026, средняя |ошибка| неособой части:
+  // день 1 — 116% → 31%, день 3 — 48% → 28%, день 10 — 23% → 22%, день 26 — 7% → 8%.
+  // Медиана, а не среднее: один месяц с крупными покупками не тянет базу.
+  const PACE_PRIOR_DAYS = 10;
+  const histPaces = histMonths.filter(h => h.exps.length).map(h => {
+    let s = 0;
+    h.exps.forEach(e => { if(!_isSpec(e)) s += e.amount; });
+    return s / new Date(h.y, h.m + 1, 0).getDate();
+  }).sort((a, b) => a - b);
   let pace = regular / cD;
-  if(regular === 0){
-    // Неособых трат в месяце ещё нет — темп 0 дал бы плоский прогноз «потратим
-    // ровно столько, сколько уже». Берём средний темп прошлых месяцев на эту же дату.
-    const paces = [];
-    histMonths.forEach(h => {
-      if(!h.exps.length) return;
-      const cut = monthKey(h.y, h.m) + '-' + String(cD).padStart(2, '0');
-      let s = 0;
-      h.exps.forEach(e => { if(!_isSpec(e) && e.date && e.date <= cut) s += e.amount; });
-      paces.push(s / cD);
-    });
-    if(paces.length) pace = paces.reduce((s, v) => s + v, 0) / paces.length;
+  if(histPaces.length){
+    const n = histPaces.length, mid = Math.floor(n / 2);
+    const prior = n % 2 ? histPaces[mid] : (histPaces[mid - 1] + histPaces[mid]) / 2;
+    pace = (regular + prior * PACE_PRIOR_DAYS) / (cD + PACE_PRIOR_DAYS);
   }
 
   const forecast = _applySpecPlan(y, m, _specialForecastByCat(exps, histMonths));
