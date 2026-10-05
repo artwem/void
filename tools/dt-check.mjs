@@ -2388,44 +2388,75 @@ suite(390, 'чипы «банки / вклады / инвестиции» на �
   });
 }, { demo: true });
 
-// До v1.80.5 «Списать из банка» было только у пополнений: новый счёт заводился
-// без проводки, и вложенная сумма считалась дважды — в банке и в инвестициях.
-suite(390, 'новый инвестсчёт списывает вложенное из банка', () => {
-  const create = (p, bankIdx) => p.evaluate(i => {
-    const bank = i === null ? '' : DB.banks[i];
-    const before = bank ? (_lastKnownAmount(bank, today()) || 0) : 0;
+// «Списать из банка» у инвестсчёта не пишет одинокую запись банка (v1.80.6):
+// она плодила лишнюю дату в истории. Перевод живёт в пополнении (c.bank) и
+// вычитается из остатка банка, пока банк не получит запись на эту дату или позже.
+suite(390, 'перевод в инвестсчёт ждёт снимка банка', () => {
+  const run = (p, mode) => p.evaluate(m => {
+    const savedA = JSON.stringify(DB.assets), savedI = JSON.stringify(DB.investments || []);
+    const t = today();
+    // банк с самой крупной записью до сегодняшнего дня — он точно виден в списке
+    const bank = DB.banks.map(b => ({ b, v: _lastKnownAmount(b, '9999') || 0,
+      old: DB.assets.some(a => !a._deleted && a.bankName === b && a.date < t) }))
+      .filter(x => x.old).sort((x, y) => y.v - x.v)[0].b;
+    DB.assets = DB.assets.filter(a => !(a.bankName === bank && a.date >= t));
+    if (m === 'direct') _bankAdjust(bank, t, 0);
+    const prev = _lastKnownAmount(bank, t);
     const nAssets = DB.assets.length;
+    const totalBefore = _buildAssetSeries([t]).bankSeries[0];
     openInvestModal();
     document.getElementById('invest-name').value = 'ПИФ тест';
     document.getElementById('invest-invested').value = '30000';
     document.getElementById('invest-value').value = '30000';
     const sel = document.getElementById('invest-src-bank');
     const opts = [...sel.options].map(o => o.value);
-    sel.value = bank;
+    sel.value = m === 'none' ? '' : bank;
     saveInvestment();
     const inv = DB.investments.find(x => x.name === 'ПИФ тест' && !x._deleted);
-    const rec = bank ? DB.assets.find(a => !a._deleted && a.date === today() && a.bankName === bank) : null;
-    const res = { opts, banks: DB.banks.slice(), before, after: rec ? rec.amount : null,
-      stamped: rec ? !!rec.updatedAt : null, added: DB.assets.length - nAssets,
-      invested: inv ? invInvested(inv, today()) : null };
+    const res = { opts, banks: DB.banks.slice(), prev, added: DB.assets.length - nAssets,
+      invested: inv ? invInvested(inv, t) : null, cBank: inv ? (inv.contributions[0].bank || '') : null,
+      bank, drop: totalBefore - _buildAssetSeries([t]).bankSeries[0],
+      known: _lastKnownAmount(bank, t),
+      hint: [...document.querySelectorAll('#assets-list .pend-line')].map(e => e.textContent).join('|') };
+    // следующий снимок: подставленный остаток уже за вычетом перевода
+    DB.assets = DB.assets.filter(a => !(a.bankName === bank && a.date >= t));
+    openEditAssetDate(t, true);
+    const inp = document.getElementById('asset-edit-inp-' + getAllBanks().indexOf(bank));
+    res.prefill = Number(inp.value.replace(/[^\d-]/g, ''));
+    res.tag = (inp.parentElement.querySelector('.carried-tag') || {}).textContent || '';
+    closeModal('modal-asset-edit');
     // вернуть базу как была — сюиты делят одну страницу
-    DB.investments = DB.investments.filter(x => x !== inv);
-    if (bank) _bankAdjust(bank, today(), 30000);
+    DB.assets = JSON.parse(savedA); DB.investments = JSON.parse(savedI);
+    saveDB(); renderAssets();
     return res;
-  }, bankIdx);
+  }, mode);
 
   check('в селекте «не списывать» и все дебетовые банки', async p => {
-    const r = await create(p, null);
+    const r = await run(p, 'none');
     eq(r.opts.join('|'), [''].concat(r.banks).join('|'), 'состав селекта');
-    eq(r.added, 0, 'без выбора банка записей активов не появилось');
-    eq(r.invested, 30000, 'вложено');
+    eq(r.added, 0, 'записей активов не появилось');
+    eq(r.cBank, '', 'банк в пополнении не записан');
+    eq(r.drop, 0, 'ряд банков не изменился');
+    eq(r.prefill, r.prev, 'в снимок подставлен прежний остаток');
   });
 
-  check('выбранный банк уменьшается на «Вложено всего»', async p => {
-    const r = await create(p, 0);
-    eq(r.after, r.before - 30000, 'остаток банка на дату');
-    eq(r.stamped, true, 'запись со штампом updatedAt');
-    eq(r.invested, 30000, 'вложено');
+  check('снимка на дату нет — запись банка не создаётся, перевод ждёт', async p => {
+    const r = await run(p, 'deferred');
+    eq(r.added, 0, 'записей активов не появилось');
+    eq(r.known, r.prev, 'последняя запись банка не тронута');
+    eq(r.cBank, r.bank, 'банк записан в пополнении');
+    eq(r.drop, 30000, 'ряд банков уменьшен — сумма не задвоена с инвестициями');
+    eq(r.hint.includes('войдёт в следующий снимок'), true, 'строка банка подписана');
+    eq(r.prefill, r.prev - 30000, 'в снимок подставлен остаток за вычетом перевода');
+    eq(r.tag.includes('с переводом'), true, 'подставленное подписано');
+  });
+
+  check('снимок на дату есть — правится он, второй раз не вычитается', async p => {
+    const r = await run(p, 'direct');
+    eq(r.added, 0, 'новых записей нет');
+    eq(r.known, r.prev - 30000, 'запись банка уменьшена');
+    eq(r.drop, 30000, 'ряд банков уменьшен ровно один раз');
+    eq(r.hint, '', 'ожидающих переводов нет');
   });
 }, { demo: true });
 

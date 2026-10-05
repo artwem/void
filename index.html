@@ -1013,7 +1013,7 @@ if ('serviceWorker' in navigator) {
       <div class="fgrp">
         <label class="flbl">Списать из банка</label>
         <select id="invest-src-bank" class="finp"></select>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">Баланс банка уменьшится на «Вложено всего» записью на эту дату. Для счёта, открытого давно, — не списывать</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Остаток банка уменьшится на «Вложено всего» в ближайшем снимке счетов. Для счёта, открытого давно, — не списывать</div>
       </div>
     </div>
     <div class="fgrp" id="inv-snaps-grp" style="display:none">
@@ -1067,7 +1067,7 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp">
       <label class="flbl" id="inv-contrib-bank-lbl">Списать из банка</label>
       <select id="inv-contrib-bank" class="finp"></select>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="inv-contrib-bank-hint">Баланс банка уменьшится записью на эту дату</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="inv-contrib-bank-hint">Остаток банка уменьшится в ближайшем снимке счетов</div>
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-inv-contrib')">Отмена</button>
@@ -1363,7 +1363,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.5</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.6</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -5839,6 +5839,8 @@ function renderAssets(){
     // та же логика что в _buildAssetSeries).
     const lastSnapDate = allEntries.reduce((m,a)=>a.date>m?a.date:m,'');
     const snapD = lastSnapDate || today();
+    // Переводы в инвестсчёт между записью банка и датой снимка — как в истории
+    Object.entries(byBank).forEach(([name,data])=>{ total += _bankPending(name, data.date, snapD); });
     const liveDeps = (DB.deposits||[]).filter(d=>{
       if(!d._deleted) return true;
       const delDay = _depDelDay(d);
@@ -5910,7 +5912,9 @@ function renderAssets(){
         graceLine = `<div style="font-size:11px;color:${col};margin-top:2px" onclick="event.stopPropagation();openGraceModal('${g.id}')">грейс до ${_fmtDateRu(g.graceEnd)} · ${fmtH(g.payoffAmount)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
       }
     }
-    namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine + graceLine;
+    const pend = hasData ? _bankPending(name, data.date) : 0;
+    const pendLine = pend ? `<div class="pend-line" style="font-size:11px;color:var(--muted);margin-top:2px">перевод ${pend<0?'−':'+'}${fmtH(Math.abs(pend))} войдёт в следующий снимок</div>` : '';
+    namePart.innerHTML = `<div class="asset-name">${esc(name)}${creditBadge}</div>` + freshLine + pendLine + graceLine;
     const amtSpan = document.createElement('span');
     amtSpan.className = 'asset-amount';
     amtSpan.style.color = credit ? 'var(--red)' : '';
@@ -6085,9 +6089,11 @@ function _banksTotal(){
     const name = a.bankName || allBanks[a.bank] || String(a.bank);
     if(!byBank[name] || a.date > byBank[name].date) byBank[name] = a;
   });
+  const snapD = allEntries.reduce((m,a)=>a.date>m?a.date:m,'');
   let total = 0;
   Object.entries(byBank).forEach(([name, a]) => {
     total += (DB.creditBanks||[]).includes(name) ? -a.amount : a.amount;
+    total += _bankPending(name, a.date, snapD);
   });
   return Math.max(0, Math.round(total));
 }
@@ -6448,6 +6454,32 @@ function invValueAt(inv, dateStr){
   return Math.round((inv.snapshots[base]||0) + later);
 }
 
+// Переводы банк↔инвестсчёт, ещё не попавшие в снимок банка (v1.80.6).
+// «Списать из банка» не пишет одинокую запись банка — она плодила лишнюю дату
+// в истории. Банк остаётся в пополнении (c.bank), и перевод считается
+// непогашенным, пока у банка нет записи на дату пополнения или позже. Флага
+// «применено» нет намеренно: состояние выводится из данных и не расходится
+// при синке. Возвращает поправку к остатку банка: пополнение −, вывод +.
+function _bankPending(bankName, after, upto){
+  let s = 0;
+  (DB.investments||[]).forEach(v=>{
+    if(v._deleted) return;
+    (v.contributions||[]).forEach(c=>{
+      if(c.bank === bankName && c.date > after && (!upto || c.date <= upto)) s -= c.amount;
+    });
+  });
+  return s;
+}
+
+// Списание/зачисление по пополнению инвестсчёта. Снимок банка на эту дату уже
+// есть — правим его; нет — ничего не пишем, перевод подхватит _bankPending.
+// true = запись банка изменена сразу.
+function _invBankTransfer(bankName, date, delta){
+  const has = (DB.assets||[]).some(a=>!a._deleted && a.date===date && (a.bankName||'')===bankName);
+  if(has) _bankAdjust(bankName, date, delta);
+  return has;
+}
+
 // Вложено = Σ пополнений − выводы (amount<0) на дату
 function invInvested(inv, dateStr){
   const cut = dateStr || today();
@@ -6487,19 +6519,22 @@ function _buildAssetSeries(customDates){
     dates = [...dateSet].sort();
   }
   const bankDateKeys = Object.keys(byDate).sort(); // реальные даты банковских записей, по возрастанию
-  const lastVal = {};
+  const lastVal = {}, lastDate = {};
   let bankPtr = 0;
   const bankSeries = [], depSeries = [], invSeries = [];
   dates.forEach(date=>{
     // Применяем все банковские записи ≤ date — не только те, чья дата точно
     // совпадает с точкой сетки (в raw-режиме это одно и то же).
     while(bankPtr < bankDateKeys.length && bankDateKeys[bankPtr] <= date){
-      Object.entries(byDate[bankDateKeys[bankPtr]]).forEach(([b,amt])=>{ lastVal[b]=amt; });
+      Object.entries(byDate[bankDateKeys[bankPtr]]).forEach(([b,amt])=>{ lastVal[b]=amt; lastDate[b]=bankDateKeys[bankPtr]; });
       bankPtr++;
     }
     let total = 0;
     Object.entries(lastVal).forEach(([bname,amt])=>{
       total += (DB.creditBanks||[]).includes(bname) ? -amt : amt;
+      // перевод в инвестсчёт после последней записи банка: без поправки сумма
+      // жила бы сразу и в банке, и в инвестициях
+      total += _bankPending(bname, lastDate[bname], date);
     });
     bankSeries.push(Math.round(total));
     depSeries.push(Math.round(histDeps.reduce((s,d)=>{
@@ -6651,15 +6686,15 @@ function saveInvestment(){
     if(date > today()){ toast('Дата в будущем'); return; }
     if(!value || value<=0){ toast('Введите стоимость'); return; }
     if(!invested || invested<=0){ toast('Введите вложенную сумму'); return; }
+    const srcBank = document.getElementById('invest-src-bank').value;
     if(!DB.investments) DB.investments = [];
     DB.investments.push({
       id: uid(), name,
       snapshots: {[date]: value},
-      contributions: [{id: uid(), date, amount: invested, updatedAt: Date.now()}],
+      contributions: [{id: uid(), date, amount: invested, bank: srcBank || undefined, updatedAt: Date.now()}],
       updatedAt: Date.now()
     });
-    const srcBank = document.getElementById('invest-src-bank').value;
-    if(srcBank) _bankAdjust(srcBank, date, -invested);
+    if(srcBank) _invBankTransfer(srcBank, date, -invested);
   }
   saveDB();
   closeModal('modal-investment');
@@ -6779,8 +6814,8 @@ function openInvContribution(id, dir){
   document.getElementById('inv-contrib-info').textContent = v.name;
   document.getElementById('inv-contrib-bank-lbl').textContent = dir>0 ? 'Списать из банка' : 'Зачислить в банк';
   document.getElementById('inv-contrib-bank-hint').textContent = dir>0
-    ? 'Баланс банка уменьшится записью на эту дату'
-    : 'Баланс банка увеличится записью на эту дату';
+    ? 'Остаток банка уменьшится в ближайшем снимке счетов'
+    : 'Остаток банка увеличится в ближайшем снимке счетов';
   document.getElementById('inv-contrib-save').textContent = dir>0 ? 'Пополнить' : 'Вывести';
   document.getElementById('inv-contrib-date').value = today();
   setMoneyInput('inv-contrib-amount','');
@@ -6798,11 +6833,11 @@ function saveInvContribution(){
   if(!amount || amount<=0){ toast('Введите сумму'); return; }
   const signed = _invContribDir > 0 ? amount : -amount;
   if(!v.contributions) v.contributions = [];
-  v.contributions.push({id:uid(), date, amount: signed, updatedAt: Date.now()});
+  const bank = document.getElementById('inv-contrib-bank').value;
+  v.contributions.push({id:uid(), date, amount: signed, bank: bank || undefined, updatedAt: Date.now()});
   v.contributions.sort((a,b)=>a.date.localeCompare(b.date));
   v.updatedAt = Date.now();
-  const bank = document.getElementById('inv-contrib-bank').value;
-  if(bank) _bankAdjust(bank, date, -signed);
+  if(bank) _invBankTransfer(bank, date, -signed);
   saveDB();
   closeModal('modal-inv-contrib');
   _invContribId = null;
@@ -7329,6 +7364,7 @@ function saveBankName(type, i){
   const now = Date.now();
   DB.assets.forEach(a => { if(a.bankName === oldName){ a.bankName = newName; a.updatedAt = now; } });
   (DB.credits||[]).forEach(c => { if(c.kind==='grace' && c.bank===oldName){ c.bank=newName; c.updatedAt=Date.now(); } });
+  (DB.investments||[]).forEach(v => (v.contributions||[]).forEach(c => { if(c.bank===oldName){ c.bank=newName; c.updatedAt=now; v.updatedAt=now; } }));
   saveDB();
   renderBankManager();
   renderAssets();
@@ -7447,7 +7483,7 @@ function openEditAssetDate(date, carryForward){
     let carried = false;
     // Последняя запись СТРОГО до этой даты — столько «останется» в истории,
     // если запись за дату не внести (carry-forward)
-    let prevBefore;
+    let prevBefore, prevDate;
     {
       let b = null;
       (DB.assets||[]).forEach(a => {
@@ -7457,9 +7493,13 @@ function openEditAssetDate(date, carryForward){
         if(!b || a.date > b.date) b = a;
       });
       prevBefore = b ? b.amount : undefined;
+      prevDate = b ? b.date : '';
     }
+    let pend = 0;
     if(existing === undefined && carryForward && prevBefore !== undefined){
-      existing = prevBefore; carried = true; carriedAny = true;
+      // переводы в инвестсчёт после прошлой записи уже вычтены из подставленного
+      pend = _bankPending(bankName, prevDate, date);
+      existing = prevBefore + pend; carried = true; carriedAny = true;
     }
 
     const row = document.createElement('div');
@@ -7468,7 +7508,7 @@ function openEditAssetDate(date, carryForward){
     const lbl = document.createElement('div');
     lbl.style.cssText = 'flex:1;min-width:0';
     lbl.innerHTML = '<div style="font-size:13px;color:'+(credit?'var(--red)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(bankName)+'</div>'
-      + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">'+ICO.refresh+' перенесено — проверьте</div>' : '');
+      + (carried ? '<div class="carried-tag" style="font-size:10px;color:var(--hint)">'+ICO.refresh+' перенесено'+(pend ? ' с переводом '+(pend<0?'−':'+')+fmtShort(Math.abs(pend))+'₽' : '')+' — проверьте</div>' : '');
 
     // Кредитная строка: памятка «это грейс или сплит?» — чисто информационно,
     // открывает существующую модалку создания, в подсчёт сумм не входит

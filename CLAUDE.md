@@ -111,7 +111,7 @@ Single global `DB` object persisted to `localStorage` under `budgetDB_v2`. Every
   syncUrl:         'https://script.google.com/...',
   templates:       [{id, name, cat, amount, comment, color, oneoff?}, ...],  // cat = category index
   deposits:        [{id, name, amount, rate, finalAmount?, openDate, endDate, capitalization, contributions?, accruals?, closedAt?, closedInterest?, _deleted?}, ...],  // accruals = {dateStr: сумма} — ручные правки начислений; closedAt+_deleted = закрытый вклад, архив для доходности: 90-дневная чистка его не трогает (since v1.75.0, см. скилл void-assets)
-  investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод; invValueAt = последний снимок ≤ даты + пополнения после него
+  investments:     [{id, name, snapshots, contributions, _deleted?}, ...],  // snapshots = {dateStr: стоимость}; contributions amount<0 = вывод, contribution.bank = банк перевода, ждёт снимка (см. _bankPending в скилле void-assets); invValueAt = последний снимок ≤ даты + пополнения после него
   credits:         [{id, kind:'grace', bank, payoffAmount, graceEnd, _deleted?} | {id, kind:'split', name, payments:[{date,amount,paid}], _deleted?}, ...],  // грейс кредиток + BNPL-сплиты; информационные, в итоги активов не входят
   incomeTags:      ['Оплата труда', ...],     // income source tag names
   incomeTagColors: {0: '#185fa5', ...},       // tag index → hex color
