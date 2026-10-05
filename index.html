@@ -1010,6 +1010,11 @@ if ('serviceWorker' in navigator) {
         <label class="flbl">Стоимость сейчас, ₽</label>
         <input type="text" id="invest-value" class="finp" inputmode="decimal" placeholder="560 000" oninput="formatMoneyInput(this)">
       </div>
+      <div class="fgrp">
+        <label class="flbl">Списать из банка</label>
+        <select id="invest-src-bank" class="finp"></select>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Баланс банка уменьшится на «Вложено всего» записью на эту дату. Для счёта, открытого давно, — не списывать</div>
+      </div>
     </div>
     <div class="fgrp" id="inv-snaps-grp" style="display:none">
       <label class="flbl">Снимки стоимости</label>
@@ -1358,7 +1363,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.4</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.5</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6620,6 +6625,7 @@ function openInvestModal(id){
     document.getElementById('invest-date').value = today();
     setMoneyInput('invest-invested','');
     setMoneyInput('invest-value','');
+    _fillSrcBankSelect('invest-src-bank');
     document.getElementById('inv-snaps-grp').style.display='none';
     document.getElementById('inv-contribs-grp').style.display='none';
   } else {
@@ -6652,6 +6658,8 @@ function saveInvestment(){
       contributions: [{id: uid(), date, amount: invested, updatedAt: Date.now()}],
       updatedAt: Date.now()
     });
+    const srcBank = document.getElementById('invest-src-bank').value;
+    if(srcBank) _bankAdjust(srcBank, date, -invested);
   }
   saveDB();
   closeModal('modal-investment');

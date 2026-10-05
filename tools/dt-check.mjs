@@ -2388,6 +2388,47 @@ suite(390, 'чипы «банки / вклады / инвестиции» на �
   });
 }, { demo: true });
 
+// До v1.80.5 «Списать из банка» было только у пополнений: новый счёт заводился
+// без проводки, и вложенная сумма считалась дважды — в банке и в инвестициях.
+suite(390, 'новый инвестсчёт списывает вложенное из банка', () => {
+  const create = (p, bankIdx) => p.evaluate(i => {
+    const bank = i === null ? '' : DB.banks[i];
+    const before = bank ? (_lastKnownAmount(bank, today()) || 0) : 0;
+    const nAssets = DB.assets.length;
+    openInvestModal();
+    document.getElementById('invest-name').value = 'ПИФ тест';
+    document.getElementById('invest-invested').value = '30000';
+    document.getElementById('invest-value').value = '30000';
+    const sel = document.getElementById('invest-src-bank');
+    const opts = [...sel.options].map(o => o.value);
+    sel.value = bank;
+    saveInvestment();
+    const inv = DB.investments.find(x => x.name === 'ПИФ тест' && !x._deleted);
+    const rec = bank ? DB.assets.find(a => !a._deleted && a.date === today() && a.bankName === bank) : null;
+    const res = { opts, banks: DB.banks.slice(), before, after: rec ? rec.amount : null,
+      stamped: rec ? !!rec.updatedAt : null, added: DB.assets.length - nAssets,
+      invested: inv ? invInvested(inv, today()) : null };
+    // вернуть базу как была — сюиты делят одну страницу
+    DB.investments = DB.investments.filter(x => x !== inv);
+    if (bank) _bankAdjust(bank, today(), 30000);
+    return res;
+  }, bankIdx);
+
+  check('в селекте «не списывать» и все дебетовые банки', async p => {
+    const r = await create(p, null);
+    eq(r.opts.join('|'), [''].concat(r.banks).join('|'), 'состав селекта');
+    eq(r.added, 0, 'без выбора банка записей активов не появилось');
+    eq(r.invested, 30000, 'вложено');
+  });
+
+  check('выбранный банк уменьшается на «Вложено всего»', async p => {
+    const r = await create(p, 0);
+    eq(r.after, r.before - 30000, 'остаток банка на дату');
+    eq(r.stamped, true, 'запись со штампом updatedAt');
+    eq(r.invested, 30000, 'вложено');
+  });
+}, { demo: true });
+
 suite(390, 'без вкладов и инвестиций чипов графика нет', () => {
   check('переключатель скрыт, линия = банки', async p => {
     await p.evaluate(() => { localStorage.removeItem('assetsChartParts'); window.showPage('assets', document.getElementById('nav-assets')); });
