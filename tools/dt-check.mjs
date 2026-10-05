@@ -2404,6 +2404,7 @@ suite(390, 'перевод в инвестсчёт ждёт снимка бан�
     const prev = _lastKnownAmount(bank, t);
     const nAssets = DB.assets.length;
     const totalBefore = _buildAssetSeries([t]).bankSeries[0];
+    const nDates = _buildAssetSeries().dates.length;
     openInvestModal();
     document.getElementById('invest-name').value = 'ПИФ тест';
     document.getElementById('invest-invested').value = '30000';
@@ -2416,7 +2417,7 @@ suite(390, 'перевод в инвестсчёт ждёт снимка бан�
     const res = { opts, banks: DB.banks.slice(), prev, added: DB.assets.length - nAssets,
       invested: inv ? invInvested(inv, t) : null, cBank: inv ? (inv.contributions[0].bank || '') : null,
       bank, drop: totalBefore - _buildAssetSeries([t]).bankSeries[0],
-      known: _lastKnownAmount(bank, t),
+      known: _lastKnownAmount(bank, t), newDates: _buildAssetSeries().dates.length - nDates,
       hint: [...document.querySelectorAll('#assets-list .pend-line')].map(e => e.textContent).join('|') };
     // следующий снимок: подставленный остаток уже за вычетом перевода
     DB.assets = DB.assets.filter(a => !(a.bankName === bank && a.date >= t));
@@ -2445,6 +2446,7 @@ suite(390, 'перевод в инвестсчёт ждёт снимка бан�
     eq(r.added, 0, 'записей активов не появилось');
     eq(r.known, r.prev, 'последняя запись банка не тронута');
     eq(r.cBank, r.bank, 'банк записан в пополнении');
+    eq(r.newDates, 0, 'снимок инвестсчёта не добавил строку в историю');
     eq(r.drop, 30000, 'ряд банков уменьшен — сумма не задвоена с инвестициями');
     eq(r.hint.includes('войдёт в следующий снимок'), true, 'строка банка подписана');
     eq(r.prefill, r.prev - 30000, 'в снимок подставлен остаток за вычетом перевода');

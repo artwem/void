@@ -1363,7 +1363,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.6</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.7</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6507,12 +6507,16 @@ function _buildAssetSeries(customDates){
   if(customDates){
     dates = customDates;
   } else {
-    // Сетка дат: снимки банков + снимки инвестиций. Даты открытия вкладов
-    // НЕ добавляем (пробовали в v1.32.3, откатили): точка без данных банков
-    // на эту дату путает — вклад появляется в истории со следующего снимка,
-    // до него живёт только в шапке «Всего активов» (подписана датой снимка)
+    // Сетка дат: ТОЛЬКО снимки счетов. Даты открытия вкладов НЕ добавляем
+    // (пробовали в v1.32.3, откатили): точка без данных банков на эту дату
+    // путает — вклад появляется в истории со следующего снимка, до него живёт
+    // только в шапке «Всего активов» (подписана датой снимка). С v1.80.7 то же
+    // у инвестиций: их снимки и пополнения строк не создают («Удалить дату»
+    // такую строку убрать не могла — банковских записей за ней не было),
+    // стоимость подтягивается на даты снимков счетов через invValueAt.
+    // Счетов нет вовсе — сетку дают снимки инвестиций, иначе график пуст.
     const dateSet = new Set(Object.keys(byDate));
-    histInvs.forEach(v=>{
+    if(!dateSet.size) histInvs.forEach(v=>{
       const delDay = _depDelDay(v);
       _invSnapDates(v).forEach(ds=>{ if(!(v._deleted && delDay && ds >= delDay)) dateSet.add(ds); });
     });
@@ -7679,7 +7683,7 @@ function deleteAssetDateConfirm(){
       saveDB(); renderAssets();
     });
   } else {
-    toast('Записи за ' + _editingAssetDate + ' удалены');
+    toast('За ' + _editingAssetDate + ' записей счетов нет');
   }
 }
 
