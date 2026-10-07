@@ -257,7 +257,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .stack-legend:empty{display:none}
 .sl-chip{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 2px;font-size:12px;color:var(--text);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
 .sl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.sl-txt{display:flex;flex-direction:column;min-width:0;line-height:1.25}
 .sl-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sl-avg{font-size:10px;color:var(--muted);white-space:nowrap}
 .sl-chip.off{opacity:.45}
 .sl-chip.off .sl-label{text-decoration:line-through}
 

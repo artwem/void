@@ -1756,6 +1756,42 @@ suite(390, 'средние и период графиков', () => {
     eq(/выбрано 4 из 5/.test(txt), true, 'подписано, сколько рядов осталось: ' + txt);
   });
 
+  check('«Кат. / Гр.» на стэк-графике расходов и ⌀ у каждого ряда', async p => {
+    // В фикстуре у всех категорий свой цвет — групп нет, тогл не нужен.
+    await p.evaluate(() => { setStatsPeriod(6); });
+    eq(await p.evaluate(() => getComputedStyle(document.getElementById('grouped-view-toggle')).display), 'none', 'без групп тогла нет');
+    const r = await p.evaluate(() => {
+      const sum = () => _stackVisTotals(charts.grouped).reduce((s, v) => s + v, 0);
+      const keep = DB.catColors.cat0002;
+      DB.catColors.cat0002 = DB.catColors.cat0001;          // «Аренда» + «Продукты» — одна группа
+      setGroupedViewMode('groups');
+      const out = { toggle: getComputedStyle(document.getElementById('grouped-view-toggle')).display,
+                    gN: charts.grouped.data.datasets.length, gSum: sum(),
+                    gTitle: document.getElementById('grouped-title').textContent };
+      setGroupedViewMode('cats');
+      const c = charts.grouped;
+      out.cN = c.data.datasets.length; out.cSum = sum();
+      out.cTitle = document.getElementById('grouped-title').textContent;
+      out.stored = localStorage.getItem('groupedViewMode');
+      const i = c.data.datasets.findIndex(d => d.label === 'Аренда');
+      out.colors = [c.data.datasets[i].backgroundColor, c.data.datasets[i + 1].backgroundColor];
+      out.chipAvg = (document.querySelectorAll('#grouped-legend .sl-chip')[i].querySelector('.sl-avg').textContent.match(/\d/g) || []).join('');
+      out.chips = document.querySelectorAll('#grouped-legend .sl-avg').length;
+      DB.catColors.cat0002 = keep;
+      setGroupedViewMode('groups');
+      return out;
+    });
+    eq(r.toggle, 'flex', 'с группой из двух категорий тогл появился');
+    eq(r.gN, 4, 'по группам: две категории слились в один ряд');
+    eq(r.cN, 5, 'по категориям: ряд на категорию');
+    eq(r.cSum, r.gSum, 'сумма графика от режима не зависит');
+    eq(r.gTitle + '|' + r.cTitle, 'Расходы по группам|Расходы по категориям', 'заголовок следует за режимом');
+    eq(r.stored, 'cats', 'режим запоминается');
+    eq(r.colors[0] !== r.colors[1], true, 'категории одной группы различимы: ' + r.colors.join(' / '));
+    eq(r.chipAvg, '30000', '⌀ «Аренды» в чипе легенды');
+    eq(r.chips, 5, '⌀ стоит у каждого ряда');
+  });
+
   check('среднее по тегам дохода живёт по тем же правилам', async p => {
     await p.evaluate(() => {
       const d = new Date(); let m = d.getMonth() - 1, y = d.getFullYear();

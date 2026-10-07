@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.79.4">
+<link rel="stylesheet" href="css/app.css?v=1.81.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -268,7 +268,13 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap" id="cw-grouped">
     <div class="chart-card">
-      <div class="chart-title" style="margin-bottom:4px">Расходы по группам</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
+        <div class="chart-title" id="grouped-title" style="margin:0">Расходы по группам</div>
+        <div id="grouped-view-toggle" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none;flex-shrink:0">
+          <span id="gvm-cats" onclick="setGroupedViewMode('cats')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">Кат.</span>
+          <span id="gvm-groups" onclick="setGroupedViewMode('groups')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Гр.</span>
+        </div>
+      </div>
       <div id="grouped-avg" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
       <div class="chart-box"><canvas id="chartGrouped"></canvas></div>
       <div class="stack-legend" id="grouped-legend"></div>
@@ -1363,7 +1369,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.80.7</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.81.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3987,6 +3993,15 @@ function setDayCompareMode(m){ dayCompareMode = m; uiSet('dayCompareMode', m); r
 function setExpViewMode(m){ _expViewMode=m; uiSet('expViewMode', m); }
 let _pieViewMode = uiGet('pieViewMode', 'cats');
 function setPieViewMode(m){ _pieViewMode=m; uiSet('pieViewMode', m); renderStats(); }
+// «Кат. / Гр.» на стэк-графике расходов. По умолчанию группы — так график жил до v1.81.0.
+let _groupedViewMode = uiGet('groupedViewMode', 'groups') === 'cats' ? 'cats' : 'groups';
+function setGroupedViewMode(m){ _groupedViewMode=m; uiSet('groupedViewMode', m); renderStats(); }
+// '#rrggbb' → rgba(): оттенки категорий одной группы на стэк-графике
+function _hexAlpha(hex, a){
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||'');
+  if(!m || a >= 1) return hex;
+  return 'rgba('+parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16)+','+a.toFixed(2)+')';
+}
 
 function setStatsPeriod(n){
   statsPeriodMode = _periodMode(String(n), '6');
@@ -4529,15 +4544,21 @@ function _stackVisTotals(chart){
   const dss = chart.data.datasets;
   return chart.data.labels.map((_,idx)=>dss.reduce((s,ds,di)=>s+(chart.isDatasetVisible(di)?(ds.data[idx]||0):0),0));
 }
+// Индексы месяцев, по которым считается среднее — общие для строки «⌀ в месяц» и
+// для «⌀» у каждого ряда в легенде.
+// Текущий месяц неполный — в среднее не берём (как на «Накоплениях»).
+// _voidTracked (у графика трат) — маска месяцев с учётом трат: до первой траты не нули, а «не вносились»
+function _stackDoneIdx(chart){
+  const n = chart.data.labels.length, mask = chart._voidTracked, idx = [];
+  for(let i=0; i<(n>1 ? n-1 : n); i++) if(!mask || mask[i]) idx.push(i);
+  return idx;
+}
 function _renderStackAvg(chart, elId, color){
   const el = document.getElementById(elId);
   if(!el) return;
   if(!chart){ el.textContent=''; return; }
   const totals = _stackVisTotals(chart);
-  // Текущий месяц неполный — в среднее не берём (как на «Накоплениях»).
-  // _voidTracked (у графика трат) — маска месяцев с учётом трат: до первой траты не нули, а «не вносились»
-  const mask = chart._voidTracked;
-  const done = (totals.length>1 ? totals.slice(0,-1) : totals).filter((_,i)=>!mask || mask[i]);
+  const done = _stackDoneIdx(chart).map(i=>totals[i]);
   if(!done.length){ el.textContent=''; return; }
   const avg = Math.round(done.reduce((s,v)=>s+v,0)/done.length);
   // Сумма — по ВСЕМ нарисованным столбцам, включая текущий неполный месяц:
@@ -4560,12 +4581,16 @@ function _renderStackLegend(chart, legendElId, avgElId, avgColor){
   if(!el) return;
   el.innerHTML = '';
   if(!chart) return;
+  // ⌀ в месяц у каждого ряда — по тем же завершённым месяцам, что и общая строка
+  const done = _stackDoneIdx(chart);
   chart.data.datasets.forEach((ds, di) => {
     const on = chart.isDatasetVisible(di);
     const chip = document.createElement('div');
     chip.className = 'sl-chip' + (on ? '' : ' off');
+    const avg = done.length ? Math.round(done.reduce((s,i)=>s+(ds.data[i]||0),0)/done.length) : null;
     chip.innerHTML = '<span class="sl-dot" style="background:' + esc(String(ds.backgroundColor||'#888')) + '"></span>'
-                   + '<span class="sl-label">' + esc(ds.label||'') + '</span>';
+                   + '<span class="sl-txt"><span class="sl-label">' + esc(ds.label||'') + '</span>'
+                   + (avg!==null ? '<span class="sl-avg">⌀ ' + fmtH(avg) + '</span>' : '') + '</span>';
     chip.addEventListener('click', () => {
       chart.setDatasetVisibility(di, !chart.isDatasetVisible(di));
       chart.update();
@@ -5123,8 +5148,40 @@ function renderStats(){
   });
   const groups = Object.values(colorGroups);
 
+  // «Кат. / Гр.»: тот же график рядом на категорию. Тогл есть, только когда в периоде
+  // у какой-то группы потрачено больше чем по одной категории — иначе режимы совпадают.
+  const catRows = groups.map(g=>g.indices
+    .map(ci=>({ci, data:expN.map(month=>Math.round(month.exps.filter(e=>e.cat===ci).reduce((s,e)=>s+e.amount,0)))}))
+    .filter(r=>r.data.some(v=>v>0)));
+  const hasCatGroups = catRows.some(rows=>rows.length>1);
+  const showCats = hasCatGroups && _groupedViewMode==='cats';
+  const gvmToggle = document.getElementById('grouped-view-toggle');
+  if(gvmToggle){
+    gvmToggle.style.display = hasCatGroups ? 'flex' : 'none';
+    _segActive([['gvm-cats', showCats], ['gvm-groups', !showCats]]);
+  }
+  const gTitle = document.getElementById('grouped-title');
+  if(gTitle) gTitle.textContent = showCats ? 'Расходы по категориям' : 'Расходы по группам';
+
+  // Категории одной группы идут подряд и делят её цвет — различаются плотностью
+  const catDatasets = groups.flatMap((g,gi)=>{
+    const rows = catRows[gi];
+    const step = rows.length>1 ? Math.min(0.25, 0.6/(rows.length-1)) : 0;
+    return rows.map((r,k)=>{
+      const label = DB.categories[r.ci]||'';
+      return {
+        label: label.length > 16 ? label.slice(0,16)+'…' : label,
+        data: r.data,
+        backgroundColor: _hexAlpha(g.color, 1-k*step),
+        stack:'expenses',
+        borderRadius:0,
+        borderSkipped:false
+      };
+    });
+  });
+
   // Dataset per group — stacked bars
-  const groupDatasets = groups.map(g=>{
+  const groupDatasets = showCats ? catDatasets : groups.map(g=>{
     const data = expN.map(month=>{
       return Math.round(
         g.indices.reduce((s,ci)=>{
