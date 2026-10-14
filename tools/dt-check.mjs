@@ -585,7 +585,8 @@ suite(1280, 'доли печатаются с одним знаком после
         .filter(c => /Расходы по (категориям|группам)|Доходы по тегам/.test(c.querySelector('.chart-title')?.textContent || ''));
       return cards.map(c => ({
         title: c.querySelector('.chart-title').textContent,
-        pcts: [...c.querySelectorAll('span')].map(x => x.textContent.trim()).filter(t => /%$/.test(t)),
+        // .rep-yoy — дельта к прошлому году (v1.83.0), не доля: у неё свой формат «+12%»
+        pcts: [...c.querySelectorAll('span:not(.rep-yoy)')].map(x => x.textContent.trim()).filter(t => /%$/.test(t)),
       }));
     });
     eq(got.length, 3, 'карточек с разбивками в отчёте');
@@ -2826,6 +2827,263 @@ suite(390, 'аудит v1.82.0', () => {
     eq(got.cats + '/' + got.ids, '12/12', 'категории по умолчанию с розданными catIds');
   });
 });
+
+// v1.83.0: версия скрипта, копии на Drive, журнал слияний, deep-link, повтор
+// траты, XIRR инвестиций, «vs прошлый год» в отчёте, размер базы в «О приложении».
+suite(390, 'идеи v1.83.0', () => {
+  check('XIRR: год при +10% даёт ≈10% годовых, короткая история — null', async p => {
+    const got = await p.evaluate(() => {
+      const d = new Date(); const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+      const t = `${y}-${m}-${dd}`, ago = `${y - 1}-${m}-${dd}`;
+      const r1 = _xirr([{ date: ago, amount: -100000 }, { date: t, amount: 110000 }]);
+      const short = _xirr([{ date: t, amount: -100000 }, { date: t, amount: 110000 }]);
+      const oneSign = _xirr([{ date: ago, amount: -1 }, { date: t, amount: -1 }]);
+      const inv = { id: 'xi', name: 'x', snapshots: { [t]: 120000 }, contributions: [{ id: 'c', date: ago, amount: 100000 }] };
+      return { r1, short, oneSign, port: _invXirr([inv], t), none: _invXirr([{ id: 'z', snapshots: {}, contributions: [] }], t), fmt: _fmtRate(12.34) + '/' + _fmtRate(-3) };
+    });
+    near(got.r1, 10, 'ставка за год при +10%', 0.2);
+    eq(got.short, null, 'история короче 30 дней — не считаем');
+    eq(got.oneSign, null, 'потоки одного знака — null');
+    near(got.port, 20, 'ставка счёта: вложено 100к год назад, стоит 120к', 0.2);
+    eq(got.none, null, 'счёт без потоков — null');
+    eq(got.fmt, '+12.3%/−3%', 'формат ставки');
+  });
+
+  check('повтор траты: тот же день/категория/сумма за две минуты — тост с «Отменить»', async p => {
+    const got = await p.evaluate(() => {
+      const now = Date.now();
+      const mk = (id, amt, dt) => ({ id, date: today(), cat: 1, catId: 'cat0002', amount: amt, comment: '', updatedAt: now - (dt || 0) });
+      const a = mk('dupA', 777), b = mk('dupB', 777), c = mk('dupC', 778), d = mk('dupD', 777, 10 * 60000);
+      DB.expenses.push(a, b, c, d);
+      const r1 = _offerDup(b);
+      const txt = document.getElementById('toast').textContent;
+      document.querySelector('#toast .toast-undo').click();
+      const deleted = !!DB.expenses.find(x => x.id === 'dupB')._deleted;
+      const aAlive = !DB.expenses.find(x => x.id === 'dupA')._deleted;
+      const r2 = _offerDup(c);           // другая сумма
+      const r3 = _offerDup(d);           // та же сумма, но 10 минут назад: пара dupA тоже 10 минут от неё — нет
+      DB.expenses = DB.expenses.filter(x => !/^dup/.test(x.id));
+      return { r1, txt, deleted, aAlive, r2, r3 };
+    });
+    eq(got.r1, true, 'повтор замечен');
+    if (!/повтор/.test(got.txt)) throw new Error('текст тоста: ' + got.txt);
+    eq(got.deleted, true, '«Отменить» удалил вторую запись');
+    eq(got.aAlive, true, 'первая запись жива');
+    eq(got.r2, false, 'другая сумма — не повтор');
+    eq(got.r3, false, 'старше окна — не повтор');
+  });
+
+  check('быстрый ввод дважды — тост о повторе вместо «добавлено»', async p => {
+    const got = await p.evaluate(() => {
+      showPage('day', document.getElementById('nav-day'));
+      document.getElementById('qa-amount').value = '333';
+      document.getElementById('qa-cat').value = '2';
+      quickAddSave(document.body);
+      const first = document.getElementById('toast').textContent;
+      document.getElementById('qa-amount').value = '333';
+      document.getElementById('qa-cat').value = '2';
+      quickAddSave(document.body);
+      const second = document.getElementById('toast').textContent;
+      const n = DB.expenses.filter(e => !e._deleted && e.amount === 333).length;
+      return { first, second, n };
+    });
+    if (/повтор/.test(got.first)) throw new Error('первый ввод не повтор: ' + got.first);
+    if (!/повтор/.test(got.second)) throw new Error('второй ввод должен предупредить: ' + got.second);
+    eq(got.n, 2, 'обе записи сохранены — тост только предлагает отменить');
+  });
+
+  check('deep-link ?add=&cat=&comment= открывает заполненную модалку и чистит URL', async p => {
+    const base = p.url().split('?')[0];
+    await p.goto(base + '?add=350&cat=' + encodeURIComponent('Еда вне дома') + '&comment=' + encodeURIComponent('кофе'), { waitUntil: 'networkidle0' });
+    const got = await p.evaluate(() => ({
+      open: document.getElementById('modal-expense').classList.contains('open'),
+      amount: document.getElementById('exp-amount').value.replace(/\s/g, ''),
+      cat: document.getElementById('exp-cat').value,
+      comment: document.getElementById('exp-comment').value,
+      search: location.search,
+      saved: DB.expenses.filter(e => e.amount === 350).length,
+    }));
+    eq(got.open, true, 'модалка траты открыта');
+    eq(got.amount, '350', 'сумма подставлена');
+    eq(got.cat, '2', 'категория по имени');
+    eq(got.comment, 'кофе', 'комментарий');
+    eq(got.search, '', 'query-строка убрана');
+    eq(got.saved, 0, 'без подтверждения ничего не сохранено');
+    await p.goto(base + '?tab=assets', { waitUntil: 'networkidle0' });
+    const tab = await p.evaluate(() => ({ active: document.getElementById('nav-assets').classList.contains('active'), modal: !!document.querySelector('.overlay.open'), search: location.search }));
+    eq(tab.active, true, '?tab=assets открывает «Накопления»');
+    eq(tab.modal, false, 'без add модалки нет');
+    eq(tab.search, '', 'query убран и тут');
+    const cat = await p.evaluate(() => ({ byId: _deepLinkCat('cat0004'), byIdx: _deepLinkCat('3'), none: _deepLinkCat('нет такой'), lower: _deepLinkCat('ОДЕЖДА') }));
+    eq(cat.byId + '/' + cat.byIdx + '/' + cat.none + '/' + cat.lower, '3/3/null/3', 'разбор категории: catId / индекс / неизвестная / регистр');
+  });
+
+  check('«О приложении» показывает размер базы и число записей', async p => {
+    const got = await p.evaluate(() => {
+      openAbout();
+      const t = document.getElementById('about-db-size').textContent;
+      closeModal('modal-about');
+      const s = _dbSizeInfo();
+      return { t, s };
+    });
+    if (!/Данные на устройстве: \d+ КБ/.test(got.t)) throw new Error('размер: ' + got.t);
+    // тумбстоуны фикстуры (updatedAt: 1) вычищает 90-дневная чистка loadDB — их тут не ждём
+    if (!/10 трат · 2 доходов · 2 снимков счетов/.test(got.t)) throw new Error('счётчики: ' + got.t);
+    if (!(got.s.dbBytes > 1000 && got.s.allBytes >= got.s.dbBytes)) throw new Error('байты: ' + JSON.stringify(got.s));
+  });
+
+  check('журнал слияний считает новые, изменённые и удалённые с Drive', async p => {
+    const got = await p.evaluate(() => {
+      const far = Date.now() + 1000;
+      mergePullData({ expenses: [
+        { id: 'remNew', date: today(), cat: 1, catId: 'cat0002', amount: 10, comment: '', updatedAt: far },
+        { id: 'e02', date: today(), cat: 1, catId: 'cat0002', amount: 4211, comment: 'правка', updatedAt: far },
+        { id: 'e03', date: today(), cat: 1, catId: 'cat0002', amount: 0, comment: '', _deleted: true, updatedAt: far },
+        { id: 'e04', date: today(), cat: 2, catId: 'cat0003', amount: 1, comment: '', updatedAt: 0 }, // старее — проигрывает
+      ] });
+      const st = { ..._lastMergeStats };
+      const log = _mergeLogGet();
+      DB.syncUrl = 'http://sync.test/x'; renderSettings();
+      const row = document.getElementById('sync-merge-last').textContent;
+      const vis = getComputedStyle(document.getElementById('sync-backups-row')).display;
+      mergePullData({ expenses: [] }); // пустое слияние журнал не трогает
+      const n2 = _mergeLogGet().length;
+      DB.syncUrl = ''; renderSettings();
+      return { st, n: log.length, ev: log[0], row, vis, n2 };
+    });
+    eq(got.st.added + '/' + got.st.changed + '/' + got.st.deleted, '1/1/1', 'статистика слияния');
+    eq(got.n, 1, 'одно событие в журнале');
+    eq(got.ev.added, 1, 'событие: новых');
+    if (!/1 нов\. · 1 изм\. · 1 удал\./.test(got.row)) throw new Error('строка в Настройках: ' + got.row);
+    eq(got.vis, 'flex', 'строка «Копии на Drive» видна при заданном URL');
+    eq(got.n2, 1, 'пустое слияние в журнал не пишется');
+  });
+
+  check('версия скрипта: из ответов синка, строка «обновите» при отставании', async p => {
+    const got = await p.evaluate(async () => {
+      const res = {};
+      DB.syncUrl = 'http://sync.test/x'; renderSettings();
+      const row = () => document.getElementById('sync-script-version').textContent;
+      _noteScriptVersion('10.4'); res.old = row();
+      _noteScriptVersion('10.5'); res.cur = row();
+      res.less = [_verLess('10.4', '10.5'), _verLess('10.5', '10.5'), _verLess('10.10', '10.9'), _verLess('<10.5', '10.5')].join(',');
+      const realFetch = window.fetch;
+      window.fetch = async (u, o) => ({ ok: true, text: async () => JSON.stringify({ ok: true }) });
+      await syncRequest('ping'); res.legacy = _remoteScriptVersion + '|' + row();
+      window.fetch = async (u, o) => ({ ok: true, text: async () => JSON.stringify({ ok: true, version: '10.5' }) });
+      await syncRequest('push', {}); res.signed = _remoteScriptVersion;
+      // полный pull — файл данных без подписи: версию не трогает
+      window.fetch = async () => ({ ok: true, text: async () => JSON.stringify({ expenses: [] }) });
+      await syncRequest('pull'); res.afterPull = _remoteScriptVersion;
+      window.fetch = realFetch;
+      res.stored = uiGet('scriptVersion', '');
+      DB.syncUrl = ''; renderSettings();
+      return res;
+    });
+    if (!/v10\.4 · нужен v10\.5, обновите/.test(got.old)) throw new Error('старый скрипт: ' + got.old);
+    if (!/v10\.5 ✓/.test(got.cur)) throw new Error('актуальный скрипт: ' + got.cur);
+    eq(got.less, 'true,false,false,true', 'сравнение версий');
+    if (!/^<10\.5\|старый/.test(got.legacy)) throw new Error('ответ без version → старый: ' + got.legacy);
+    eq(got.signed, '10.5', 'версия из подписанного ответа');
+    eq(got.afterPull, '10.5', 'файл данных версию не сбивает');
+    eq(got.stored, '10.5', 'версия сохранена между запусками');
+  });
+
+  check('копии на Drive: список, восстановление, force-push', async p => {
+    const got = await p.evaluate(async () => {
+      DB.syncUrl = 'http://sync.test/x';
+      const calls = [];
+      const backup = { categories: ['Только одна'], catIds: ['solo'], catColors: {}, expenses: [{ id: 'bk1', date: today(), cat: 0, catId: 'solo', amount: 42, comment: '', updatedAt: 1 }], incomes: [], assets: [], banks: [], creditBanks: [], limits: {} };
+      const realFetch = window.fetch;
+      window.fetch = async (u, o) => {
+        const b = JSON.parse(o.body); calls.push(b);
+        const answer = b.action === 'listBackups' ? { ok: true, version: '10.5', backups: [
+            { id: 'f1', name: 'nto_data.bak.2026-10-14.json', date: '2026-10-14', size: 204800 },
+            { id: 'f0', name: 'nto_data.bak.json', date: '2026-10-01', size: 1024, legacy: true } ] }
+          : b.action === 'readBackup' ? backup
+          : { ok: true, version: '10.5' };
+        return { ok: true, text: async () => JSON.stringify(answer) };
+      };
+      window.confirmDialog = async () => true;
+      await openDriveBackups();
+      const rows = document.querySelectorAll('#backups-list button').length;
+      const listTxt = document.getElementById('backups-list').textContent;
+      await restoreDriveBackup('f1', '2026-10-14');
+      window.fetch = realFetch;
+      return { rows, listTxt, actions: calls.map(c => c.action).join(','), force: calls[calls.length - 1].force, cats: DB.categories.join(), n: DB.expenses.length,
+        stamped: DB.expenses[0].updatedAt > 1, open: document.getElementById('modal-backups').classList.contains('open'), dirty: DB._dirty, url: DB.syncUrl };
+    });
+    eq(got.rows, 2, 'две копии в списке');
+    if (!/200 КБ/.test(got.listTxt) || !/старая копия/.test(got.listTxt)) throw new Error('подписи списка: ' + got.listTxt);
+    eq(got.actions, 'listBackups,readBackup,push', 'порядок запросов: список → копия → push без pull');
+    eq(got.force, true, 'push с force — файл на Drive уменьшился осознанно');
+    eq(got.cats, 'Только одна', 'данные заменены копией');
+    eq(got.n, 1, 'траты из копии');
+    eq(got.stamped, true, 'записи перештампованы — другие устройства их примут');
+    eq(got.open, false, 'модалка закрыта');
+    eq(got.dirty, false, 'после push база чистая');
+    eq(got.url, 'http://sync.test/x', 'syncUrl пережил восстановление');
+  });
+
+  check('старый скрипт на запрос копий — внятная подсказка, а не «Unknown action»', async p => {
+    const got = await p.evaluate(async () => {
+      DB.syncUrl = 'http://sync.test/x';
+      const realFetch = window.fetch;
+      window.fetch = async () => ({ ok: true, text: async () => JSON.stringify({ error: 'Unknown action: listBackups' }) });
+      await openDriveBackups();
+      window.fetch = realFetch;
+      closeModal('modal-backups');
+      return document.getElementById('backups-list').textContent;
+    });
+    if (!/разверните Apps Script v10\.5/.test(got)) throw new Error('подсказка: ' + got);
+  });
+
+  check('в отчёте без прошлого года колонки «vs» нет', async p => {
+    const got = await p.evaluate(() => {
+      showPage('report', document.getElementById('nav-stats'));
+      renderReport();
+      return { yoy: document.querySelectorAll('.rep-yoy').length, hdr: /vs \d{4}/.test(document.getElementById('report-body').textContent) };
+    });
+    eq(got.yoy, 0, 'дельт нет — данных за прошлый год в фикстуре нет');
+    eq(got.hdr, false, 'заголовок без «vs»');
+  });
+});
+
+suite(390, 'идеи v1.83.0 — демо', () => {
+  check('годовой отчёт: дельты к прошлому году у категорий, групп и тегов', async p => {
+    const got = await p.evaluate(() => {
+      showPage('report', document.getElementById('nav-stats'));
+      const sel = document.getElementById('report-year');
+      const yr = String(new Date().getFullYear());
+      sel.value = yr; renderReport();
+      const cells = [...document.querySelectorAll('.rep-yoy')];
+      const body = document.getElementById('report-body').textContent;
+      const res = { n: cells.length, texts: cells.map(c => c.textContent), hdr: new RegExp('vs ' + (yr - 1)).test(body), sameSpan: new RegExp('vs ' + (yr - 1) + ' · [а-я]{3}').test(body) };
+      sel.value = 'all'; renderReport();
+      res.nAll = document.querySelectorAll('.rep-yoy').length;
+      sel.value = yr; renderReport();
+      return res;
+    });
+    if (got.n < 3) throw new Error('дельт слишком мало: ' + got.n);
+    const bad = got.texts.filter(t => !/^([+−]\d+%|±0%|новое)$/.test(t));
+    if (bad.length) throw new Error('формат дельты: ' + bad.join(' '));
+    eq(got.hdr, true, 'заголовок «vs <прошлый год>»');
+    eq(got.sameSpan, true, 'подпись окна сравнения «vs <год> · <мес>–<мес>»');
+    eq(got.nAll, 0, 'за «всё время» сравнивать не с чем');
+  });
+
+  check('инвестиции: ставка годовых у счёта и по портфелю', async p => {
+    const got = await p.evaluate(() => {
+      showPage('assets', document.getElementById('nav-assets'));
+      renderInvestments();
+      const port = document.getElementById('investments-rate');
+      return { portShown: port && port.style.display !== 'none', portTxt: port ? port.textContent : '', cards: document.querySelectorAll('#investments-list .inv-rate').length, invs: DB.investments.filter(v => !v._deleted).length };
+    });
+    eq(got.portShown, true, 'ставка портфеля показана');
+    if (!/[+−]\d+(\.\d)?% годовых по портфелю/.test(got.portTxt)) throw new Error('текст портфеля: ' + got.portTxt);
+    if (got.cards < 1) throw new Error('у счетов нет ставки, счетов: ' + got.invs);
+  });
+}, { demo: true });
 
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();

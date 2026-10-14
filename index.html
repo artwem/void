@@ -531,6 +531,7 @@ if ('serviceWorker' in navigator) {
     <div><h1>Инвестиции</h1><div class="hdr-sub">Брокер и ИИС</div></div>
   </div>
   <div class="total-bar"><span class="total-lbl">Стоимость сейчас</span><span class="total-val" id="investments-total-now">0 ₽</span></div>
+  <div id="investments-rate" style="padding:0 16px 4px;font-size:12px;color:var(--muted);display:none" title="Денежно-взвешенная годовая доходность (XIRR) по всем пополнениям и выводам"></div>
   <div class="sec-hdr"><span class="sec-title">Счета</span><span class="sec-action" onclick="openInvestModal()">+ Добавить</span></div>
   <div id="investments-list" style="padding:0 16px 8px"></div>
   <div class="page-end"></div>
@@ -590,6 +591,19 @@ if ('serviceWorker' in navigator) {
     <div class="setting-row" id="sync-last-row" style="display:none;cursor:default">
       <span class="setting-label" style="color:var(--muted)">Последняя синхронизация</span>
       <span class="setting-value" id="sync-last-time">—</span>
+    </div>
+    <div class="setting-row" id="sync-script-row" style="display:none;cursor:default" title="Версия Apps Script на Drive. Если она ниже версии в приложении — скопируйте скрипт заново и разверните новую версию">
+      <span class="setting-label" style="color:var(--muted)">Скрипт на Drive</span>
+      <span class="setting-value" id="sync-script-version">—</span>
+    </div>
+    <div class="setting-row" id="sync-merge-row" onclick="openMergeLog()" style="display:none" title="Что пришло с других устройств при последних синхронизациях">
+      <span class="setting-label" style="color:var(--muted)">С других устройств</span>
+      <span class="setting-value" id="sync-merge-last">—</span>
+      <span class="setting-chevron">›</span>
+    </div>
+    <div class="setting-row" id="sync-backups-row" onclick="openDriveBackups()" style="display:none">
+      <span class="setting-label">🗂 Копии на Drive</span>
+      <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-interval-row" style="display:none;cursor:default">
       <span class="setting-label" style="color:var(--muted)">Авто-синхронизация</span>
@@ -663,7 +677,7 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="spacer"></div>
   <div class="settings-list">
-    <div class="setting-row" onclick="openModal('modal-about')">
+    <div class="setting-row" onclick="openAbout()">
       <span class="setting-label">ℹ О приложении</span>
       <span class="setting-chevron">›</span>
     </div>
@@ -1247,6 +1261,32 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- MODAL: SYNC CHOICE -->
+<!-- MODAL: КОПИИ НА DRIVE (суточные копии Code.gs ≥10.5, см. openDriveBackups) -->
+<div class="overlay" data-dt="dialog" id="modal-backups">
+  <div class="sheet">
+    <button class="close-btn" onclick="closeModal('modal-backups')"><svg class="ico"><use href="#i-close"/></svg></button>
+    <h2>Копии на Drive</h2>
+    <p style="font-size:12px;color:var(--muted);margin:6px 0 12px;line-height:1.6">Скрипт откладывает копию данных раз в сутки и хранит семь последних. Восстановление заменит данные на этом устройстве и отправит их на Drive.</p>
+    <div id="backups-list" style="font-size:13px"></div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn" onclick="closeModal('modal-backups')" style="width:100%">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ЖУРНАЛ СЛИЯНИЙ (что пришло с других устройств, см. _mergeLogAdd) -->
+<div class="overlay" data-dt="dialog" id="modal-merge-log">
+  <div class="sheet">
+    <button class="close-btn" onclick="closeModal('modal-merge-log')"><svg class="ico"><use href="#i-close"/></svg></button>
+    <h2>С других устройств</h2>
+    <p style="font-size:12px;color:var(--muted);margin:6px 0 12px;line-height:1.6">Последние синхронизации, в которых с Drive пришли чужие правки. «Изменено» — запись с этого устройства перезаписана более свежей версией.</p>
+    <div id="merge-log-list" style="font-size:13px"></div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn" onclick="closeModal('modal-merge-log')" style="width:100%">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" data-dt="dialog" id="modal-sync-choice">
   <div class="sheet">
     <button class="close-btn" onclick="closeModal('modal-sync-choice')"><svg class="ico"><use href="#i-close"/></svg></button>
@@ -1369,11 +1409,12 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.82.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.83.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
     <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с лимитами, веди доходы, счета и кредиты, вклады и инвестиции, ставь цели и смотри годовой отчёт. Все данные хранятся локально на устройстве и синхронизируются с Google Drive по твоему желанию.</p>
+    <div id="about-db-size" style="font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6"></div>
     <div class="btn-row" style="margin-top:20px">
       <button class="btn primary" onclick="closeModal('modal-about')" style="width:100%">Закрыть</button>
     </div>
@@ -2869,6 +2910,7 @@ function saveExpense(){
   } else {
     DB.expenses.push({ id:uid(), cat, catId, amount:amt, date, comment, oneoff, updatedAt:Date.now() });
   }
+  const rec = DB.expenses[DB.expenses.length-1];
   saveDB();
   closeModal('modal-expense');
   if(currentPage==='day') renderDay();
@@ -2876,7 +2918,8 @@ function saveExpense(){
   else renderBudget();
   const wasEditing = !!editingExpenseId;
   editingExpenseId = null;
-  toast(wasEditing?'Обновлено':'Сохранено');
+  if(wasEditing) toast('Обновлено');
+  else if(!_offerDup(rec)) toast('Сохранено');
   checkBudgetNotifications();
 }
 
@@ -3243,6 +3286,29 @@ function renderDay(){
 // Обязательные категории тост обходит СПЕЦИАЛЬНО, хотя разовая там с v1.80.0
 // законна: аренда и связь выше порога каждый месяц, и предложение всплывало бы
 // на каждый обычный платёж. Разметить оплату вперёд можно в модалке траты.
+// Повтор траты: та же категория, та же сумма, тот же день, и предыдущая запись
+// внесена меньше двух минут назад — почти всегда двойной тап по шаблону или
+// кнопке. Тост с «Отменить» убирает только что добавленную запись; законные
+// две покупки подряд просто игнорируют тост. Приоритет выше, чем у «разовая?».
+let DUP_WINDOW_MS = 120000; // let — тесты сдвигают
+function _offerDup(rec){
+  if(!rec) return false;
+  const twin = DB.expenses.find(e => e !== rec && e.id !== rec.id && !e._deleted &&
+    e.date === rec.date && e.amount === rec.amount &&
+    (e.catId ? e.catId === rec.catId : e.cat === rec.cat) &&
+    Math.abs((rec.updatedAt || 0) - (e.updatedAt || 0)) < DUP_WINDOW_MS);
+  if(!twin) return false;
+  toastUndo(fmt(rec.amount) + ' — похоже на повтор', () => {
+    const e = DB.expenses.find(x => x.id === rec.id);
+    if(!e) return;
+    e.amount = 0; e.comment = ''; e._deleted = true; e.updatedAt = Date.now();
+    saveDB();
+    renderCurrentPage();
+    toast('Повтор удалён');
+  }, 6000, 'Отменить');
+  return true;
+}
+
 function _offerOneoff(rec){
   if(!rec || _isOneoff(rec) || _isObligCat(rec.cat) || rec.amount < _oneoffThreshold() || _oneoffThreshold() <= 0) return false;
   toastUndo(fmt(rec.amount) + ' — разовая трата?', () => {
@@ -3295,7 +3361,7 @@ function addFromTemplate(id,btn){
   DB.expenses.push(rec);
   saveDB();
   if(currentPage==='day') renderDay(); else renderBudget();
-  if(!_offerOneoff(rec)) toast(t.name+' добавлено');
+  if(!_offerDup(rec) && !_offerOneoff(rec)) toast(t.name+' добавлено');
   checkBudgetNotifications();
 }
 
@@ -3442,7 +3508,7 @@ function quickAddSave(btn){
   saveDB();
   checkBudgetNotifications();
   vibe(); flash(btn);
-  if(!_offerOneoff(rec)) toast(fmt(amt) + ' добавлено');
+  if(!_offerDup(rec) && !_offerOneoff(rec)) toast(fmt(amt) + ' добавлено');
   amtInp.value = '';
   document.getElementById('qa-comment').value = '';
   document.getElementById('qa-comment-row').style.display = 'none';
@@ -6614,6 +6680,44 @@ function invInvested(inv, dateStr){
   return (inv.contributions||[]).filter(c=>c.date<=cut).reduce((s,c)=>s+c.amount,0);
 }
 
+// Денежно-взвешенная годовая доходность (XIRR) по потокам {date, amount}:
+// вложения отрицательные, выводы и итоговая стоимость положительные. Ищем
+// ставку r, при которой Σ amount / (1+r)^(дней/365) = 0 — бисекцией, замкнутой
+// формы нет. null, если нет потоков обоих знаков или история короче 30 дней:
+// за две недели «годовых» получаются сотни процентов и только пугают.
+// Простая (итог/вложено − 1) занижала бы ставку при пополнениях: поздний
+// взнос работал меньше года, а делился на полный.
+function _xirr(flows){
+  const fl = (flows||[]).filter(f => f && f.amount && f.date).sort((a,b)=>a.date<b.date?-1:1);
+  if(fl.length < 2 || !fl.some(f=>f.amount<0) || !fl.some(f=>f.amount>0)) return null;
+  const t0 = new Date(fl[0].date+'T12:00:00');
+  const yrs = fl.map(f => (new Date(f.date+'T12:00:00') - t0) / 86400000 / 365);
+  if(yrs[yrs.length-1] < 30/365) return null;
+  const npv = r => fl.reduce((s,f,i) => s + f.amount / Math.pow(1+r, yrs[i]), 0);
+  let lo = -0.9999, hi = 10;
+  if(npv(lo) * npv(hi) > 0) return null; // ставки вне [-100%, +1000%] не ищем
+  for(let i = 0; i < 100; i++){
+    const mid = (lo+hi)/2;
+    if(npv(lo) * npv(mid) <= 0) hi = mid; else lo = mid;
+  }
+  return (lo+hi)/2 * 100;
+}
+// Потоки инвестсчёта до даты: пополнения (−), выводы (+), стоимость на дату (+).
+// invs — массив счетов: один даёт ставку счёта, все вместе — портфеля.
+function _invXirr(invs, dateStr){
+  const cut = dateStr || today();
+  const flows = [];
+  let value = 0;
+  invs.forEach(v => {
+    (v.contributions||[]).forEach(c => { if(c.date <= cut && c.amount) flows.push({date: c.date, amount: -c.amount}); });
+    value += invValueAt(v, cut);
+  });
+  if(!flows.length) return null;
+  flows.push({date: cut, amount: value});
+  return _xirr(flows);
+}
+function _fmtRate(r){ return (r >= 0 ? '+' : '−') + Math.abs(r).toFixed(1).replace(/\.0$/, '') + '%'; }
+
 // Серии «счета / вклады» по датам снимков. Carry-forward: банк без записи
 // на дату берётся по последней известной. Вклады — с openDate, закрытые
 // учитываются до дня закрытия. Одна логика для графика, истории и аудита.
@@ -6738,6 +6842,13 @@ function renderInvestments(){
   const invs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const td = today();
   document.getElementById('investments-total-now').innerHTML = fmtH(invs.reduce((s,v)=>s+invValueAt(v,td),0));
+  // Доходность портфеля — XIRR по всем потокам всех счетов (v1.83.0)
+  const rateEl = document.getElementById('investments-rate');
+  const portRate = invs.length ? _invXirr(invs, td) : null;
+  if(rateEl){
+    rateEl.style.display = portRate === null ? 'none' : '';
+    if(portRate !== null) rateEl.innerHTML = `<span class="inv-rate" style="color:${portRate>=0?'var(--green)':'var(--red)'};font-weight:600">${_fmtRate(portRate)}</span> годовых по портфелю`;
+  }
   if(!invs.length){
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет счетов — нажмите + чтобы добавить</p>';
     return;
@@ -6769,7 +6880,7 @@ function renderInvestments(){
           <div style="font-size:11px;color:var(--muted);margin-top:2px">вложено ${fmtH(invested)}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}</div>
+      <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}${(()=>{ const r = _invXirr([v], td); return r === null ? '' : ` <span class="inv-rate" style="color:var(--muted)" title="Денежно-взвешенная годовая доходность (XIRR)">· ${_fmtRate(r)} годовых</span>`; })()}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot('${esc(v.id)}')"><svg class="ico"><use href="#i-refresh"/></svg> Обновить</button>
         <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',1)">+ Пополнить</button>
@@ -7841,10 +7952,12 @@ function renderSettings(){
   const hasSyncUrl = !!DB.syncUrl;
   document.getElementById('sync-url-display').textContent =
     hasSyncUrl ? DB.syncUrl.slice(0,40)+'…' : 'Не задан';
-  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row'].forEach(id=>{
+  ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row','sync-script-row','sync-merge-row','sync-backups-row'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = hasSyncUrl ? 'flex' : 'none';
   });
+  _renderScriptVersionRow();
+  _renderMergeRow();
   const lastSync = localStorage.getItem('lastSync') || sessionStorage.getItem('lastSync');
   if(lastSync){
     const d = new Date(lastSync);
@@ -9411,6 +9524,36 @@ function confirmClearData(){
 }
 
 let _aboutTapCount = 0, _aboutTapTimer = null;
+// «О приложении»: сколько места занимает база в localStorage. У iOS лимит
+// около 5 МБ на origin, и упор в него проявляется молча — запись просто не
+// сохраняется. Цифра даёт заметить приближение заранее.
+function _dbSizeInfo(){
+  let dbBytes = 0, allBytes = 0;
+  try {
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i), v = localStorage.getItem(k) || '';
+      const b = new Blob([k + v]).size;
+      allBytes += b;
+      if(k === 'budgetDB_v2') dbBytes = b;
+    }
+  } catch(_) {}
+  const live = k => (DB[k] || []).filter(x => x && !x._deleted).length;
+  const tombs = ['expenses','incomes','assets','templates','deposits','investments','credits']
+    .reduce((s, k) => s + (DB[k] || []).filter(x => x && x._deleted).length, 0);
+  return { dbBytes, allBytes, expenses: live('expenses'), incomes: live('incomes'), assets: live('assets'), tombs };
+}
+function openAbout(){
+  const el = document.getElementById('about-db-size');
+  if(el){
+    const s = _dbSizeInfo();
+    const pct = Math.round(s.allBytes / (5 * 1024 * 1024) * 100);
+    el.innerHTML = `Данные на устройстве: <b>${_fmtKB(s.dbBytes)}</b> (всё хранилище ${_fmtKB(s.allBytes)} — ${pct}% от ~5 МБ)<br>` +
+      `${s.expenses} трат · ${s.incomes} доходов · ${s.assets} снимков счетов` + (s.tombs ? ` · ${s.tombs} удалённых ждут очистки` : '');
+    el.style.color = pct >= 80 ? 'var(--amber)' : 'var(--muted)';
+  }
+  openModal('modal-about');
+}
+
 function _aboutIconTap(){
   clearTimeout(_aboutTapTimer);
   _aboutTapCount++;
@@ -9809,8 +9952,145 @@ async function syncRequest(action, data, opts) {
     if (e && e.name === 'AbortError') throw new Error('Нет ответа за ' + (SYNC_TIMEOUT_MS/1000) + ' с');
     throw e;
   } finally { clearTimeout(timer); }
-  try { return opts.raw ? { parsed: JSON.parse(text), text } : JSON.parse(text); }
+  let parsed;
+  try { parsed = JSON.parse(text); }
   catch(e) { throw new Error('Ответ: ' + text.slice(0, 100)); }
+  // Code.gs ≥10.5 подписывает каждый JSON-ответ своей версией (файл данных —
+  // нет: он уходит как есть). Ответ без version от push/ping — старый скрипт.
+  if(parsed && typeof parsed === 'object' && !Array.isArray(parsed) && (action !== 'pull' || parsed.unchanged || parsed.empty || parsed.error))
+    _noteScriptVersion(parsed.version || '<10.5');
+  return opts.raw ? { parsed, text } : parsed;
+}
+
+// ── Версия скрипта на Drive ──────────────────────────────────────────
+// Приложение знает, какой Code.gs ему нужен (APPS_SCRIPT_VERSION), а скрипт
+// подписывает ответы своей версией. Расхождение раньше было невидимым: после
+// обновления приложения синк молча работал по-старому, без хэша и копий.
+const APPS_SCRIPT_VERSION = '10.5';
+let _remoteScriptVersion = uiGet('scriptVersion', '');
+function _verLess(a, b){ // '10.4' < '10.5'; '<10.5' — заведомо старый
+  if(String(a).startsWith('<')) return true;
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for(let i = 0; i < Math.max(pa.length, pb.length); i++){
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if(x !== y) return x < y;
+  }
+  return false;
+}
+function _scriptOutdated(){ return !!_remoteScriptVersion && _verLess(_remoteScriptVersion, APPS_SCRIPT_VERSION); }
+function _noteScriptVersion(v){
+  if(!v || v === _remoteScriptVersion) return;
+  _remoteScriptVersion = String(v);
+  uiSet('scriptVersion', _remoteScriptVersion);
+  _renderScriptVersionRow();
+}
+function _renderScriptVersionRow(){
+  const el = document.getElementById('sync-script-version');
+  if(!el) return;
+  if(!_remoteScriptVersion){ el.textContent = '—'; el.style.color = ''; return; }
+  const old = _scriptOutdated();
+  const shown = _remoteScriptVersion.startsWith('<') ? 'старый' : 'v' + _remoteScriptVersion;
+  el.textContent = old ? shown + ' · нужен v' + APPS_SCRIPT_VERSION + ', обновите' : shown + ' ✓';
+  el.style.color = old ? 'var(--amber)' : 'var(--green)';
+}
+// Версию узнаём из push/ping; если за сессию был только pull (файл данных без
+// подписи) — один ping, чтобы строка в Настройках не висела пустой.
+let _scriptVersionPinged = false;
+async function _scriptVersionCheck(){
+  if(_scriptVersionPinged || !DB.syncUrl) return;
+  _scriptVersionPinged = true;
+  try { await syncRequest('ping'); } catch(_) {}
+}
+
+// ── Копии на Drive (Code.gs ≥10.5) ───────────────────────────────────
+async function openDriveBackups(){
+  if(!DB.syncUrl){ toast('URL не задан'); return; }
+  const list = document.getElementById('backups-list');
+  list.innerHTML = '<p style="color:var(--muted);padding:8px 0">Загрузка…</p>';
+  openModal('modal-backups');
+  try {
+    const d = await syncRequest('listBackups');
+    if(d.error) throw new Error(d.error);
+    _renderBackupList(d.backups || []);
+  } catch(e) {
+    const msg = /Unknown action/.test(e.message) ? 'Скрипт на Drive старый — скопируйте и разверните Apps Script v' + APPS_SCRIPT_VERSION : e.message;
+    list.innerHTML = '<p style="color:var(--red);padding:8px 0;line-height:1.5">' + esc(msg) + '</p>';
+  }
+}
+function _fmtKB(bytes){ return bytes >= 1024*1024 ? (bytes/1024/1024).toFixed(1) + ' МБ' : Math.round(bytes/1024) + ' КБ'; }
+function _renderBackupList(items){
+  const list = document.getElementById('backups-list');
+  if(!items.length){ list.innerHTML = '<p style="color:var(--muted);padding:8px 0">Копий пока нет — первая появится при следующей выгрузке на Drive</p>'; return; }
+  list.innerHTML = items.map(b => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500">${_fmtDateRu(b.date)}${b.legacy ? ' <span style="font-size:11px;color:var(--muted)">старая копия</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--muted)">${_fmtKB(b.size || 0)}</div>
+      </div>
+      <button type="button" class="btn small" onclick="restoreDriveBackup('${esc(b.id)}','${esc(b.date)}')">Восстановить</button>
+    </div>`).join('');
+}
+async function restoreDriveBackup(id, date){
+  const ok = await confirmDialog(
+    'Данные на этом устройстве заменятся копией от ' + _fmtDateRu(date) + ' и уедут на Drive. ' +
+    'Записи, добавленные после этой даты, пропадут; на других устройствах они могут вернуться при их следующей синхронизации.',
+    {ok: 'Восстановить', danger: true, title: 'Откатить к копии?'});
+  if(!ok) return;
+  try {
+    if(_syncCyclePromise) await _syncCyclePromise; // не наступать на идущий цикл
+    const d = await syncRequest('readBackup', {id});
+    if(!d || d.error) throw new Error(d && d.error || 'пустой ответ');
+    if(!d.expenses && !d.categories) throw new Error('В копии нет данных приложения');
+    _applyRestoredData(d, true);
+    const payload = buildPayload();
+    const pr = await syncRequest('push', payload, {force: true});
+    if(pr && pr.error) throw new Error(pr.error);
+    _lastPullHash = await _sha256(JSON.stringify(payload));
+    DB._dirty = false; saveLocal();
+    closeModal('modal-backups');
+    toast('Восстановлено из копии от ' + _fmtDateRu(date));
+  } catch(e) {
+    toast('Не удалось восстановить: ' + e.message, 'err');
+  }
+}
+
+// ── Журнал слияний ───────────────────────────────────────────────────
+// mergePullData считает, что пришло с Drive поверх локального: новые записи,
+// перезаписанные более свежей версией, удалённые. Без журнала правка, сделанная
+// на телефоне и затёртая планшетом, исчезала без следа. Хранится device-local
+// (uiGet/uiSet), последние 10 ненулевых событий.
+function _mergeLogGet(){ try { return JSON.parse(uiGet('mergeLog', '[]')) || []; } catch(_) { return []; } }
+function _mergeLogAdd(st){
+  if(!st || !(st.added || st.changed || st.deleted)) return;
+  const log = _mergeLogGet();
+  log.unshift({at: Date.now(), added: st.added, changed: st.changed, deleted: st.deleted});
+  uiSet('mergeLog', JSON.stringify(log.slice(0, 10)));
+  _renderMergeRow();
+}
+function _mergeLine(ev){
+  const parts = [];
+  if(ev.added)   parts.push(ev.added + ' нов.');
+  if(ev.changed) parts.push(ev.changed + ' изм.');
+  if(ev.deleted) parts.push(ev.deleted + ' удал.');
+  return parts.join(' · ');
+}
+function _fmtWhen(ms){
+  const d = new Date(ms);
+  return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'2-digit'}) + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+}
+function _renderMergeRow(){
+  const el = document.getElementById('sync-merge-last');
+  if(!el) return;
+  const log = _mergeLogGet();
+  el.textContent = log.length ? _mergeLine(log[0]) + ' · ' + _fmtWhen(log[0].at) : 'ничего';
+}
+function openMergeLog(){
+  const log = _mergeLogGet();
+  document.getElementById('merge-log-list').innerHTML = log.length
+    ? log.map(ev => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:0.5px solid var(--border)">
+        <span style="color:var(--muted)">${_fmtWhen(ev.at)}</span><span>${_mergeLine(ev)}</span></div>`).join('')
+    : '<p style="color:var(--muted);padding:8px 0">Пока ни одна синхронизация не меняла данные этого устройства</p>';
+  openModal('modal-merge-log');
 }
 
 // SHA-256 строки в hex — тот же дайджест считает Code.gs над содержимым файла,
@@ -9830,7 +10110,7 @@ async function testSync(){
   el.textContent = '…';
   try {
     const d = await syncRequest('ping');
-    el.innerHTML = d.ok ? ICO.check + ' Подключено' : '× Ошибка';
+    el.innerHTML = d.ok ? ICO.check + ' Подключено' + (d.version ? ' · v' + esc(String(d.version)) : '') : '× Ошибка';
     toast(d.ok ? 'Подключение успешно!' : 'Ошибка: '+(d.error||'?'));
   } catch(e) {
     el.textContent = '× Недоступно';
@@ -10027,36 +10307,80 @@ function renderReport(){
   const expNote = totIncT < totInc
     ? `<div class="rep-note" style="grid-column:1 / -1;font-size:11px;color:var(--muted);text-align:center;margin-top:-2px">Расходы учитываются с ${_MONTHS_GEN[+es.slice(5,7)-1]} ${es.slice(0,4)} — доходы до этого в «Накоплено» не входят</div>` : '';
 
-  // расходы по категориям за год
-  const catT = {};
+  // расходы по категориям за год. Сравнение с прошлым годом (v1.83.0): тот же
+  // разрез за yr−1, если за него есть данные. Для текущего, незавершённого года
+  // сравниваем с тем же отрезком прошлого (янв–сегодня), иначе «−40%» в октябре
+  // означало бы только то, что год ещё не кончился.
+  // Учёт мог начаться посреди прошлого года (_expStartMk): тогда окно сравнения
+  // — от первого месяца учёта, иначе два месяца прошлого года против десяти
+  // этого давали «+400%». Обе суммы дельты берутся в одном окне; печатаемая
+  // сумма строки остаётся за весь выбранный год.
+  const prevYr = isAll ? null : String(+yr - 1);
+  const tNow = today();
+  const cutMD = yr === tNow.slice(0,4) ? tNow.slice(4) : null; // '-10-15' или null = весь год
+  let fromMM = '01';
+  let hasPrev = !!prevYr && years.includes(prevYr);
+  if(hasPrev && es){
+    if(es > prevYr + '-12') hasPrev = false;              // трат за прошлый год нет вовсе
+    else if(es.slice(0,4) === prevYr) fromMM = es.slice(5,7);
+  }
+  const toMM = cutMD ? cutMD.slice(1,3) : '12';
+  const winOk = (ds, y2) => {
+    ds = String(ds||'');
+    if(!ds.startsWith(y2+'-')) return false;
+    const md = ds.slice(4);
+    return md >= '-' + fromMM && (!cutMD || md <= cutMD);
+  };
+  const inPrev = ds => hasPrev && winOk(ds, prevYr);
+  const inCur  = ds => hasPrev && winOk(ds, yr);
+  const catT = {}, catP = {}, catC = {};
   exps.forEach(e=>{
-    if(!inYr(e.date)) return;
-    catT[e.cat] = (catT[e.cat]||0) + e.amount;
+    if(inYr(e.date)){ catT[e.cat] = (catT[e.cat]||0) + e.amount; if(inCur(e.date)) catC[e.cat] = (catC[e.cat]||0) + e.amount; }
+    else if(inPrev(e.date)) catP[e.cat] = (catP[e.cat]||0) + e.amount;
   });
   const catRows = Object.entries(catT)
-    .map(([i,sum])=>({i:+i, name:DB.categories[+i]||'?', sum}))
+    .map(([i,sum])=>({i:+i, name:DB.categories[+i]||'?', sum, cur: catC[+i]||0, prev: catP[+i]||0}))
     .filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
+  // Дельта к прошлому году: проценты, когда есть база; «новое», когда её нет.
+  // expense=true — рост красный (расходы), иначе зелёный (доходы).
+  const yoy = (cur, prev, expense) => {
+    if(!hasPrev) return '';
+    let txt, col;
+    if(!prev){ txt = 'новое'; col = 'var(--hint)'; }
+    else {
+      const d = Math.round((cur - prev) / prev * 100);
+      if(Math.abs(d) < 1){ txt = '±0%'; col = 'var(--hint)'; }
+      else { txt = (d > 0 ? '+' : '−') + Math.abs(d) + '%'; col = (d > 0) === expense ? 'var(--red)' : 'var(--green)'; }
+    }
+    return `<span class="rep-yoy" style="font-size:11px;color:${col};width:46px;text-align:right;flex-shrink:0" title="${winLbl ? winLbl + ' ' + prevYr : prevYr}: ${DB.privacyMode ? '—' : fmt(prev)}">${txt}</span>`;
+  };
+  // Подпись окна: «vs 2025» за полный год, «vs 2025 · сен–окт» за частичное
+  const mmLbl = mm => SHORT_MONTHS[+mm-1].toLowerCase();
+  const winLbl = (fromMM !== '01' || cutMD) ? (fromMM === toMM ? mmLbl(fromMM) : mmLbl(fromMM) + '–' + mmLbl(toMM)) : '';
+  const yoyHdr = hasPrev ? ` <span style="font-size:11px;font-weight:400;color:var(--muted)">vs ${prevYr}${winLbl ? ' · ' + winLbl : ''}</span>` : '';
 
   // расходы по группам (категории одного цвета) — catRows уже отсортированы desc
   const grpMap = {};
   catRows.forEach(r=>{
     const color = getCatColor(r.i);
-    if(!grpMap[color]) grpMap[color] = {color, cats:[], sum:0};
+    if(!grpMap[color]) grpMap[color] = {color, cats:[], sum:0, cur:0, prev:0};
     grpMap[color].cats.push(r.name);
     grpMap[color].sum += r.sum;
+    grpMap[color].cur += r.cur;
+    grpMap[color].prev += r.prev;
   });
   const grpRows = Object.values(grpMap).sort((a,b)=>b.sum-a.sum);
   const hasGroups = grpRows.some(g=>g.cats.length>1);
 
   // доходы по тегам за год
-  const tagT = {};
+  const tagT = {}, tagP = {}, tagC = {};
   incs.forEach(x=>{
-    if(!inYr(x.date)) return;
     const t = x.tag || 'Без тега';
-    tagT[t] = (tagT[t]||0) + x.amount;
+    if(inYr(x.date)){ tagT[t] = (tagT[t]||0) + x.amount; if(inCur(x.date)) tagC[t] = (tagC[t]||0) + x.amount; }
+    else if(inPrev(x.date)) tagP[t] = (tagP[t]||0) + x.amount;
   });
   const tagRows = Object.entries(tagT)
-    .map(([name,sum])=>({name,sum}))
+    .map(([name,sum])=>({name,sum, cur: tagC[name]||0, prev: tagP[name]||0}))
     .filter(r=>r.sum>0)
     .sort((a,b)=> a.name==='Без тега' ? 1 : b.name==='Без тега' ? -1 : b.sum-a.sum);
 
@@ -10228,10 +10552,11 @@ function renderReport(){
 
   if(catRows.length){
     h += `<div class="chart-card" style="margin-bottom:14px">
-      <div class="chart-title">Расходы по категориям</div>
+      <div class="chart-title">Расходы по категориям${yoyHdr}</div>
       ${catRows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
         <span style="width:10px;height:10px;border-radius:50%;background:${getCatColor(r.i)};flex-shrink:0"></span>
         <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
+        ${yoy(r.cur, r.prev, true)}
         <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
         <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(r.sum, totExp)}%</span>
       </div>`).join('')}
@@ -10240,7 +10565,7 @@ function renderReport(){
 
   if(hasGroups){
     h += `<div class="chart-card" style="margin-bottom:14px">
-      <div class="chart-title">Расходы по группам</div>
+      <div class="chart-title">Расходы по группам${yoyHdr}</div>
       ${grpRows.map(g=>{
         const sub = g.cats.length>1 ? g.cats.slice(1).join(' · ') : '';
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
@@ -10249,6 +10574,7 @@ function renderReport(){
           <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.cats[0])}</div>
           ${sub?`<div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>`:''}
         </div>
+        ${yoy(g.cur, g.prev, true)}
         <span style="font-size:13px;font-weight:600">${fmtH(g.sum)}</span>
         <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(g.sum, totExp)}%</span>
       </div>`;
@@ -10283,10 +10609,11 @@ function renderReport(){
 
   if(tagRows.length){
     h += `<div class="chart-card" style="margin-bottom:14px">
-      <div class="chart-title">Доходы по тегам</div>
+      <div class="chart-title">Доходы по тегам${yoyHdr}</div>
       ${tagRows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">
         <span style="width:10px;height:10px;border-radius:50%;background:${r.name==='Без тега'?'var(--muted)':getIncomeTagColor(r.name)};flex-shrink:0"></span>
         <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
+        ${yoy(r.cur, r.prev, false)}
         <span style="font-size:13px;font-weight:600">${fmtH(r.sum)}</span>
         <span style="font-size:11px;color:var(--muted);width:40px;text-align:right">${pct1(r.sum, totInc)}%</span>
       </div>`).join('')}
@@ -10685,6 +11012,47 @@ function init(){
   // но без синка localStorage — единственная копия данных.
   try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); } catch(_){}
   _wireSwReload();
+  _handleDeepLink();
+}
+
+// ─── DEEP LINK: ?add=350&cat=Продукты&comment=кофе[&date=YYYY-MM-DD][&oneoff=1] / ?tab=assets ───
+// Точка входа для ярлыков iOS Shortcuts, виджетов и manifest.shortcuts (Android):
+// открывает модалку траты с заполненными полями — остаётся нажать «Сохранить».
+// Сохранять без подтверждения нельзя: ссылка может сработать повторно (история
+// браузера, случайный тап по ярлыку). Query-строку убираем сразу, иначе
+// перезагрузка страницы открывала бы модалку снова. На iOS ссылка открывается
+// в Safari, а не в установленной PWA: там своё хранилище, трата дойдёт до
+// телефона через синк (syncUrl берётся из общей cookie).
+function _deepLinkParams(){
+  try { return new URLSearchParams(location.search); } catch(_) { return null; }
+}
+function _handleDeepLink(){
+  const q = _deepLinkParams();
+  if(!q || ![...q.keys()].length) return;
+  const strip = () => { try { history.replaceState(null, '', location.pathname + location.hash); } catch(_){} };
+  const tab = q.get('tab');
+  if(tab && document.getElementById('nav-' + tab)){ showPage(tab, document.getElementById('nav-' + tab)); }
+  if(!q.has('add') && !q.has('amount')){ strip(); return; }
+  const amount = parseMoney(q.get('add') || q.get('amount') || '');
+  const cat = _deepLinkCat(q.get('cat'));
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(q.get('date') || '') ? q.get('date') : null;
+  strip();
+  openAddExpense(cat != null ? cat : undefined);
+  if(amount > 0) setMoneyInput('exp-amount', amount);
+  if(q.get('comment')) document.getElementById('exp-comment').value = q.get('comment').slice(0, 200);
+  if(date) document.getElementById('exp-date').value = date;
+  if(q.get('oneoff') === '1') setExpSpecial('1');
+}
+// Категория из ссылки: имя (без учёта регистра), catId или индекс
+function _deepLinkCat(v){
+  if(v == null || v === '') return null;
+  const byId = (DB.catIds || []).indexOf(v);
+  if(byId >= 0) return byId;
+  const lower = String(v).trim().toLowerCase();
+  const byName = DB.categories.findIndex(c => String(c).trim().toLowerCase() === lower);
+  if(byName >= 0) return byName;
+  if(/^\d+$/.test(v) && +v < DB.categories.length) return +v;
+  return null;
 }
 
 // ─── ОБНОВЛЕНИЕ SERVICE WORKER ──────────────────────────────────────
@@ -10775,6 +11143,7 @@ async function _syncCycleRun(opts){
     _syncFailCount = 0;
     setSyncStatus('ok', ts);
     if(merged) renderCurrentPage();
+    _scriptVersionCheck(); // не ждём: строка в Настройках, не часть цикла
     return {ok:true, merged};
   } catch(e) {
     _syncFailCount++;
@@ -10800,9 +11169,11 @@ function buildPayload(){
 
 // Возвращает true, если merge реально что-то поменял в DB — избавляет syncCycle
 // от двойного JSON.stringify всей БД (до/после) только ради детекции изменений.
+let _lastMergeStats = null; // {added, changed, deleted} последнего mergePullData — журнал в Настройках
 function mergePullData(d){
   if(!d || d.empty) return false;
   let changed = false;
+  const st = {added: 0, changed: 0, deleted: 0};
 
   // ID-based arrays: last-write-wins by updatedAt — переносит правки и удаления.
   // Pull идёт до push, поэтому при равенстве побеждает локальное (строгое >).
@@ -10813,11 +11184,17 @@ function mergePullData(d){
     (d[key]||[]).forEach(it => {
       if(!it || it.id == null) return;
       const cur = map.get(it.id);
-      if(!cur){ map.set(it.id, it); changed = true; return; }
-      if((it.updatedAt||0) > (cur.updatedAt||0)){ map.set(it.id, it); changed = true; } // строго свежее удалённое выигрывает
+      if(!cur){ map.set(it.id, it); changed = true; if(!it._deleted) st.added++; return; }
+      if((it.updatedAt||0) > (cur.updatedAt||0)){ // строго свежее удалённое выигрывает
+        map.set(it.id, it); changed = true;
+        if(it._deleted && !cur._deleted) st.deleted++;
+        else if(!it._deleted) st.changed++;
+      }
     });
     DB[key] = [...map.values()];
   });
+  _lastMergeStats = st;
+  _mergeLogAdd(st);
 
   // Списки: LWW по listsMeta; если меток нет с обеих сторон (старые клиенты) —
   // прежнее правило «длиннее выигрывает» (добавления с другого устройства)

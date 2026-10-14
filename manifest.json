@@ -32,5 +32,25 @@
       "purpose": "maskable"
     }
   ],
-  "scope": "./"
+  "scope": "./",
+  "shortcuts": [
+    {
+      "name": "Добавить расход",
+      "short_name": "Расход",
+      "description": "Открыть форму новой траты",
+      "url": "./?add="
+    },
+    {
+      "name": "Накопления",
+      "short_name": "Активы",
+      "description": "Счета, вклады и инвестиции",
+      "url": "./?tab=assets"
+    },
+    {
+      "name": "Аналитика",
+      "short_name": "Аналитика",
+      "description": "Графики и годовой отчёт",
+      "url": "./?tab=stats"
+    }
+  ]
 }
