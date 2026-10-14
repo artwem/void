@@ -14,7 +14,7 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**Тест-раннер есть:** `node tools/dt-check.mjs` — 110 проверок геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
+**Тест-раннер есть:** `node tools/dt-check.mjs` — ~170 проверок геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
 
 **Два набора данных для тестов (since v1.69.0).** `suite(width, title, fn)` идёт на минимальной
 `FIXTURE` из `harness.mjs`, `suite(..., { demo: true })` — на полном демо-наборе; раннер делит
@@ -66,7 +66,8 @@ entirely: the launcher icon carries it.
 **`index.html` is the authoritative and only JS source.** All modules are inlined with section marker comments:
 ```
 // ═══ db.js ═══      // ═══ nav.js ═══     // ═══ budget.js ═══
-// ═══ day.js ═══     // ═══ income.js ═══  // ═══ assets.js ═══
+// ═══ day.js ═══     // ═══ interactions.js ═══ (vibe/flash/swipe/quick-add)
+// ═══ income.js ═══  // ═══ assets.js ═══
 // ═══ stats.js ═══   // ═══ calc.js ═══    // ═══ settings.js ═══
 // ═══ sync.js ═══    // ═══ init.js ═══
 ```
@@ -235,7 +236,7 @@ Optional 2-way sync via a deployed Google Apps Script URL stored in `DB.syncUrl`
 
 **Updating Apps Script:** edit `apps-script/Code.gs` locally → copy into the Google Apps Script editor → deploy new version. In dev mode `loadAppsScriptCode()` fetches it from `./apps-script/Code.gs`.
 
-**Code.gs v10.3:** writes serialized with `LockService`; data file located by ID in `ScriptProperties` (`dataFileId`), falling back to name lookup. **Wipe guard:** a push <30% of the stored file size (file >20 KB) is rejected unless `force:true` — manual «Выгрузить в Drive» sends `force`, auto-sync doesn't. **Daily backup:** at most once per 24h the file is copied to `nto_data.bak.json`.
+**Code.gs v10.4:** writes serialized with `LockService`; data file located by ID in `ScriptProperties` (`dataFileId`), falling back to name lookup. **Wipe guard:** a push <30% of the stored file size (file >20 KB) is rejected unless `force:true` — manual «Выгрузить в Drive» sends `force`, auto-sync doesn't. **Daily backup:** at most once per 24h the file is copied to `nto_data.bak.json`. **Hash short-circuit (v10.4 / app v1.82.0):** `pull` carries `hash` = SHA-256 (hex) of the file content as the client last saw it (`_lastPullHash`, set after pull from the received text and after push from `JSON.stringify(payload)`); the script answers `{unchanged:true}` instead of the whole file. Older scripts ignore the field. `syncRequest` aborts after `SYNC_TIMEOUT_MS` (30 s) — without it one hung fetch blocked `syncCycle` forever (single in-flight promise).
 
 ### PWA Caching — `sw.js`
 
@@ -260,6 +261,20 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - `renderTemplateChips()` — quick-add template buttons on the Day tab
 - `CAT_COLORS` (16), `TEMPLATE_COLORS` (28), `INCOME_TAG_COLORS` (8) — palettes
 - `_chartColors()` — theme-aware Chart.js colors read from CSS vars at render time; call inside chart creation, not at module level
+
+### Conventions added in v1.82.0 (audit follow-up)
+
+- **`confirmDialog(msg, {ok, danger, title}) → Promise<boolean>`** (db.js, modal `#modal-confirm`) replaces every `window.confirm`. Callers are `async`; tests stub `window.confirmDialog = async () => true`.
+- **`saveLocal()`** persists DB without setting `_dirty`. Use it for device-local fields (`theme`, `notifsEnabled`, `notifThreshold`); `saveDB()` would push the whole file for a field `buildPayload()` strips.
+- **`_reindexCats` never rewrites `catId`.** An orphan (catId not in `DB.catIds`) renders in category 0 but keeps its id, so it snaps back when the right list arrives via sync. `_orphanExpenseCount()` counts them. Only `removeCategory` reassigns catId, explicitly and with `updatedAt`.
+- **`_saveAssetEditRows` edits bank records in place** (same id); a tombstone is written only for a bank whose field was emptied. Before, every snapshot save tombstoned all records of the date and recreated them (368 of 522 asset records in the author's base were tombstones).
+- **`doClearData` resets everything that syncs**, including `templates/deposits/investments/credits/specPlan/listsMeta`, and deletes `catOblig`/`oneoffThreshold` so the migration reruns.
+- **Segment controls = `.seg` + `<button type="button" aria-pressed>`** (css/app.css). `_segActive` sets the inline highlight and `aria-pressed`. `_editChip` swaps the «…» button for an `<input data-chip="<id>">` and swaps back on finish (an input inside a button is invalid and does not focus on iOS). `.spec-seg` children are buttons too. The one exception keeping inline border/radius logic is `#assets-chart-parts-toggle` (chips hide individually, so first/last-child CSS cannot be trusted).
+- **SW update is deferred**: `controllerchange` sets `window._swUpdated` and calls `_onSwUpdated` (init.js). Reload happens at once only when no modal is open and no input is focused; otherwise `_swReloadPending` — a «Перезагрузить» toast after the modal closes, or reload on `visibilitychange` → hidden.
+- **`vendor/xlsx.style.min.js` loads lazily** in `exportExcel()` via `_loadScript` (kept in SW PRECACHE for offline). `Code.gs` loads lazily in `copyAppsScript`; the stale inline fallback is gone. `init()` no longer waits for the network.
+- **Theme colours in JS go through CSS vars** (`var(--muted)`, `var(--green)`, `var(--red)`, `var(--amber)`, `var(--hint)`); literal hex is allowed only as the fallback inside `_chartColors()` and in palettes.
+- **`parseMoney` rounds to 2 decimals**; `fmtCalc` is an alias of `fmt` («12 345₽», no space).
+- Suite `аудит v1.82.0` in `tools/dt-check.mjs` guards all of the above.
 
 ### UI State Patterns
 

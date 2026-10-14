@@ -192,11 +192,26 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .empty-day{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
 .empty-day p{margin-top:8px;font-size:13px;color:var(--hint)}
 
+/* Сегмент-контрол периодов и режимов (v1.82.0). Раньше каждый был набором
+   инлайновых стилей на <span>, скопированным полтора десятка раз; теперь один
+   класс, а чипы — <button aria-pressed>: клавиатура и скринридер их видят.
+   Подсветку активного ставит _segActive инлайном, как и прежде. */
+.seg{display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none}
+.seg-12{font-size:12px}
+.seg>button{padding:2px 7px;cursor:pointer;border:none;border-left:1px solid var(--border);border-radius:0;background:none;color:var(--muted);font:inherit;line-height:inherit;white-space:nowrap;transition:background .12s}
+.seg>button:first-child{border-left:none;border-radius:3px 0 0 3px}
+.seg>button:last-child{border-radius:0 3px 3px 0}
+.seg>button.p5{padding:2px 5px}
+.seg>button.p6{padding:2px 6px}
+.seg>button.p36{padding:3px 6px}
+.seg-12>button{flex:1;padding:6px 8px}
+.seg>button:focus-visible,.spec-seg>button:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
+
 /* SPECIAL EXPENSES */
 .spec-seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;user-select:none}
-.spec-seg span{flex:1;text-align:center;padding:7px 4px;font-size:12px;cursor:pointer;color:var(--muted);transition:background .12s}
-.spec-seg span.on{background:rgba(128,128,128,0.18);color:var(--text);font-weight:600}
-.spec-seg span+span{border-left:1px solid var(--border)}
+.spec-seg>button{flex:1;text-align:center;padding:7px 4px;font-size:12px;cursor:pointer;color:var(--muted);border:none;border-radius:0;background:none;font-family:inherit;transition:background .12s}
+.spec-seg>button.on{background:rgba(128,128,128,0.18);color:var(--text);font-weight:600}
+.spec-seg>button+button{border-left:1px solid var(--border)}
 .entry-special{opacity:.55}
 .entry-special-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 4px 2px;font-size:12px;color:var(--muted);font-weight:600}
 .spec-badge{font-size:10px;color:var(--muted);margin-left:5px;font-weight:400}
@@ -211,7 +226,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .kinds-h{font-size:14px;font-weight:600;margin:0 0 8px}
 .kinds-h-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:22px 0 10px}
 .kinds-h-row .spec-seg{flex-shrink:0}
-.kinds-h-row .spec-seg span{padding:5px 9px;font-size:11px;white-space:nowrap}
+.kinds-h-row .spec-seg>button{padding:5px 9px;font-size:11px;white-space:nowrap}
 .kinds-hint{font-size:11px;color:var(--hint);margin-top:8px}
 .kinds-chips{display:flex;flex-wrap:wrap;gap:6px}
 .kind-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:16px;border:0.5px solid var(--border2);background:none;color:var(--muted);font-family:inherit;font-size:12px;line-height:1.2;cursor:pointer;transition:background .12s,color .12s}

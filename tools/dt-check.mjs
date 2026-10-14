@@ -474,7 +474,7 @@ suite(390, 'активы в другой валюте', () => {
 
   check('переключатель — четыре ячейки, выбранная подсвечена', async p => {
     await openAssets(p, FX_CACHE);
-    const cells = await p.evaluate(() => [...document.querySelectorAll('#total-fx-seg > span')]
+    const cells = await p.evaluate(() => [...document.querySelectorAll('#total-fx-seg > button')]
       .map(s => s.textContent.trim()));
     eq(cells.join(''), '₽$€¥', 'состав переключателя');
     eq(await active(p), 'USD', 'подсвеченная валюта по умолчанию');
@@ -747,12 +747,12 @@ suite(390, 'лимиты: подтверждение и отмена', () => {
 
   check('«подставить все» спрашивает, и отказ ничего не меняет', async p => {
     const before = await openEditor(p);
-    const got = await p.evaluate(() => {
+    const got = await p.evaluate(async () => {
       let asked = 0;
-      const orig = window.confirm;
-      window.confirm = () => { asked++; return false; };
-      window.applyAllLimitAvgs();
-      window.confirm = orig;
+      const orig = window.confirmDialog;
+      window.confirmDialog = async () => { asked++; return false; };
+      await window.applyAllLimitAvgs();
+      window.confirmDialog = orig;
       return { asked, vals: [...document.querySelectorAll('.limit-edit-input')].map(i => i.value) };
     });
     eq(got.asked, 1, 'число вопросов перед массовой подстановкой');
@@ -761,14 +761,14 @@ suite(390, 'лимиты: подтверждение и отмена', () => {
 
   check('согласие подставляет средние и помечает изменённые поля', async p => {
     await openEditor(p);
-    const got = await p.evaluate(() => {
+    const got = await p.evaluate(async () => {
       // Поле «Еда вне дома» заранее равно своему ⌀ — подстановка его не меняет,
       // значит и метки на нём быть не должно: пометка означает «строка уехала».
       document.getElementById('lim_2').value = '8000';
-      const orig = window.confirm;
-      window.confirm = () => true;
-      window.applyAllLimitAvgs();
-      window.confirm = orig;
+      const orig = window.confirmDialog;
+      window.confirmDialog = async () => true;
+      await window.applyAllLimitAvgs();
+      window.confirmDialog = orig;
       const inp = [...document.querySelectorAll('.limit-edit-input')];
       return {
         rent: inp[0].value,
@@ -789,10 +789,10 @@ suite(390, 'лимиты: подтверждение и отмена', () => {
     const got = await p.evaluate(async () => {
       const key = document.getElementById('limit-month-sel').value;
       const before = JSON.stringify(DB.limits[key]);
-      const orig = window.confirm;
-      window.confirm = () => true;
-      window.applyAllLimitAvgs();
-      window.confirm = orig;
+      const orig = window.confirmDialog;
+      window.confirmDialog = async () => true;
+      await window.applyAllLimitAvgs();
+      window.confirmDialog = orig;
       window.saveLimits();
       const after = JSON.stringify(DB.limits[key]);
       const btn = document.querySelector('#toast .toast-undo');
@@ -1238,7 +1238,7 @@ suite(390, 'обязательные и разовые', () => {
       openAddExpense();
       const sel = document.getElementById('exp-cat'), amt = document.getElementById('exp-amount');
       const seg = document.getElementById('exp-spec-seg'), note = document.getElementById('exp-kind-note');
-      const first = () => seg.querySelector('span').textContent;
+      const first = () => seg.querySelector('button').textContent;
       sel.value = '0'; _expKindUi();
       const oblig = { seg: seg.style.display, note: note.style.display, first: first() };
       sel.value = '2'; amt.value = '7 000'; _expKindUi();
@@ -1457,9 +1457,9 @@ suite(390, 'лимиты и цвета по catId', () => {
 
   check('удаление категории не сдвигает лимиты и цвета соседей', async p => {
     await seed(p, { limits: { '2026-01': { i1: 100, i2: 200, i3: 300 } } });
-    await p.evaluate(() => {
-      window.confirm = () => true;      // removeCategory спрашивает подтверждение
-      removeCategory(1);                // выбрасываем B из середины
+    await p.evaluate(async () => {
+      window.confirmDialog = async () => true;   // removeCategory спрашивает подтверждение
+      await removeCategory(1);                   // выбрасываем B из середины
     });
     const got = await p.evaluate(() => ({
       cats: DB.categories, read: getLimits(2026, 0),
@@ -1603,7 +1603,6 @@ suite(390, 'резервная копия', () => {
 
 suite(390, 'экспорт Excel', () => {
   check('в PWA xlsx уходит в «Поделиться» и читается обратно', async p => {
-    await p.waitForFunction(() => !!window.XLSX, { timeout: 15000 });
     const got = await p.evaluate(async () => {
       const saved = { st: Object.getOwnPropertyDescriptor(navigator, 'standalone'),
                       share: navigator.share, can: navigator.canShare };
@@ -1611,7 +1610,7 @@ suite(390, 'экспорт Excel', () => {
       let shared = null;
       navigator.canShare = () => true;
       navigator.share = async d => { shared = d; };
-      exportExcel();
+      await exportExcel(); // сама подгружает vendor/xlsx.style.min.js
       for(let i = 0; i < 50 && !shared; i++) await new Promise(r => setTimeout(r, 20));
       const f = shared && shared.files[0];
       const wb = f && XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
@@ -1816,14 +1815,18 @@ suite(390, 'средние и период графиков', () => {
 suite(390, 'свой период на чипах «…»', () => {
   // Тап по «…» → поле; how: 'enter' | 'esc' | 'blur'
   const typeChip = (p, id, val, how = 'enter') => p.evaluate((id, val, how) => {
+    // Чип — кнопка, поле встаёт НА ЕГО МЕСТО (input внутри button невалиден),
+    // ищем его по data-chip; по завершении чип обязан вернуться в DOM
     const chip = document.getElementById(id);
     chip.click();
-    const inp = chip.querySelector('input');
+    const find = () => document.querySelector('input[data-chip="' + id + '"]');
+    const inp = find();
     if (!inp) return 'нет поля';
     inp.value = val;
     if (how === 'blur') inp.dispatchEvent(new FocusEvent('blur'));
     else inp.dispatchEvent(new KeyboardEvent('keydown', { key: how === 'esc' ? 'Escape' : 'Enter' }));
-    return chip.querySelector('input') ? 'поле не закрылось' : 'ok';
+    if (find()) return 'поле не закрылось';
+    return document.getElementById(id) ? 'ok' : 'чип не вернулся';
   }, id, val, how);
   const on = (p, id) => p.evaluate(i => document.getElementById(i).style.background !== '', id);
   const txt = (p, id) => p.evaluate(i => document.getElementById(i).textContent, id);
@@ -2384,7 +2387,7 @@ suite(390, 'чипы «банки / вклады / инвестиции» на �
   check('по умолчанию три чипа видны и все включены', async p => {
     await open(p, null);
     eq(await isVisible(p, '#assets-chart-parts-toggle'), true, 'переключатель виден');
-    const cells = await p.evaluate(() => [...document.querySelectorAll('#assets-chart-parts-toggle > span')]
+    const cells = await p.evaluate(() => [...document.querySelectorAll('#assets-chart-parts-toggle > button')]
       .filter(s => s.style.display !== 'none').map(s => s.textContent.trim()));
     eq(cells.join('|'), 'банки|вклады|инвестиции', 'состав чипов');
     eq(await active(p), 'banks,deps,inv', 'все включены');
@@ -2596,6 +2599,233 @@ suite(390, 'на графиках демо все деления оси разл
     eq(wd.includes('к'), false, 'дни недели подписаны рублями: ' + wd);
   });
 }, { demo: true });
+
+// Аудит v1.82.0: сироты catId, полная очистка, снимки на месте, синк с таймаутом
+// и хэшем, локальные настройки без пуша, своё подтверждение, чипы-кнопки,
+// отложенная перезагрузка SW. Проверка очистки — последней: после неё база пуста.
+suite(390, 'аудит v1.82.0', () => {
+  check('сирота catId рисуется в первой категории, но catId не переписывается', async p => {
+    const got = await p.evaluate(() => {
+      DB.expenses.push({ id: 'orph1', date: today(), cat: 3, catId: 'ghost-cat', amount: 100, comment: '', updatedAt: Date.now() });
+      _ensureCatIds();
+      const e = DB.expenses.find(x => x.id === 'orph1');
+      const before = { cat: e.cat, catId: e.catId, orphans: _orphanExpenseCount() };
+      // «правильный» список приехал — запись сама встаёт на место
+      DB.categories.push('Призрак'); DB.catIds.push('ghost-cat');
+      _ensureCatIds();
+      const after = { cat: e.cat, orphans: _orphanExpenseCount() };
+      DB.categories.pop(); DB.catIds.pop();
+      DB.expenses = DB.expenses.filter(x => x.id !== 'orph1'); _ensureCatIds();
+      return { before, after };
+    });
+    eq(got.before.cat, 0, 'сирота показывается в первой категории');
+    eq(got.before.catId, 'ghost-cat', 'catId сироты сохранён');
+    eq(got.before.orphans, 1, 'счётчик сирот');
+    eq(got.after.cat, 7, 'после появления категории запись встала на своё место');
+    eq(got.after.orphans, 0, 'сирот не осталось');
+  });
+
+  check('снимок счетов правится на месте, без тумбстоунов на каждое сохранение', async p => {
+    const got = await p.evaluate(() => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+      const date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-15';
+      const ids = () => DB.assets.filter(a => a.date === date && !a._deleted).map(a => a.id).sort().join(',');
+      const tomb = () => DB.assets.filter(a => a.date === date && a._deleted).length;
+      const i0 = getAllBanks().indexOf('Сбербанк'), i1 = getAllBanks().indexOf('Т-Банк');
+      openEditAssetDate(date, false);
+      document.getElementById('asset-edit-inp-' + i0).value = '100 000';
+      document.getElementById('asset-edit-inp-' + i1).value = '200 000';
+      saveAssetEdit();
+      const first = ids(), t1 = tomb();
+      openEditAssetDate(date, false);
+      document.getElementById('asset-edit-inp-' + i0).value = '150 000';
+      saveAssetEdit();
+      const second = ids(), t2 = tomb();
+      const sber = DB.assets.find(a => a.date === date && !a._deleted && a.bankName === 'Сбербанк');
+      // Т-Банк опустел — вот тут тумбстоун законен
+      openEditAssetDate(date, false);
+      document.getElementById('asset-edit-inp-' + i1).value = '';
+      saveAssetEdit();
+      return { n1: first.split(',').length, same: second === first, t1, t2, amount: sber.amount, t3: tomb(), live3: ids().split(',').length };
+    });
+    eq(got.n1, 2, 'после первого сохранения две записи');
+    eq(got.same, true, 'после правки id записей те же');
+    eq(got.t1 + got.t2, 0, 'тумбстоунов не появилось');
+    eq(got.amount, 150000, 'сумма обновлена на месте');
+    eq(got.t3, 1, 'опустевший банк — один тумбстоун');
+    eq(got.live3, 1, 'живой осталась одна запись');
+  });
+
+  check('синк: зависший запрос обрывается по таймауту и не блокирует следующий цикл', async p => {
+    const got = await p.evaluate(async () => {
+      const origFetch = window.fetch, origUrl = DB.syncUrl, origT = SYNC_TIMEOUT_MS;
+      DB.syncUrl = 'https://example.invalid/exec'; SYNC_TIMEOUT_MS = 60;
+      window.fetch = (u, o) => new Promise((_, rej) =>
+        o.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+      const t0 = Date.now();
+      const r1 = await syncCycle();
+      const dt = Date.now() - t0;
+      window.fetch = async () => ({ ok: true, text: async () => '{"empty":true}' });
+      const r2 = await syncCycle();
+      window.fetch = origFetch; DB.syncUrl = origUrl; SYNC_TIMEOUT_MS = origT; _syncFailCount = 0; setSyncStatus('none');
+      return { e1: r1.error || '', dt, ok2: !!r2.ok };
+    });
+    eq(/Нет ответа/.test(got.e1), true, 'ошибка таймаута: ' + got.e1);
+    eq(got.dt < 2000, true, 'цикл завершился быстро, а не висел: ' + got.dt + ' мс');
+    eq(got.ok2, true, 'следующий цикл прошёл');
+  });
+
+  check('синк: повторный pull несёт хэш, {unchanged} ничего не мержит', async p => {
+    const got = await p.evaluate(async () => {
+      const origFetch = window.fetch, origUrl = DB.syncUrl;
+      DB.syncUrl = 'https://example.invalid/exec'; _lastPullHash = '';
+      const bodies = [];
+      const remoteText = JSON.stringify({ categories: DB.categories, catIds: DB.catIds, listsMeta: {} });
+      window.fetch = async (u, o) => {
+        const b = JSON.parse(o.body); bodies.push(b);
+        if (b.action === 'pull') return { ok: true, text: async () => (b.hash ? '{"unchanged":true}' : remoteText) };
+        return { ok: true, text: async () => '{"ok":true}' };
+      };
+      DB._dirty = false;
+      const r1 = await syncCycle();
+      const h1 = _lastPullHash;
+      DB._dirty = false;
+      const r2 = await syncCycle();
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(remoteText));
+      const expect = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+      window.fetch = origFetch; DB.syncUrl = origUrl; _lastPullHash = ''; setSyncStatus('none');
+      const pulls = bodies.filter(b => b.action === 'pull');
+      return { ok: !!(r1.ok && r2.ok), h1, expect, hash1: pulls[0].hash, hash2: pulls[1].hash, merged2: r2.merged };
+    });
+    eq(got.ok, true, 'оба цикла прошли');
+    eq(got.hash1, undefined, 'первый pull без хэша');
+    eq(got.h1, got.expect, 'хэш — SHA-256 полученного текста');
+    eq(got.hash2, got.expect, 'второй pull несёт этот хэш');
+    eq(got.merged2, false, '{unchanged} ничего не мержит');
+  });
+
+  check('тема и уведомления сохраняются без пометки _dirty', async p => {
+    const got = await p.evaluate(() => {
+      DB._dirty = false;
+      const prev = DB.theme;
+      setTheme('dark'); const a = DB._dirty;
+      saveNotifThreshold('80'); const b = DB._dirty;
+      setTheme(prev || 'auto');
+      DB._dirty = false;
+      return { a, b, stored: JSON.parse(localStorage.getItem('budgetDB_v2')).notifThreshold };
+    });
+    eq(got.a, false, 'смена темы не требует пуша');
+    eq(got.b, false, 'порог уведомлений не требует пуша');
+    eq(got.stored, 80, 'но на диск записано');
+  });
+
+  check('confirmDialog: «OK» — true, закрытие — false', async p => {
+    const got = await p.evaluate(async () => {
+      const p1 = confirmDialog('Вопрос?', { ok: 'Да', danger: true });
+      const open = document.getElementById('modal-confirm').classList.contains('open');
+      const txt = document.getElementById('confirm-text').textContent;
+      const okCls = document.getElementById('confirm-ok').className;
+      _confirmAnswer(true);
+      const r1 = await p1;
+      const p2 = confirmDialog('Ещё?');
+      closeModal('modal-confirm');
+      const r2 = await p2;
+      return { open, txt, okCls, r1, r2, closed: !document.getElementById('modal-confirm').classList.contains('open') };
+    });
+    eq(got.open, true, 'модалка открылась');
+    eq(got.txt, 'Вопрос?', 'текст вопроса');
+    eq(/danger/.test(got.okCls), true, 'опасная кнопка красная');
+    eq(got.r1, true, 'OK → true');
+    eq(got.r2, false, 'закрытие → false');
+    eq(got.closed, true, 'модалка закрыта');
+  });
+
+  check('чипы периодов — кнопки с aria-pressed, span-чипов в .seg нет', async p => {
+    const got = await p.evaluate(() => {
+      window.showPage('stats', document.getElementById('nav-stats'));
+      setStatsPeriod(12);
+      const q = id => document.getElementById(id);
+      const out = {
+        tag: q('sp-6').tagName, cls: q('sp-6').parentElement.className,
+        on12: q('sp-12').getAttribute('aria-pressed'), off6: q('sp-6').getAttribute('aria-pressed'),
+        kinds: [...document.querySelectorAll('#kinds-period > *')].map(e => e.tagName).join(','),
+        spans: document.querySelectorAll('.seg > span, .spec-seg > span').length,
+      };
+      setStatsPeriod(6);
+      return out;
+    });
+    eq(got.tag, 'BUTTON', 'чип — кнопка');
+    eq(got.cls, 'seg', 'контейнер — .seg');
+    eq(got.on12 + '/' + got.off6, 'true/false', 'aria-pressed следует за выбором');
+    eq(got.kinds, 'BUTTON,BUTTON,BUTTON', 'чипы «История» тоже кнопки');
+    eq(got.spans, 0, 'span-чипов не осталось');
+  });
+
+  check('обновление SW не перезагружает страницу при открытой модалке', async p => {
+    const got = await p.evaluate(() => {
+      _swReloadPending = false;
+      openModal('modal-about');
+      const safe = _safeToReload();
+      _onSwUpdated();                // reload не случился — мы всё ещё тут
+      const pending = _swReloadPending;
+      closeModal('modal-about');
+      const toastEl = document.getElementById('toast');
+      const btn = toastEl.querySelector('.toast-undo');
+      const out = { safe, pending, btn: btn ? btn.textContent : '', shown: toastEl.classList.contains('show') };
+      _swReloadPending = false; toastEl.classList.remove('show', 'action');
+      return out;
+    });
+    eq(got.safe, false, 'при открытой модалке перезагружать нельзя');
+    eq(got.pending, true, 'перезагрузка отложена');
+    eq(got.shown && got.btn === 'Перезагрузить', true, 'после закрытия модалки — тост с кнопкой');
+  });
+
+  check('renderCurrentPage знает страницу инвестиций', async p => {
+    const got = await p.evaluate(() => {
+      window.showPage('investments');
+      DB.investments.push({ id: 'vi1', name: 'Тест', snapshots: { [today()]: 777 }, contributions: [], updatedAt: 1 });
+      renderCurrentPage();
+      const t = document.getElementById('investments-total-now').textContent;
+      DB.investments = DB.investments.filter(v => v.id !== 'vi1');
+      return t;
+    });
+    eq(got.replace(/\s/g, ''), '777₽', 'итог страницы перерисован');
+  });
+
+  check('месяц до первых лимитов — нули, а не DEFAULT_LIMITS; копейки округляются', async p => {
+    const got = await p.evaluate(() => {
+      const keys = Object.keys(DB.limits).sort();
+      const [y, m] = keys[0].split('-').map(Number);
+      const d = new Date(y, m - 1 - 1, 1);
+      return { sum: getLimits(d.getFullYear(), d.getMonth()).reduce((s, v) => s + v, 0), kop: parseMoney('12,345'), calc: fmtCalc(1234) };
+    });
+    eq(got.sum, 0, 'сумма лимитов за месяц до начала учёта');
+    eq(got.kop, 12.35, 'parseMoney округляет до копеек');
+    eq(got.calc, (1234).toLocaleString('ru-RU') + '₽', 'калькулятор печатает как остальное приложение');
+  });
+
+  check('«Очистить все данные» чистит вклады, шаблоны, инвестиции, бронь, разметку и listsMeta', async p => {
+    const got = await p.evaluate(() => {
+      DB.templates.push({ id: 't1', name: 'x', cat: 0, catId: DB.catIds[0], amount: 1, updatedAt: 1 });
+      DB.deposits.push({ id: 'd1', name: 'x', amount: 1, rate: 1, openDate: '2026-01-01', endDate: '2027-01-01', capitalization: 'end', updatedAt: 1 });
+      DB.investments.push({ id: 'v1', name: 'x', snapshots: { '2026-01-01': 1 }, contributions: [], updatedAt: 1 });
+      DB.specPlan = { '2026-01': { [DB.catIds[0]]: 5 } };
+      DB.oneoffThreshold = 123; touchList('categories'); touchList('oneoffThreshold');
+      doClearData();
+      return {
+        empty: ['expenses','incomes','assets','templates','deposits','investments','credits'].every(k => DB[k].length === 0),
+        spec: Object.keys(DB.specPlan).length, oblig: DB.catOblig, thr: DB.oneoffThreshold,
+        meta: Object.keys(DB.listsMeta).length, cats: DB.categories.length, ids: DB.catIds.length,
+      };
+    });
+    eq(got.empty, true, 'все массивы записей пусты');
+    eq(got.spec, 0, 'бронь особых пуста');
+    eq(got.oblig, undefined, 'разметка обязательных снята — миграция пройдёт заново');
+    eq(got.thr, undefined, 'порог подсказки сброшен');
+    eq(got.meta, 0, 'listsMeta пуст — список с Drive сможет победить дефолтный');
+    eq(got.cats + '/' + got.ids, '12/12', 'категории по умолчанию с розданными catIds');
+  });
+});
 
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();

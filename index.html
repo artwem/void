@@ -30,26 +30,25 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.81.0">
+<link rel="stylesheet" href="css/app.css?v=1.82.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
      script на мёртвой сети вешал парсер — белый экран у PWA без интернета -->
 <script src="vendor/chart.umd.js"></script>
-<script src="vendor/xlsx.style.min.js"></script>
+<!-- vendor/xlsx.style.min.js (425 КБ) подгружается лениво в exportExcel() -->
+
 <script>
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-    // Когда найден новый SW — ждём активации и перезагружаем страницу
-    reg.addEventListener('updatefound', () => {
-      const sw = reg.installing;
-      sw.addEventListener('statechange', function() {
-        if (this.state === 'activated') location.reload();
-      });
-    });
+  navigator.serviceWorker.register('./sw.js');
+  // SW взял управление (skipWaiting + clients.claim). Перезагрузкой распоряжается
+  // _onSwUpdated в init.js: сразу, если пользователь ничего не вводит, иначе —
+  // по закрытию модалки или уходу в фон. До этого reload был безусловным и
+  // срабатывал дважды (statechange + controllerchange).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window._swUpdated = true;
+    if (typeof window._onSwUpdated === 'function') window._onSwUpdated();
   });
-  // SW взял управление (skipWaiting + clients.claim) — перезагружаем
-  navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
 }
 </script>
 </head>
@@ -178,12 +177,12 @@ if ('serviceWorker' in navigator) {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px;gap:8px">
         <span style="font-size:13px;font-weight:600">Период</span>
         <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;flex-shrink:0;white-space:nowrap;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="sp-6"  onclick="setStatsPeriod(6)"  style="padding:3px 6px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span>
-            <span id="sp-12" onclick="setStatsPeriod(12)" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span>
-            <span id="sp-24" onclick="setStatsPeriod(24)" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span>
-            <span id="sp-all" onclick="setStatsPeriod('all')" title="Весь доступный период" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
-            <span id="sp-c" onclick="_editChip(this, 240, setStatsPeriod)" title="Свой период, месяцев" style="padding:3px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+          <div class="seg" style="flex-shrink:0;white-space:nowrap">
+            <button type="button" id="sp-6" onclick="setStatsPeriod(6)" class="p36">6 мес</button>
+            <button type="button" id="sp-12" onclick="setStatsPeriod(12)" class="p36">12 мес</button>
+            <button type="button" id="sp-24" onclick="setStatsPeriod(24)" class="p36">24 мес</button>
+            <button type="button" id="sp-all" onclick="setStatsPeriod('all')" title="Весь доступный период" class="p36">всё</button>
+            <button type="button" id="sp-c" onclick="_editChip(this, 240, setStatsPeriod)" title="Свой период, месяцев" class="p36">…</button>
           </div>
           <button onclick="showPage('report')" class="dt-hide" aria-label="Годовой отчёт" title="Годовой отчёт" style="display:flex;align-items:center;gap:5px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:3px 9px;cursor:pointer;font-family:inherit">
             <svg width="14" height="14" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14v-3M11 14V8M15 14v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Отчёт
@@ -197,21 +196,21 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div class="chart-title">День за днём</div>
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0 0 8px">
-        <div id="day-compare-mode" data-mode="today" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="dcm-full" onclick="setDayCompareMode('full')" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Месяц</span>
-          <span id="dcm-today" onclick="setDayCompareMode('today')" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Сегодня</span>
+        <div id="day-compare-mode" data-mode="today" class="seg">
+          <button type="button" id="dcm-full" onclick="setDayCompareMode('full')" class="p6">Месяц</button>
+          <button type="button" id="dcm-today" onclick="setDayCompareMode('today')" class="p6">Сегодня</button>
         </div>
-        <div id="day-special-mode" data-special="1" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Обязательные и разовые траты: показывать или только повседневные">
-          <span id="dsm-on" onclick="setDayInclSpecial(true)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">Все</span>
-          <span id="dsm-off" onclick="setDayInclSpecial(false)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Повседн.</span>
+        <div id="day-special-mode" data-special="1" class="seg" title="Обязательные и разовые траты: показывать или только повседневные">
+          <button type="button" id="dsm-on" onclick="setDayInclSpecial(true)" class="p6">Все</button>
+          <button type="button" id="dsm-off" onclick="setDayInclSpecial(false)" class="p6">Повседн.</button>
         </div>
-        <div id="day-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Глубина средней линии, месяцев">
-          <span id="dam-3" onclick="setDayAvgMonths(3)" style="padding:2px 5px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
-          <span id="dam-6" onclick="setDayAvgMonths(6)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border)">6</span>
-          <span id="dam-12" onclick="setDayAvgMonths(12)" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border)">12</span>
-          <span id="dam-c" onclick="_editChip(this, 36, setDayAvgMonths)" title="Своя глубина, месяцев" style="padding:2px 5px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+        <div id="day-avg-mode" class="seg" title="Глубина средней линии, месяцев">
+          <button type="button" id="dam-3" onclick="setDayAvgMonths(3)" class="p5">3</button>
+          <button type="button" id="dam-6" onclick="setDayAvgMonths(6)" class="p5">6</button>
+          <button type="button" id="dam-12" onclick="setDayAvgMonths(12)" class="p5">12</button>
+          <button type="button" id="dam-c" onclick="_editChip(this, 36, setDayAvgMonths)" title="Своя глубина, месяцев" class="p5">…</button>
         </div>
-        <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none"></select>
+        <select id="day-compare-month-sel" style="font-size:12px;border:none;background:transparent;color:var(--muted);cursor:pointer;outline:none"></select>
       </div>
       <div class="chart-box h190"><canvas id="chartDayCompare"></canvas></div>
       <div id="day-compare-summary" style="margin-top:10px"></div>
@@ -235,13 +234,13 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <div class="chart-title" style="margin:0">Поиск по тратам</div>
-        <div id="exp-search-period" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Период поиска">
-          <span id="esp-1" onclick="setExpSearchPeriod(1)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">мес</span>
-          <span id="esp-3" onclick="setExpSearchPeriod(3)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">3</span>
-          <span id="esp-6" onclick="setExpSearchPeriod(6)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">6</span>
-          <span id="esp-12" onclick="setExpSearchPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12</span>
-          <span id="esp-all" onclick="setExpSearchPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
-          <span id="esp-c" onclick="_editChip(this, 240, setExpSearchPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+        <div id="exp-search-period" class="seg" title="Период поиска">
+          <button type="button" id="esp-1" onclick="setExpSearchPeriod(1)">мес</button>
+          <button type="button" id="esp-3" onclick="setExpSearchPeriod(3)">3</button>
+          <button type="button" id="esp-6" onclick="setExpSearchPeriod(6)">6</button>
+          <button type="button" id="esp-12" onclick="setExpSearchPeriod(12)">12</button>
+          <button type="button" id="esp-all" onclick="setExpSearchPeriod('all')">всё</button>
+          <button type="button" id="esp-c" onclick="_editChip(this, 240, setExpSearchPeriod)" title="Свой период, месяцев">…</button>
         </div>
       </div>
       <input id="exp-search" type="search" placeholder="🔍 Комментарий, категория или сумма" autocomplete="off"
@@ -256,11 +255,11 @@ if ('serviceWorker' in navigator) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
         <div class="chart-title" style="margin:0">Структура</div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <div id="pie-view-toggle" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="pvm-cats" onclick="setPieViewMode('cats')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">Кат.</span>
-            <span id="pvm-groups" onclick="setPieViewMode('groups')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Гр.</span>
+          <div id="pie-view-toggle" class="seg">
+            <button type="button" id="pvm-cats" onclick="setPieViewMode('cats')">Кат.</button>
+            <button type="button" id="pvm-groups" onclick="setPieViewMode('groups')">Гр.</button>
           </div>
-          <select id="pie-month-sel" style="font-size:12px;border:none;background:transparent;color:#888;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;text-align:right" onchange="renderStats()"></select>
+          <select id="pie-month-sel" style="font-size:12px;border:none;background:transparent;color:var(--muted);cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;text-align:right" onchange="renderStats()"></select>
         </div>
       </div>
       <div id="chartPie" style="padding:4px 0"></div>
@@ -270,9 +269,9 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
         <div class="chart-title" id="grouped-title" style="margin:0">Расходы по группам</div>
-        <div id="grouped-view-toggle" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none;flex-shrink:0">
-          <span id="gvm-cats" onclick="setGroupedViewMode('cats')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">Кат.</span>
-          <span id="gvm-groups" onclick="setGroupedViewMode('groups')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Гр.</span>
+        <div id="grouped-view-toggle" class="seg" style="flex-shrink:0">
+          <button type="button" id="gvm-cats" onclick="setGroupedViewMode('cats')">Кат.</button>
+          <button type="button" id="gvm-groups" onclick="setGroupedViewMode('groups')">Гр.</button>
         </div>
       </div>
       <div id="grouped-avg" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
@@ -309,18 +308,18 @@ if ('serviceWorker' in navigator) {
   <div class="hdr" style="display:flex;align-items:center;justify-content:flex-start;gap:10px"><h1>Накопления</h1><button id="assets-audit-badge" onclick="openDataAudit()" style="display:none;align-items:center;gap:5px;background:var(--amber-bg);border:none;border-radius:20px;color:var(--amber);font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;font-family:inherit"><svg class="ico"><use href="#i-warn"/></svg> <span id="assets-audit-badge-n"></span></button></div>
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
-  <div id="total-fx" style="display:none;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px"><span id="total-fx-txt"></span><span id="total-fx-seg" style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none"><span id="fxc-RUB" onclick="setAssetsFxCur('RUB')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">₽</span><span id="fxc-USD" onclick="setAssetsFxCur('USD')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">$</span><span id="fxc-EUR" onclick="setAssetsFxCur('EUR')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">€</span><span id="fxc-CNY" onclick="setAssetsFxCur('CNY')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">¥</span></span></div>
+  <div id="total-fx" style="display:none;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px"><span id="total-fx-txt"></span><span id="total-fx-seg" class="seg" style="flex-shrink:0"><button type="button" id="fxc-RUB" onclick="setAssetsFxCur('RUB')">₽</button><button type="button" id="fxc-USD" onclick="setAssetsFxCur('USD')">$</button><button type="button" id="fxc-EUR" onclick="setAssetsFxCur('EUR')">€</button><button type="button" id="fxc-CNY" onclick="setAssetsFxCur('CNY')">¥</button></span></div>
   <div id="assets-charts">
   <div class="chart-wrap">
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
         <div class="chart-title">Рост накоплений</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <div id="assets-chart-scale-toggle" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="acs-raw" onclick="setAssetsChartScale('raw')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">снимки</span><span id="acs-month" onclick="setAssetsChartScale('month')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">месяц</span><span id="acs-year" onclick="setAssetsChartScale('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">год</span>
+          <div id="assets-chart-scale-toggle" class="seg" style="display:none">
+            <button type="button" id="acs-raw" onclick="setAssetsChartScale('raw')">снимки</button><button type="button" id="acs-month" onclick="setAssetsChartScale('month')">месяц</button><button type="button" id="acs-year" onclick="setAssetsChartScale('year')">год</button>
           </div>
-          <div id="assets-chart-parts-toggle" title="Что складывать в линию — чипы независимые, последний включённый выключить нельзя" style="display:none;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="acp-banks" onclick="toggleAssetsChartPart('banks')" style="padding:2px 7px;cursor:pointer">банки</span><span id="acp-deps" onclick="toggleAssetsChartPart('deps')" style="padding:2px 7px;cursor:pointer">вклады</span><span id="acp-inv" onclick="toggleAssetsChartPart('inv')" style="padding:2px 7px;cursor:pointer">инвестиции</span>
+          <div id="assets-chart-parts-toggle" title="Что складывать в линию — чипы независимые, последний включённый выключить нельзя" class="seg" style="display:none">
+            <button type="button" id="acp-banks" onclick="toggleAssetsChartPart('banks')">банки</button><button type="button" id="acp-deps" onclick="toggleAssetsChartPart('deps')">вклады</button><button type="button" id="acp-inv" onclick="toggleAssetsChartPart('inv')">инвестиции</button>
           </div>
         </div>
       </div>
@@ -331,8 +330,8 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
         <div class="chart-title" style="margin-bottom:0">Доходы vs Расходы</div>
-        <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="svp-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span><span id="svp-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+        <div class="seg" style="flex-shrink:0">
+            <button type="button" id="svp-6" onclick="setSavingsPeriod(6)">6 мес</button><button type="button" id="svp-12" onclick="setSavingsPeriod(12)">12 мес</button><button type="button" id="svp-24" onclick="setSavingsPeriod(24)">24 мес</button><button type="button" id="svp-all" onclick="setSavingsPeriod('all')" title="Весь доступный период">всё</button><button type="button" id="svp-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев">…</button>
           </div>
       </div>
       <div id="inc-exp-avg" style="font-size:12px;color:var(--muted);margin:6px 0 8px;min-height:15px"></div>
@@ -345,8 +344,8 @@ if ('serviceWorker' in navigator) {
         <div class="chart-title" style="margin-bottom:0">Норма накопления</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="savings-rate-avg" style="font-weight:700;font-size:15px"></span>
-          <div style="display:flex;flex-shrink:0;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-            <span id="svp2-6" onclick="setSavingsPeriod(6)" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">6 мес</span><span id="svp2-12" onclick="setSavingsPeriod(12)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">12 мес</span><span id="svp2-24" onclick="setSavingsPeriod(24)" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">24 мес</span><span id="svp2-all" onclick="setSavingsPeriod('all')" title="Весь доступный период" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span><span id="svp2-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+          <div class="seg" style="flex-shrink:0">
+            <button type="button" id="svp2-6" onclick="setSavingsPeriod(6)">6 мес</button><button type="button" id="svp2-12" onclick="setSavingsPeriod(12)">12 мес</button><button type="button" id="svp2-24" onclick="setSavingsPeriod(24)">24 мес</button><button type="button" id="svp2-all" onclick="setSavingsPeriod('all')" title="Весь доступный период">всё</button><button type="button" id="svp2-c" onclick="_editChip(this, 240, setSavingsPeriod)" title="Свой период, месяцев">…</button>
           </div>
         </div>
       </div>
@@ -504,16 +503,16 @@ if ('serviceWorker' in navigator) {
     <div class="chart-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <div class="chart-title" style="margin:0">Доходность</div>
-        <div id="dep-yield-period" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none" title="Период">
-          <span id="dyp-12" onclick="setDepYieldPeriod('12')" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px">12 мес</span>
-          <span id="dyp-year" onclick="setDepYieldPeriod('year')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">этот год</span>
-          <span id="dyp-all" onclick="setDepYieldPeriod('all')" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border)">всё</span>
-          <span id="dyp-c" onclick="_editChip(this, 240, setDepYieldPeriod)" title="Свой период, месяцев" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+        <div id="dep-yield-period" class="seg" title="Период">
+          <button type="button" id="dyp-12" onclick="setDepYieldPeriod('12')">12 мес</button>
+          <button type="button" id="dyp-year" onclick="setDepYieldPeriod('year')">этот год</button>
+          <button type="button" id="dyp-all" onclick="setDepYieldPeriod('all')">всё</button>
+          <button type="button" id="dyp-c" onclick="_editChip(this, 240, setDepYieldPeriod)" title="Свой период, месяцев">…</button>
         </div>
       </div>
-      <div style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:4px;user-select:none;margin-bottom:10px;text-align:center">
-        <span id="dyt-acc" onclick="setDepYieldTab('acc')" style="flex:1;padding:6px 8px;cursor:pointer;border-radius:3px 0 0 3px">Начислено</span>
-        <span id="dyt-rec" onclick="setDepYieldTab('rec')" style="flex:1;padding:6px 8px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">Выплачено</span>
+      <div class="seg seg-12" style="margin-bottom:10px;text-align:center">
+        <button type="button" id="dyt-acc" onclick="setDepYieldTab('acc')">Начислено</button>
+        <button type="button" id="dyt-rec" onclick="setDepYieldTab('rec')">Выплачено</button>
       </div>
       <div id="dep-yield-body"></div>
     </div>
@@ -571,7 +570,8 @@ if ('serviceWorker' in navigator) {
     1. Откройте Google Apps Script (script.google.com) → создайте проект<br>
     2. Вставьте скрипт (кнопка ниже) → Развернуть → Новое развертывание<br>
     3. Тип: Веб-приложение | Выполнять как: Я | Доступ: <b>Все</b><br>
-    4. Скопируйте URL и вставьте в поле ниже
+    4. Скопируйте URL и вставьте в поле ниже<br>
+    5. Задайте <b>SECRET</b> в скрипте и тот же секрет в поле ниже: без него любой, кто узнает URL, читает и пишет ваши данные
   </div>
   <div class="settings-list">
     <div class="setting-row" onclick="copyAppsScript()">
@@ -757,8 +757,8 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Комментарий</label><input type="text" id="exp-comment" placeholder="Необязательно"/></div>
     <div class="fgrp"><label class="flbl">Вид</label>
       <div class="spec-seg" id="exp-spec-seg">
-        <span data-v="" onclick="setExpSpecial('')">Обычная</span>
-        <span data-v="1" onclick="setExpSpecial('1')">Разовая</span>
+        <button type="button" data-v="" onclick="setExpSpecial('')">Обычная</button>
+        <button type="button" data-v="1" onclick="setExpSpecial('1')">Разовая</button>
       </div>
       <div id="exp-kind-note" class="kind-note" style="display:none"></div>
     </div>
@@ -782,8 +782,8 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Цвет</label><div id="tmpl-color-picker" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px"></div></div>
     <div class="fgrp"><label class="flbl">Вид</label>
       <div class="spec-seg" id="tmpl-spec-seg">
-        <span data-v="" onclick="setTmplSpecial('')">Обычная</span>
-        <span data-v="1" onclick="setTmplSpecial('1')">Разовая</span>
+        <button type="button" data-v="" onclick="setTmplSpecial('')">Обычная</button>
+        <button type="button" data-v="1" onclick="setTmplSpecial('1')">Разовая</button>
       </div>
       <div class="kind-note">Обязательность задаётся категорией — «Обязательные и разовые» в Настройках.</div>
     </div>
@@ -815,11 +815,11 @@ if ('serviceWorker' in navigator) {
     <div class="fgrp"><label class="flbl">Месяц</label><select id="limit-month-sel" onchange="loadLimitEditor()"></select></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">среднее за
-        <div id="limit-avg-mode" style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">
-          <span id="lam-3" onclick="setLimitAvgMonths(3)" style="padding:2px 6px;cursor:pointer;border-radius:3px 0 0 3px">3</span>
-          <span id="lam-6" onclick="setLimitAvgMonths(6)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border)">6</span>
-          <span id="lam-12" onclick="setLimitAvgMonths(12)" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border)">12</span>
-          <span id="lam-c" onclick="_editChip(this, 36, setLimitAvgMonths)" title="Своя глубина, месяцев" style="padding:2px 6px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0">…</span>
+        <div id="limit-avg-mode" class="seg">
+          <button type="button" id="lam-3" onclick="setLimitAvgMonths(3)" class="p6">3</button>
+          <button type="button" id="lam-6" onclick="setLimitAvgMonths(6)" class="p6">6</button>
+          <button type="button" id="lam-12" onclick="setLimitAvgMonths(12)" class="p6">12</button>
+          <button type="button" id="lam-c" onclick="_editChip(this, 36, setLimitAvgMonths)" title="Своя глубина, месяцев" class="p6">…</button>
         </div> мес
       </div>
       <div id="limit-avg-total" style="font-size:11px;color:var(--muted);text-align:right"></div>
@@ -880,9 +880,9 @@ if ('serviceWorker' in navigator) {
     <div class="kinds-h kinds-h-row">
       <span>История</span>
       <div class="spec-seg" id="kinds-period">
-        <span data-v="3" onclick="setKindsPeriod(3)">3 мес</span>
-        <span data-v="6" onclick="setKindsPeriod(6)">6 мес</span>
-        <span data-v="12" onclick="setKindsPeriod(12)">12 мес</span>
+        <button type="button" data-v="3" onclick="setKindsPeriod(3)">3 мес</button>
+        <button type="button" data-v="6" onclick="setKindsPeriod(6)">6 мес</button>
+        <button type="button" data-v="12" onclick="setKindsPeriod(12)">12 мес</button>
       </div>
     </div>
     <div id="kinds-history"></div>
@@ -906,9 +906,9 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="fgrp">
       <label class="flbl">Доходность</label>
-      <div id="dep-mode-seg" style="display:flex;font-size:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden;user-select:none">
-        <span data-v="rate" onclick="setDepMode('rate')" style="flex:1;text-align:center;padding:6px;cursor:pointer">Ставка %</span>
-        <span data-v="final" onclick="setDepMode('final')" style="flex:1;text-align:center;padding:6px;cursor:pointer;border-left:1px solid var(--border)">Сумма в конце</span>
+      <div id="dep-mode-seg" class="spec-seg">
+        <button type="button" data-v="rate" onclick="setDepMode('rate')">Ставка %</button>
+        <button type="button" data-v="final" onclick="setDepMode('final')">Сумма в конце</button>
       </div>
     </div>
     <div class="fgrp" id="dep-rate-grp">
@@ -1369,13 +1369,25 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.81.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.82.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
     <p style="font-size:14px;color:var(--text);line-height:1.7">Отслеживай расходы по категориям с лимитами, веди доходы, счета и кредиты, вклады и инвестиции, ставь цели и смотри годовой отчёт. Все данные хранятся локально на устройстве и синхронизируются с Google Drive по твоему желанию.</p>
     <div class="btn-row" style="margin-top:20px">
       <button class="btn primary" onclick="closeModal('modal-about')" style="width:100%">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRM (общий вопрос «да/нет», см. confirmDialog) -->
+<div class="overlay" data-dt="confirm" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="sheet">
+    <h2 id="confirm-title">Подтвердите</h2>
+    <p id="confirm-text" style="font-size:14px;color:var(--muted);margin:8px 0 16px;line-height:1.6;white-space:pre-line"></p>
+    <div class="btn-row">
+      <button class="btn" onclick="_confirmAnswer(false)">Отмена</button>
+      <button class="btn primary" id="confirm-ok" onclick="_confirmAnswer(true)">OK</button>
     </div>
   </div>
 </div>
@@ -1387,11 +1399,11 @@ if ('serviceWorker' in navigator) {
     <p style="font-size:14px;color:var(--muted);margin:8px 0 4px;line-height:1.6">Будут удалены и сброшены к значениям по умолчанию:</p>
     <ul style="font-size:13px;color:var(--muted);margin:0 0 16px 16px;line-height:1.8">
       <li>Все расходы, доходы, записи активов</li>
-      <li>Все лимиты по месяцам</li>
-      <li>Все категории</li>
+      <li>Вклады, инвестиции, кредиты, шаблоны</li>
+      <li>Все лимиты, бронь и разметка обязательных</li>
+      <li>Категории, теги доходов и их цвета</li>
       <li>Все банки и счета</li>
-      <li>Цвета категорий</li>
-      <li>URL синхронизации</li>
+      <li>URL и секрет синхронизации</li>
     </ul>
     <p style="font-size:12px;color:var(--red);margin-bottom:16px"><svg class="ico"><use href="#i-warn"/></svg> Данные на Google Drive не затрагиваются. Действие нельзя отменить.</p>
     <div class="btn-row">
@@ -1472,7 +1484,7 @@ let _selectedExpSpecial = '';
 const SPEC_BADGE = '✦';
 function setExpSpecial(v){
   _selectedExpSpecial = v||'';
-  document.querySelectorAll('#exp-spec-seg span').forEach(s=>{
+  document.querySelectorAll('#exp-spec-seg button').forEach(s=>{
     s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedExpSpecial);
   });
   _expKindUi();
@@ -1489,7 +1501,7 @@ function _expKindUi(){
   const amt = parseMoney(document.getElementById('exp-amount').value) || 0;
   const oblig = _isObligCat(cat);
   seg.style.display = 'flex';
-  seg.querySelector('span').textContent = oblig ? 'Обязательная' : 'Обычная';
+  seg.querySelector('button').textContent = oblig ? 'Обязательная' : 'Обычная';
   if(oblig){
     note.style.display = 'block';
     note.textContent = _selectedExpSpecial
@@ -1504,7 +1516,7 @@ function _expKindUi(){
 let _selectedTmplSpecial = '';
 function setTmplSpecial(v){
   _selectedTmplSpecial = v||'';
-  document.querySelectorAll('#tmpl-spec-seg span').forEach(s=>{
+  document.querySelectorAll('#tmpl-spec-seg button').forEach(s=>{
     s.classList.toggle('on', (s.getAttribute('data-v')||'')===_selectedTmplSpecial);
   });
 }
@@ -1600,6 +1612,12 @@ let _dirtyGen = 0;   // растёт при каждой правке — syncCy
 function saveDB(){
   DB._dirty = true;
   _dirtyGen++;
+  saveLocal();
+}
+// Записать DB на диск БЕЗ пометки _dirty: для полей, которые buildPayload()
+// вырезает из синка (тема, уведомления, приватность). Через saveDB() каждая
+// смена темы гнала на Drive полный файл ради поля, которого в нём нет.
+function saveLocal(){
   try {
     localStorage.setItem('budgetDB_v2', JSON.stringify(DB));
   } catch(e) {
@@ -1641,9 +1659,11 @@ function writeSyncUrlToCookie(url){
     // encode URL to avoid cookie parsing issues
     // Директория текущего пути: /index.html → /, /repo/index.html → /repo/
     const cookiePath = location.pathname.replace(/\/[^/]*$/, '/') || '/';
-    document.cookie = 'syncUrl=' + encodeURIComponent(url) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax';
+    document.cookie = 'syncUrl=' + encodeURIComponent(url) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax' + _cookieSecure();
   } catch(_){}
 }
+// Secure — только на https: на http://localhost кука с этим флагом не запишется
+function _cookieSecure(){ return location.protocol === 'https:' ? '; Secure' : ''; }
 
 function saveSyncTokenEverywhere(token){
   try { localStorage.setItem('syncToken', token); } catch(_){}
@@ -1651,7 +1671,7 @@ function saveSyncTokenEverywhere(token){
   try {
     const exp = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
     const cookiePath = location.pathname.replace(/\/[^/]*$/, '/') || '/';
-    document.cookie = 'syncToken=' + encodeURIComponent(token) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax';
+    document.cookie = 'syncToken=' + encodeURIComponent(token) + '; expires=' + exp + '; path=' + cookiePath + '; SameSite=Lax' + _cookieSecure();
   } catch(_){}
 }
 
@@ -1687,8 +1707,12 @@ function fmtH(n){return `<span class="prv">${fmt(n)}</span>`;}
 // нужен и без суммы). Названия банков/категорий приватный режим не трогает.
 function fmtN(n){return DB.privacyMode ? '•••' : fmt(n);}
 
+// До копеек: «12,5» → 12.5. Округление до сотых обязательно — иначе в базу
+// уезжает 0.1+0.2-подобный хвост, и сумма месяца сравнивается с лимитом с
+// погрешностью в 1e-15, а «потрачено» в экспорте печатается с мусором.
 function parseMoney(str){
-  return parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
+  const v = parseFloat(String(str).replace(/\s/g,'').replace(',','.')) || 0;
+  return Math.round(v * 100) / 100;
 }
 
 function formatMoneyInput(inp){
@@ -1804,6 +1828,9 @@ function getLimits(y,m){
   }
   if(map && !Array.isArray(map)) return ids.map(id => map[id] || 0);
   if(Array.isArray(map)) return [...map];   // ещё не мигрированный месяц (до _ensureCatIds)
+  // Лимиты уже есть, но все позже этого месяца: тогда он был до начала учёта,
+  // и честный ответ — нули, а не DEFAULT_LIMITS под чужими категориями.
+  if(Object.keys(DB.limits).length) return DB.categories.map(() => 0);
   return DB.categories.map((_,i) => DEFAULT_LIMITS[i] || 3000);
 }
 
@@ -1884,15 +1911,26 @@ function _canonJSON(v){
   return JSON.stringify(Object.keys(v).sort().map(k => [k, v[k]]));
 }
 
-// Пересчитать производный индекс cat из catId (после merge/удаления категории)
+// Пересчитать производный индекс cat из catId (после merge/удаления категории).
+// Сирота (catId не из текущего списка) рисуется в первой категории, но сам
+// catId НЕ переписывается: до v1.82.0 он затирался на catIds[0] без штампа
+// updatedAt, и любое расхождение списков категорий между устройствами (LWW
+// целиком, «Очистить данные» → снова подключить синк, свежее устройство с
+// дефолтным списком) необратимо сливало траты в первую категорию. Теперь, как
+// только правильный список приедет с Drive, записи сами встанут по местам.
+// Явное удаление категории переназначает catId со штампом в removeCategory.
 function _reindexCats(){
   if(!DB.catIds || !DB.catIds.length) return;
   ['expenses','templates'].forEach(k => (DB[k]||[]).forEach(r => {
     if(!r || !r.catId) return;
     const i = DB.catIds.indexOf(r.catId);
-    if(i >= 0) r.cat = i;
-    else { r.cat = 0; r.catId = DB.catIds[0]; } // категория удалена — в первую
+    r.cat = i >= 0 ? i : 0;
   }));
+}
+// Сколько живых трат ссылаются на категории, которых в списке нет
+function _orphanExpenseCount(){
+  const known = new Set(DB.catIds || []);
+  return (DB.expenses || []).filter(e => e && !e._deleted && e.catId && !known.has(e.catId)).length;
 }
 
 
@@ -2026,8 +2064,9 @@ function _segActive(pairs){
     if(typeof el === 'string') el = document.getElementById(el);
     if(!el) return;
     el.style.background = on ? 'rgba(128,128,128,0.18)' : '';
-    el.style.color      = on ? 'var(--text)' : '#888';
+    el.style.color      = on ? 'var(--text)' : 'var(--muted)';
     el.style.fontWeight = on ? '600' : '';
+    if(el.tagName === 'BUTTON') el.setAttribute('aria-pressed', on ? 'true' : 'false'); // чипы — кнопки (v1.82.0)
   });
 }
 
@@ -2041,10 +2080,14 @@ function _monthsVal(v, max, def){
   return n >= 1 ? Math.min(max, n) : def;
 }
 
+// Чип — <button>, а <input> внутри кнопки невалиден и на iOS не берёт фокус,
+// поэтому поле ВМЕСТО чипа: подменяем узел и возвращаем обратно по завершении.
+// Снаружи поле ищется как input[data-chip="<id чипа>"].
 function _editChip(el, max, apply){
-  if(el.querySelector('input')) return;
+  if(!el.isConnected) return;
   const prev = el.textContent;
   const inp = document.createElement('input');
+  if(el.id) inp.dataset.chip = el.id;
   // type=text + inputmode=numeric: та же цифровая клавиатура на iOS, но без стрелок
   // number-поля, которые раздували чип и переносили всю группу на новую строку
   inp.type = 'text'; inp.inputMode = 'numeric'; inp.pattern = '[0-9]*'; inp.maxLength = 3;
@@ -2052,12 +2095,13 @@ function _editChip(el, max, apply){
   inp.setAttribute('aria-label', 'Свой период, месяцев (1–'+max+')');
   inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, ''); });
   // 16px: поле мельче iOS зумит; ширина — на три цифры
-  inp.style.cssText = 'width:2.1em;font:inherit;font-size:16px;line-height:1;padding:0;margin:0;border:none;outline:none;background:transparent;color:var(--text);text-align:center;-webkit-appearance:none;appearance:none';
+  inp.style.cssText = 'width:2.1em;font:inherit;font-size:16px;line-height:1;padding:0 4px;margin:0;border:none;border-radius:0;outline:none;background:transparent;color:var(--text);text-align:center;-webkit-appearance:none;appearance:none';
   let done = false;
   const finish = ok => {
     if(done) return;
     done = true;
     const n = parseInt(inp.value);
+    inp.replaceWith(el);
     el.textContent = prev;
     if(ok && n >= 1) apply(Math.min(max, n));
   };
@@ -2067,15 +2111,15 @@ function _editChip(el, max, apply){
   });
   inp.addEventListener('blur', () => finish(true));
   inp.addEventListener('click', e => e.stopPropagation());
-  el.textContent = '';
-  el.appendChild(inp);
+  el.replaceWith(inp);
   inp.focus();
 }
 
-// Подпись и подсветка чипа «…»: число вне presets — «9 мес», иначе «…»
+// Подпись и подсветка чипа «…»: число вне presets — «9 мес», иначе «…».
+// Пока чип подменён полем, его в DOM нет — getElementById вернёт null, и это норма.
 function _segCustom(id, v, presets, suffix){
   const el = document.getElementById(id);
-  if(!el || el.querySelector('input')) return;
+  if(!el) return;
   const n = parseInt(v);
   const custom = String(v) === String(n) && n >= 1 && !presets.includes(n);
   el.textContent = custom ? n + (suffix || '') : '…';
@@ -2096,10 +2140,37 @@ function openModal(id){
 function closeModal(id){
   const el = document.getElementById(id);
   el.classList.remove('open');
+  // Закрытие подложкой или Esc — тоже ответ «нет»
+  if(id === 'modal-confirm' && _confirmResolve){ const r = _confirmResolve; _confirmResolve = null; r(false); }
   // Снимаем класс только если не осталось других открытых панелей
   if(!document.querySelector('.overlay.open[data-dt="insp"]'))
     document.body.classList.remove('insp-open');
+  if(typeof _offerSwReload === 'function' && !document.querySelector('.overlay.open')) _offerSwReload();
 }
+// Своё подтверждение вместо window.confirm: нативный диалог в PWA на iOS
+// выглядит чужим и показывает адрес сайта в заголовке, а для «Очистить всё»
+// в приложении уже была собственная модалка. Возвращает Promise<boolean>.
+// opts: {ok: подпись кнопки, danger: красная кнопка, title}
+let _confirmResolve = null;
+function confirmDialog(msg, opts){
+  opts = opts || {};
+  const el = document.getElementById('modal-confirm');
+  if(!el) return Promise.resolve(window.confirm(msg));
+  document.getElementById('confirm-title').textContent = opts.title || 'Подтвердите';
+  document.getElementById('confirm-text').textContent = msg;
+  const okBtn = document.getElementById('confirm-ok');
+  okBtn.textContent = opts.ok || 'OK';
+  okBtn.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+  if(_confirmResolve) _confirmResolve(false); // предыдущий вопрос без ответа — считаем отказом
+  openModal('modal-confirm');
+  return new Promise(res => { _confirmResolve = res; });
+}
+function _confirmAnswer(ok){
+  const r = _confirmResolve; _confirmResolve = null;
+  closeModal('modal-confirm');
+  if(r) r(!!ok);
+}
+
 // Close on backdrop click — runs after full DOM load
 function initOverlays(){
   document.querySelectorAll('.overlay').forEach(el=>{
@@ -2455,7 +2526,7 @@ function renderKinds(){
   const thrInp = document.getElementById('kinds-threshold');
   if(thrInp && document.activeElement !== thrInp) thrInp.value = thr.toLocaleString('ru-RU');
   const N = _kindsPeriod();
-  document.querySelectorAll('#kinds-period span').forEach(s => s.classList.toggle('on', Number(s.dataset.v) === N));
+  document.querySelectorAll('#kinds-period button').forEach(s => s.classList.toggle('on', Number(s.dataset.v) === N));
 
   const now = new Date();
   const months = [];
@@ -2910,7 +2981,7 @@ function _applyLimitAvg(i){
   inp.value = _limitAvgs[i];
   if(changed) _markLimitInput(inp); // метка = «строка больше не твоя»
 }
-function applyAllLimitAvgs(){
+async function applyAllLimitAvgs(){
   const idx = _limitAvgs.map((v,i)=>v===null?-1:i).filter(i=>i>=0);
   if(!idx.length) return;
   const n = _monthsVal(sessionStorage.getItem('limitAvgMonths'), 36, 3);
@@ -2923,7 +2994,7 @@ function applyAllLimitAvgs(){
     + `
 
 Настроенные значения за ${monthName} будут потеряны после «Сохранить».`;
-  if(!confirm(msg)) return;
+  if(!(await confirmDialog(msg, {ok:'Заменить', title:'Подставить средние?'}))) return;
   idx.forEach(_applyLimitAvg);
   toast('⌀ подставлены — не забудьте сохранить');
 }
@@ -3724,7 +3795,7 @@ function _savingsBreakdownHtml(periodIncs, totalExp){
         +  `<div style="width:${barW}%;height:100%;background:${s.color};border-radius:3px"></div>`
         +`</div>`
         +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(s.saved)}</div>`
-        +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
+        +`<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
         +`</div>`;
     }).join('');
 }
@@ -3734,7 +3805,7 @@ const THEMES = ['light','dark','sepia','sakura','ocean','forest','gruvbox','drac
 const _THEME_MIGRATE = {hellokitty:'sakura', nord:'dracula'};
 function applyTheme(){
   // Migrate retired themes to their nearest surviving equivalent
-  if(DB.theme && _THEME_MIGRATE[DB.theme]){ DB.theme = _THEME_MIGRATE[DB.theme]; saveDB(); }
+  if(DB.theme && _THEME_MIGRATE[DB.theme]){ DB.theme = _THEME_MIGRATE[DB.theme]; saveLocal(); }
   const theme = DB.theme || 'auto';
   document.documentElement.classList.remove(...THEMES, 'hellokitty', 'nord');
   if(theme !== 'auto') document.documentElement.classList.add(theme);
@@ -3760,7 +3831,7 @@ function setPrivacyMode(on){
 
 function setTheme(val){
   DB.theme = val;
-  saveDB();
+  saveLocal(); // тема не синкается — незачем гнать файл на Drive
   applyTheme();
   renderSettings();
 }
@@ -3818,7 +3889,7 @@ function _renderStatsSummary(lastN){
       +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
       +`</div>`
       +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
-      +(pct ? `<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}</div>` : '')
+      +(pct ? `<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}</div>` : '')
       +`</div>`;
   };
 
@@ -3833,7 +3904,7 @@ function _renderStatsSummary(lastN){
       +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
       +`</div>`
       +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
-      +`<div style="font-size:10px;color:#888;flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
+      +`<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
       +`</div>`;
   };
 
@@ -3843,9 +3914,9 @@ function _renderStatsSummary(lastN){
   // Top 3-column card
   let html = `<div style="display:flex;gap:0;margin-bottom:${totalInc>0?'10px':'16px'};border:0.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden">`
     +[
-      {label:'Расходы',   val:totalExp, color:'var(--red,#d85a30)',                                         pct:expPct},
-      {label:'Доходы',    val:totalIncAll, color:'var(--green,#1d9e75)',                                     pct:null},
-      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue,#185fa5)':'var(--red,#d85a30)', abs:true, pct:savePct}
+      {label:'Расходы',   val:totalExp, color:'var(--red)',                                         pct:expPct},
+      {label:'Доходы',    val:totalIncAll, color:'var(--green)',                                     pct:null},
+      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue)':'var(--red)', abs:true, pct:savePct}
     ].map((s,si)=>
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
@@ -3861,8 +3932,8 @@ function _renderStatsSummary(lastN){
     const eW = Math.min(100, Math.max(0, expPct));
     const sW = Math.max(0, 100 - eW);
     html += `<div style="margin-bottom:${balance>0?'12px':'16px'};border-radius:4px;overflow:hidden;height:6px;display:flex;background:rgba(128,128,128,.12)">`
-      +(eW > 0 ? `<div style="width:${eW}%;background:var(--red,#d85a30)"></div>` : '')
-      +(sW > 0 ? `<div style="width:${sW}%;background:${balance>=0?'var(--blue,#185fa5)':'rgba(128,128,128,0.3)'}"></div>` : '')
+      +(eW > 0 ? `<div style="width:${eW}%;background:var(--red)"></div>` : '')
+      +(sW > 0 ? `<div style="width:${sW}%;background:${balance>=0?'var(--blue)':'rgba(128,128,128,0.3)'}"></div>` : '')
       +`</div>`;
   }
 
@@ -3887,12 +3958,12 @@ function _renderStatsSummary(lastN){
     const showGroups = hasGroups && _expViewMode === 'groups';
 
     const hdrPct = expPct !== null
-      ? ` — <span style="color:var(--red,#d85a30);font-weight:600">${expPct.toFixed(1)}%</span> от дохода`
+      ? ` — <span style="color:var(--red);font-weight:600">${expPct.toFixed(1)}%</span> от дохода`
       : '';
     const toggleHtml = hasGroups
-      ? `<div style="display:flex;font-size:11px;border:1px solid var(--border);border-radius:4px;user-select:none">`
-        +`<span onclick="setExpViewMode('cats');renderStats()" style="padding:2px 7px;cursor:pointer;border-radius:3px 0 0 3px;${!showGroups?'background:rgba(128,128,128,0.18);color:var(--text)':'color:#888'}">Кат.</span>`
-        +`<span onclick="setExpViewMode('groups');renderStats()" style="padding:2px 7px;cursor:pointer;border-left:1px solid var(--border);border-radius:0 3px 3px 0;${showGroups?'background:rgba(128,128,128,0.18);color:var(--text)':'color:#888'}">Гр.</span>`
+      ? `<div class="seg">`
+        +`<button type="button" onclick="setExpViewMode('cats');renderStats()" aria-pressed="${!showGroups}" style="${!showGroups?'background:rgba(128,128,128,0.18);color:var(--text);font-weight:600':''}">Кат.</button>`
+        +`<button type="button" onclick="setExpViewMode('groups');renderStats()" aria-pressed="${showGroups}" style="${showGroups?'background:rgba(128,128,128,0.18);color:var(--text);font-weight:600':''}">Гр.</button>`
         +`</div>`
       : '';
 
@@ -3918,7 +3989,7 @@ function _renderStatsSummary(lastN){
           +    `<div style="width:${barW}%;height:100%;background:${g.color};border-radius:3px"></div>`
           +  `</div>`
           +  `<div style="font-size:12px;font-weight:600;color:var(--muted);min-width:54px;text-align:right">${fmtH(g.total)}</div>`
-          +(pct?`<div style="font-size:10px;color:#888;width:34px;text-align:right">${pct}</div>`:'')
+          +(pct?`<div style="font-size:10px;color:var(--muted);width:34px;text-align:right">${pct}</div>`:'')
           +`</div>`
           +`</div>`;
       }).join('');
@@ -4145,7 +4216,7 @@ function renderSavingsCharts(){
     if(avgEl){
       if(avgRate!==null){
         avgEl.textContent = avgRate+'%'; // «Норма сб.» дублировала заголовок карточки
-        avgEl.style.color = avgRate>=0 ? '#1d9e75' : '#d85a30';
+        avgEl.style.color = avgRate>=0 ? 'var(--green)' : 'var(--red)';
         avgEl.title = avgTitle;
       } else {
         avgEl.textContent = '';
@@ -5005,10 +5076,10 @@ function renderStats(){
 
     // Summary
     const sumEl = document.getElementById('day-compare-summary');
-    const diffColor = diff <= 0 ? '#1d9e75' : '#d85a30';
+    const diffColor = diff <= 0 ? 'var(--green)' : 'var(--red)';
     const diffSign  = diff >= 0 ? '+' : '';
     const diffPctStr = diffPct !== null ? ' (' + diffSign + diffPct + '%)' : '';
-    let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#888;padding:2px 0 6px">`;
+    let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:2px 0 6px">`;
     html += `<span>${SHORT_MONTHS[pM]}: <b style="color:var(--text)">${fmtH(prevTotal)}</b></span>`;
     html += `<span>${SHORT_MONTHS[selM]}: <b style="color:var(--text)">${fmtH(selTotal)}</b></span>`;
     if (prevTotal > 0) {
@@ -5016,11 +5087,11 @@ function renderStats(){
     }
     html += `</div>`;
     if (avgHist && vsAvgDiff !== null) {
-      const vsColor = vsAvgDiff <= 0 ? '#1d9e75' : '#d85a30';
+      const vsColor = vsAvgDiff <= 0 ? 'var(--green)' : 'var(--red)';
       const vsSign  = vsAvgDiff >= 0 ? '+' : '';
       const vsPctStr = vsAvgPct !== null ? ' (' + vsSign + vsAvgPct + '%)' : '';
       const vsLabel = vsAvgDiff <= 0 ? 'Экономнее обычного' : 'Больше обычного';
-      html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">`;
+      html += `<div style="font-size:11px;color:var(--muted);border-top:0.5px solid var(--border);padding-top:6px">`;
       html += `Среднее за ${histMonthCount} мес.: <b style="color:var(--text)">${fmtH(avgHist)}</b> — `;
       html += `<span style="color:${vsColor};font-weight:600">${vsLabel} на ${fmtH(Math.abs(vsAvgDiff))}${vsPctStr}</span>`;
       html += `</div>`;
@@ -5030,12 +5101,12 @@ function renderStats(){
       let projHtml = `Прогноз на конец месяца: <b style="color:var(--text)">${fmtH(projTotal)}</b>`;
       if (budget > 0) {
         const over = projTotal - budget;
-        const bCol = over > 0 ? '#d85a30' : '#1d9e75';
+        const bCol = over > 0 ? 'var(--red)' : 'var(--green)';
         projHtml += over > 0
           ? ` — <span style="color:${bCol};font-weight:600">+${fmtH(over)} к бюджету</span>`
           : ` — <span style="color:${bCol};font-weight:600">в рамках бюджета ${fmtH(budget)}</span>`;
       }
-      html += `<div style="font-size:11px;color:#888;border-top:0.5px solid var(--border);padding-top:6px">${projHtml}</div>`;
+      html += `<div style="font-size:11px;color:var(--muted);border-top:0.5px solid var(--border);padding-top:6px">${projHtml}</div>`;
     }
     sumEl.innerHTML = html;
   }
@@ -5113,7 +5184,7 @@ function renderStats(){
       const col = document.createElement('div');
       col.style.cssText = 'flex:1;min-width:0';
       const nameEl = document.createElement('div');
-      nameEl.style.cssText = 'font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px';
+      nameEl.style.cssText = 'font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px';
       nameEl.textContent = x.name + (x.sub?' · '+x.sub:'');
       const track = document.createElement('div');
       track.style.cssText = 'height:6px;background:rgba(128,128,128,.15);border-radius:3px;overflow:hidden';
@@ -5125,10 +5196,10 @@ function renderStats(){
       const vals = document.createElement('div');
       vals.style.cssText = 'text-align:right;flex-shrink:0';
       const amtEl = document.createElement('div');
-      amtEl.style.cssText = 'font-size:12px;font-weight:600;color:#888';
+      amtEl.style.cssText = 'font-size:12px;font-weight:600;color:var(--muted)';
       amtEl.innerHTML = fmtH(x.v);
       const pctEl = document.createElement('div');
-      pctEl.style.cssText = 'font-size:10px;color:#666';
+      pctEl.style.cssText = 'font-size:10px;color:var(--hint)';
       pctEl.textContent = pct+'%';
       vals.appendChild(amtEl);
       vals.appendChild(pctEl);
@@ -5615,7 +5686,7 @@ function renderCredits(){
   const td = today();
   graces.forEach(g => {
     const dl = _graceDaysLeft(g);
-    const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? '#c98a1b' : 'var(--muted)';
+    const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? 'var(--amber)' : 'var(--muted)';
     const row = document.createElement('div');
     row.className = 'asset-row';
     row.style.cssText = 'gap:8px;cursor:pointer';
@@ -5702,7 +5773,7 @@ function renderAssetsHistory(rows, showAll){
     td2.innerHTML = fmtH(r.total);
 
     const tdDiff = tr.insertCell();
-    tdDiff.style.cssText = 'padding:12px 4px;font-size:11px;text-align:right;color:'+(diff!==null&&diff<0?'var(--red)':'#1d9e75');
+    tdDiff.style.cssText = 'padding:12px 4px;font-size:11px;text-align:right;color:'+(diff!==null&&diff<0?'var(--red)':'var(--green)');
     tdDiff.innerHTML = diff===null ? '' : '<span class="prv">'+(diff>=0?'+':'')+fmtCompact(diff)+'₽</span>';
 
     // Edit button — separate cell, big tap target
@@ -5955,7 +6026,7 @@ function renderAssets(){
     if(hasData){
       const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(data.date+'T12:00:00'))/86400000);
       if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">${ICO.warn} ${ageDays} дн. без обновления</div>`;
-      else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:#c98a1b;margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
+      else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:var(--amber);margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
       else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`;
     } else {
       freshLine = `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`;
@@ -5965,7 +6036,7 @@ function renderAssets(){
       const g = (DB.credits||[]).find(c=>!c._deleted && c.kind==='grace' && c.bank===name);
       if(g){
         const dl = _graceDaysLeft(g);
-        const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? '#c98a1b' : 'var(--muted)';
+        const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? 'var(--amber)' : 'var(--muted)';
         graceLine = `<div style="font-size:11px;color:${col};margin-top:2px" onclick="event.stopPropagation();openGraceModal('${g.id}')">грейс до ${_fmtDateRu(g.graceEnd)} · ${fmtH(g.payoffAmount)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
       }
     }
@@ -6088,7 +6159,7 @@ function renderAssets(){
         el.style.display = avail[k] ? '' : 'none';
         const i = shown.indexOf(k);
         // скругления и разделители — по видимым ячейкам, а не по DOM-соседям
-        el.style.borderLeft = i > 0 ? '1px solid var(--border)' : '';
+        el.style.borderLeft = i > 0 ? '1px solid var(--border)' : 'none'; // 'none', не '': у .seg>button свой border-left, а первым видимым бывает не первый в DOM
         el.style.borderRadius = (i === 0 ? '3px' : '0') + ' ' + (i === shown.length - 1 ? '3px 3px' : '0 0') + ' ' + (i === 0 ? '3px' : '0');
       });
       _segActive(_ASSET_CHART_PARTS.map(k => ['acp-' + k, partOn[k]]));
@@ -6684,7 +6755,7 @@ function renderInvestments(){
     if(lastSnap){
       const age = Math.floor((new Date(td+'T12:00:00') - new Date(lastSnap+'T12:00:00'))/86400000);
       snapLine = age > 30
-        ? `<div style="font-size:11px;color:#c98a1b;margin-top:2px">снимок ${_fmtDateRu(lastSnap)} · обновите стоимость</div>`
+        ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">снимок ${_fmtDateRu(lastSnap)} · обновите стоимость</div>`
         : `<div style="font-size:11px;color:var(--muted);margin-top:2px">снимок ${_fmtDateRu(lastSnap)}</div>`;
     }
     return `<div class="chart-card" style="margin:0 0 10px;padding:14px 16px">
@@ -7214,7 +7285,7 @@ let _depMode = 'rate';
 
 function setDepMode(m){
   _depMode = m;
-  _segActive([...document.querySelectorAll('#dep-mode-seg span')].map(s=>[s, (s.getAttribute('data-v')||'') === m]));
+  _segActive([...document.querySelectorAll('#dep-mode-seg button')].map(s=>[s, (s.getAttribute('data-v')||'') === m]));
   document.getElementById('dep-rate-grp').style.display  = m==='rate'  ? '' : 'none';
   document.getElementById('dep-final-grp').style.display = m==='final' ? '' : 'none';
   _depRateFromFinal();
@@ -7625,7 +7696,7 @@ function openEditAssetDate(date, carryForward){
         inp.style.color = 'var(--text)';
         const z = document.createElement('div');
         z.className = 'nodata-tag';
-        z.style.cssText = 'font-size:10px;color:#c98a1b';
+        z.style.cssText = 'font-size:10px;color:var(--amber)';
         z.textContent = 'записи не будет — в истории останется '+fmtShort(prevBefore)+'₽';
         lbl.appendChild(z);
       } else {
@@ -7688,17 +7759,34 @@ function _saveAssetEditRows(){
     if(!/\d/.test(inp.value) || parseMoney(inp.value) < 0){ toast('«'+allBanks[idx]+'»: некорректная сумма'); return false; }
   }
 
-  // Старые записи за эту дату → tombstone (чтобы удаление доходило при синхр)
-  DB.assets.forEach(a => { if(a.date === date && !a._deleted){ a._deleted = true; a.amount = 0; a.updatedAt = now; } });
-
-  // Новое значение для каждого банка с введённой суммой
+  // Запись банка на эту дату правим НА МЕСТЕ (тот же id). До v1.82.0 все записи
+  // даты тумбстоунились и создавались заново при каждом сохранении: в базе
+  // автора 368 из 522 записей активов были тумбстоунами, 89 штук за одну дату.
+  // Тумбстоун остаётся только за банком, у которого поле опустело.
+  const live = {};
+  DB.assets.forEach(a => {
+    if(a.date !== date || a._deleted) return;
+    const n = a.bankName || allBanks[a.bank];
+    if(live[n]){ a._deleted = true; a.amount = 0; a.updatedAt = now; } // дубль банк+дата
+    else live[n] = a;
+  });
   allBanks.forEach((bankName, idx) => {
     const inp = document.getElementById('asset-edit-inp-'+idx);
-    if(!inp) return;
-    if(!inp.value.trim()) return; // пропускаем пустые
+    const cur = live[bankName];
+    delete live[bankName];
+    if(!inp || !inp.value.trim()){
+      if(cur){ cur._deleted = true; cur.amount = 0; cur.updatedAt = now; }
+      return;
+    }
     const val = parseMoney(inp.value);
-    DB.assets.push({ id: uid(), bank: idx, bankName, amount: val, date, updatedAt: now });
+    if(cur){
+      if(cur.amount !== val || cur.bankName !== bankName){ cur.amount = val; cur.bankName = bankName; cur.bank = idx; cur.updatedAt = now; }
+    } else {
+      DB.assets.push({ id: uid(), bank: idx, bankName, amount: val, date, updatedAt: now });
+    }
   });
+  // Записи банков, которых в списке больше нет (призраки) — тумбстоун, как раньше
+  Object.values(live).forEach(a => { a._deleted = true; a.amount = 0; a.updatedAt = now; });
 
   saveDB();
   return true;
@@ -7977,7 +8065,15 @@ function buildGroupPicker(catIdx, currentColor, groups){
     e.stopPropagation();
     dropdown.style.display === 'none' ? openDropdown() : closeDropdown();
   });
-  document.addEventListener('click', closeDropdown, {once: false});
+  // Один слушатель на документ для всех выпадашек: раньше каждый вызов вешал
+  // свой и не снимал — замыкания на выброшенные элементы копились до перезагрузки
+  dropdown.className = 'grp-dropdown';
+  if(!document.body.dataset.grpDropdownWired){
+    document.body.dataset.grpDropdownWired = '1';
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.grp-dropdown').forEach(d => { d.style.display = 'none'; });
+    });
+  }
 
   container.appendChild(display);
   container.appendChild(dropdown);
@@ -8095,7 +8191,7 @@ function setCatColor(i, color){
   renderCatManager();
 }
 
-function removeCategory(i){
+async function removeCategory(i){
   if(DB.categories.length <= 1) return;
   const name = DB.categories[i];
   const now = Date.now();
@@ -8107,7 +8203,9 @@ function removeCategory(i){
   const detail = parts.length
     ? '\n' + parts.join(' и ') + ' будут перенесены в «' + (DB.categories[i===0?1:0]||'') + '».'
     : '';
-  if(!confirm('Удалить категорию «' + name + '»?' + detail)) return;
+  if(!(await confirmDialog('Удалить категорию «' + name + '»?' + detail, {ok:'Удалить', danger:true}))) return;
+  // Пока ждали ответа, список мог измениться (фоновый мерж) — перепроверяем позицию
+  if(DB.categories[i] !== name) { toast('Список изменился, повторите'); return; }
   const deletedId = (DB.catIds||[])[i];
   DB.categories.splice(i, 1);
   if(DB.catIds) DB.catIds.splice(i, 1);
@@ -8583,7 +8681,7 @@ function renderDataAudit(){
     if(staleInvs.length){
       h += `<div class="s-lbl" style="margin:10px 0 6px">Инвестиции</div>`;
       staleInvs.forEach(s=>{
-        h += `<p style="color:#c98a1b;font-size:12px;margin:0 0 6px">${ICO.warn} «${esc(s.name)}»: снимок стоимости устарел (${s.age} дн.) — прибыль и график считаются по старой цифре.</p>`;
+        h += `<p style="color:var(--amber);font-size:12px;margin:0 0 6px">${ICO.warn} «${esc(s.name)}»: снимок стоимости устарел (${s.age} дн.) — прибыль и график считаются по старой цифре.</p>`;
       });
     }
   }
@@ -8626,7 +8724,7 @@ function renderDataAudit(){
       rowsH += `<div style="padding:6px 0;border-top:0.5px solid var(--border)">
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">
           <span style="color:var(--muted);white-space:nowrap">${a.date.slice(5)} → ${b.date.slice(5)}</span>
-          <span style="${warn?'color:#c98a1b;font-weight:600':'color:var(--muted)'}">расх. <span class="prv">${mism>=0?'+':''}${fmtShort(mism)}₽</span></span>
+          <span style="${warn?'color:var(--amber);font-weight:600':'color:var(--muted)'}">расх. <span class="prv">${mism>=0?'+':''}${fmtShort(mism)}₽</span></span>
           <span style="color:var(--muted)">накопл. <span class="prv">${cum>=0?'+':''}${fmtShort(cum)}₽</span></span>
         </div>
         ${ev?`<div style="font-size:10px;color:var(--hint);margin-top:1px">${esc(ev)}</div>`:''}
@@ -8668,13 +8766,13 @@ function auditMergeGhost(i){
   }, 8000);
 }
 
-function auditDeleteGhost(i){
+async function auditDeleteGhost(i){
   const name = _auditGhosts[i];
   if(name === undefined) return;
   const known = getAllBanks();
   const recs = (DB.assets||[]).filter(a=>!a._deleted && _auditBankName(a, known) === name);
   if(!recs.length){ toast('Нечего удалять'); return; }
-  if(!confirm('Удалить '+recs.length+' записей «'+name+'»? Итог и история пересчитаются.')) return;
+  if(!(await confirmDialog('Удалить '+recs.length+' записей «'+name+'»? Итог и история пересчитаются.', {ok:'Удалить', danger:true}))) return;
   const now = Date.now();
   // amount зануляется вместе с tombstone — для undo запоминаем суммы
   const undone = recs.map(a=>({rec:a, amount:a.amount}));
@@ -8687,7 +8785,7 @@ function auditDeleteGhost(i){
   }, 8000);
 }
 
-function auditFixDups(){
+async function auditFixDups(){
   const known = getAllBanks();
   const groups = {};
   (DB.assets||[]).filter(a=>!a._deleted).forEach(a=>{
@@ -8703,7 +8801,7 @@ function auditFixDups(){
     g.slice(1).forEach(a=>victims.push(a));
   });
   if(!victims.length){ toast('Дублей нет'); return; }
-  if(!confirm('Удалить '+victims.length+' лишних записей? В каждой паре останется самая свежая по updatedAt, итог и история пересчитаются.')) return;
+  if(!(await confirmDialog('Удалить '+victims.length+' лишних записей? В каждой паре останется самая свежая по updatedAt, итог и история пересчитаются.', {ok:'Удалить', danger:true}))) return;
   const now = Date.now();
   const undone = victims.map(a=>({rec:a, amount:a.amount}));
   victims.forEach(a=>{ a._deleted = true; a.amount = 0; a.updatedAt = now; });
@@ -8766,7 +8864,7 @@ function _applyRestoredData(d, makeAuthoritative){
   DB.theme = curTheme; DB.privacyMode = curPrivacy;
   if(makeAuthoritative){
     const now = Date.now();
-    ['expenses','incomes','assets','templates','deposits','credits'].forEach(k => {
+    ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
     ['categories','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(l => touchList(l));
@@ -8783,7 +8881,7 @@ function restoreDB(input){
   const file = input.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = function(e){
+  reader.onload = async function(e){
     try{
       const d = JSON.parse(e.target.result);
       if(!d.expenses && !d.categories){
@@ -8791,7 +8889,7 @@ function restoreDB(input){
       }
       // Без перештамповки первый же pull вернёт всё как было — LWW выберет более свежие записи с Drive
       const makeMain = DB.syncUrl
-        ? confirm('Сделать данные из копии главными?\nOK — копия заменит данные на всех устройствах при следующей синхронизации.\nОтмена — более свежие правки с других устройств останутся.')
+        ? await confirmDialog('Копия заменит данные на всех устройствах при следующей синхронизации.\nОтмена — более свежие правки с других устройств останутся.', {ok:'Сделать главными', title:'Сделать копию главной?'})
         : false;
       _applyRestoredData(d, makeMain);
       toast('Данные восстановлены');
@@ -8822,7 +8920,7 @@ function renderNotifToggle(){
 async function toggleNotifications(){
   if(DB.notifsEnabled){
     DB.notifsEnabled = false;
-    saveDB();
+    saveLocal();
     renderNotifToggle();
     toast('Уведомления отключены');
     return;
@@ -8833,7 +8931,7 @@ async function toggleNotifications(){
   const perm = await Notification.requestPermission();
   if(perm === 'granted'){
     DB.notifsEnabled = true;
-    saveDB();
+    saveLocal();
     renderNotifToggle();
     toast('Уведомления включены');
   } else {
@@ -8843,7 +8941,7 @@ async function toggleNotifications(){
 
 function saveNotifThreshold(val){
   DB.notifThreshold = Math.min(100, Math.max(50, parseInt(val)||90));
-  saveDB();
+  saveLocal();
 }
 
 function checkBudgetNotifications(){
@@ -9114,8 +9212,24 @@ function _excelSummarySheet(X, yr){
   return ws;
 }
 
-function exportExcel(){
-  if(!window.XLSX){ toast('Библиотека XLSX не загружена'); return; }
+// Подгрузить скрипт по требованию (xlsx весит 425 КБ и нужен только тут;
+// до v1.82.0 он грузился синхронно в <head> при каждом старте приложения)
+const _scriptLoads = {};
+function _loadScript(src){
+  if(!_scriptLoads[src]) _scriptLoads[src] = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = () => res(); s.onerror = () => { delete _scriptLoads[src]; rej(new Error('load ' + src)); };
+    document.head.appendChild(s);
+  });
+  return _scriptLoads[src];
+}
+
+async function exportExcel(){
+  if(!window.XLSX){
+    try { await _loadScript('vendor/xlsx.style.min.js'); }
+    catch(_) { toast('Библиотека XLSX не загрузилась — проверьте сеть', 'err'); return; }
+  }
+  if(!window.XLSX){ toast('Библиотека XLSX не загружена', 'err'); return; }
   const X = window.XLSX;
   const wb = X.utils.book_new();
   const cats = DB.categories || [];
@@ -9543,7 +9657,7 @@ function buildDemoDB(now){
 }
 
 function fillTestData(){
-  const hasData = DB.expenses.length > 0 || DB.incomes.length > 0 || DB.assets.length > 0;
+  const hasData = ['expenses','incomes','assets','deposits','investments','templates'].some(k => (DB[k]||[]).length > 0);
   if(hasData){ toast('Сначала очистите данные'); return; }
   Object.assign(DB, buildDemoDB(new Date()));
   _ensureCatIds();
@@ -9553,16 +9667,25 @@ function fillTestData(){
   toast('✓ Тестовые данные загружены');
 }
 
+// Сброс в состояние первого запуска. Чистится ВСЁ, что синкается: до v1.82.0
+// оставались шаблоны, вклады, инвестиции, бронь, разметка обязательных, порог и
+// listsMeta — вклады задваивались при заливке демо, а старые метки списков
+// при повторном подключении синка не давали списку с Drive победить дефолтный.
 function doClearData(){
-  DB.expenses   = [];
-  DB.assets     = [];
-  DB.incomes    = [];
-  DB.limits     = {};
+  ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(k => { DB[k] = []; });
+  DB.limits      = {};
+  DB.specPlan    = {};
   DB.categories  = [...DEFAULT_CATS];
   DB.catColors   = {...DEFAULT_COLORS};
+  DB.catIds      = [];
+  delete DB.catOblig;          // undefined = миграция разметит заново, когда появятся траты
+  delete DB.oneoffThreshold;
   DB.banks       = [];
   DB.creditBanks = [];
-  DB.credits     = [];
+  DB.incomeTags  = ['Оплата труда','Продажи','Проценты','Кешбек'];
+  DB.incomeTagColors = {};
+  DB.incomeTagOrder  = [];
+  DB.listsMeta   = {};
   DB.syncUrl     = '';
   saveSyncUrlEverywhere('');
   DB.syncToken   = '';
@@ -9570,7 +9693,8 @@ function doClearData(){
   // Лимиты не заполняем и baseline сбрасываем: иначе при повторном подключении
   // синка месяцы старого baseline считались бы «локально удалёнными» (как в loadDB)
   DB._lastSyncedLimits = {};
-  DB.catIds = [];
+  DB._lastSyncedSpecPlan = {};
+  _lastPullHash = '';
   _ensureCatIds();
   saveDB();
   closeModal('modal-confirm-clear');
@@ -9585,9 +9709,9 @@ function doClearData(){
 // ─── GOOGLE SHEETS SYNC ──────────────────────────────────────────────
 
 // ── Копирование скрипта ───────────────────────────────────────────────
-function copyAppsScript(){
-  const code = window._APPS_SCRIPT_CODE || '';
-  if(!code){ toast('Скрипт не загружен'); return; }
+async function copyAppsScript(){
+  const code = await loadAppsScriptCode();
+  if(!code){ toast('Скрипт не загрузился — проверьте сеть', 'err'); return; }
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(code)
       .then(()=>toast('✓ Скрипт скопирован!'))
@@ -9659,18 +9783,44 @@ function saveSyncUrl(){
 // ── Запрос к Apps Script ─────────────────────────────────────────────
 // POST с Content-Type: text/plain — единственный надёжный способ.
 // text/plain не вызывает preflight OPTIONS, CORS не блокирует.
+// Таймаут обязателен: syncCycle держит единственный in-flight promise и отдаёт
+// его всем следующим вызовам, так что один подвисший fetch (iOS уводит
+// приложение в фон на середине запроса) до v1.82.0 останавливал синк до
+// перезагрузки страницы. pull.hash — см. _lastPullHash.
+let SYNC_TIMEOUT_MS = 30000; // let — тесты укорачивают
 async function syncRequest(action, data, opts) {
-  const body = JSON.stringify({ action, data: data || null, token: DB.syncToken || undefined, force: (opts && opts.force) || undefined });
-  const r = await fetch(DB.syncUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body,
-    redirect: 'follow'
-  });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const text = await r.text();
-  try { return JSON.parse(text); }
+  opts = opts || {};
+  const body = JSON.stringify({ action, data: data || null, token: DB.syncToken || undefined,
+    force: opts.force || undefined, hash: opts.hash || undefined });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), SYNC_TIMEOUT_MS);
+  let r, text;
+  try {
+    r = await fetch(DB.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body,
+      redirect: 'follow',
+      signal: ctl.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    text = await r.text();
+  } catch(e) {
+    if (e && e.name === 'AbortError') throw new Error('Нет ответа за ' + (SYNC_TIMEOUT_MS/1000) + ' с');
+    throw e;
+  } finally { clearTimeout(timer); }
+  try { return opts.raw ? { parsed: JSON.parse(text), text } : JSON.parse(text); }
   catch(e) { throw new Error('Ответ: ' + text.slice(0, 100)); }
+}
+
+// SHA-256 строки в hex — тот же дайджест считает Code.gs над содержимым файла,
+// чтобы pull мог ответить {unchanged:true} вместо 200 КБ данных каждые 5 минут.
+async function _sha256(str){
+  if(!(crypto && crypto.subtle)) return '';
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch(_) { return ''; }
 }
 
 // ── Тест соединения ───────────────────────────────────────────────────
@@ -9697,13 +9847,16 @@ function renderCurrentPage(){
   else if(currentPage==='deposits') renderDeposits();
   else if(currentPage==='report') renderReport();
   else if(currentPage==='income') renderIncome();
+  else if(currentPage==='investments') renderInvestments();
+  else if(currentPage==='settings') renderSettings();
+  else if(currentPage==='calc') { /* калькулятор живёт на своих полях, перерисовывать нечего */ }
   else renderBudget();
 }
 
 // ── Pull — загрузить из Drive (через общий цикл: pull+merge, push при dirty) ──
 async function pullFromSheets(){
   if(!DB.syncUrl){ toast('URL не задан'); return; }
-  const r = await syncCycle();
+  const r = await syncCycle({forcePull:true});
   if(r && r.error) toast('Ошибка синхронизации: ' + r.error);
   else toast('✓ Синхронизировано');
 }
@@ -9808,13 +9961,17 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ── Loader кода Apps Script ───────────────────────────────────────────
+// Код Apps Script грузится лениво, по кнопке «Скопировать»: до v1.82.0 init()
+// ждал этот fetch при каждом старте, а при ошибке сети подставлял инлайновую
+// копию v10.1 — без секрета, блокировки и защиты от затирания. Файл лежит в
+// PRECACHE service worker, поэтому оффлайн он всё равно доступен.
 async function loadAppsScriptCode() {
+  if(window._APPS_SCRIPT_CODE) return window._APPS_SCRIPT_CODE;
   try {
     const r = await fetch('./apps-script/Code.gs');
-    if(r.ok) { window._APPS_SCRIPT_CODE = await r.text(); return; }
+    if(r.ok) { window._APPS_SCRIPT_CODE = await r.text(); return window._APPS_SCRIPT_CODE; }
   } catch(_) {}
-  // Inline fallback — обновляется при каждой сборке
-  window._APPS_SCRIPT_CODE = "// ===== BUDGET TRACKER APPS SCRIPT v10 \u2014 Drive Storage =====\n// \u0414\u0435\u043f\u043b\u043e\u0439: \u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u0438\u044f \u2192 Apps Script \u2192 \u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u2192 \u041d\u043e\u0432\u043e\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044b\u0432\u0430\u043d\u0438\u0435\n// \u0422\u0438\u043f: \u0412\u0435\u0431-\u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 | \u0412\u044b\u043f\u043e\u043b\u043d\u044f\u0442\u044c \u043a\u0430\u043a: \u042f | \u0414\u043e\u0441\u0442\u0443\u043f: \u0412\u0441\u0435\n// \u0414\u0430\u043d\u043d\u044b\u0435 \u0445\u0440\u0430\u043d\u044f\u0442\u0441\u044f \u0432 \u0444\u0430\u0439\u043b\u0435 nto_data.json \u0432 Google Drive (\u043d\u0435 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435)\n\nconst FILE_DATA = 'nto_data.json';\n\nfunction doPost(e) {\n  try {\n    const body = JSON.parse(e.postData.contents);\n    const action = body.action || '';\n    if (action === 'ping') return out({ ok: true, version: '10.1' });\n    if (action === 'push') return out(saveFile(FILE_DATA, JSON.stringify(body.data || {})));\n    if (action === 'pull') return readFile(FILE_DATA);\n    return out({ error: 'Unknown action: ' + action });\n  } catch(err) {\n    return out({ error: err.message });\n  }\n}\n\nfunction doGet(e) {\n  const action = (e.parameter && e.parameter.action) || '';\n  if (action === 'ping') return out({ ok: true, version: '10.1' });\n  if (action === 'pull') return readFile(FILE_DATA);\n  return out({ info: 'Budget Tracker API v10.1' });\n}\n\nfunction saveFile(name, content) {\n  try {\n    const it = DriveApp.getFilesByName(name);\n    if (it.hasNext()) it.next().setContent(content);\n    else DriveApp.createFile(name, content, MimeType.PLAIN_TEXT);\n    return { ok: true };\n  } catch(err) { return { error: err.message }; }\n}\n\nfunction readFile(name) {\n  try {\n    const it = DriveApp.getFilesByName(name);\n    if (!it.hasNext()) return out({ empty: true });\n    return ContentService.createTextOutput(it.next().getBlob().getDataAsString())\n      .setMimeType(ContentService.MimeType.JSON);\n  } catch(err) { return out({ error: err.message }); }\n}\n\nfunction out(obj) {\n  return ContentService.createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
+  return '';
 }
 
 
@@ -10498,9 +10655,9 @@ function setCalcTableView(byMonth){
   document.getElementById('calc-table').innerHTML = _buildCalcTable(byMonth);
 }
 
-function fmtCalc(n){
-  return Math.round(n).toLocaleString('ru-RU')+' ₽';
-}
+// Тот же формат, что у fmt: до v1.82.0 калькулятор печатал «12 345 ₽» с пробелом,
+// остальное приложение — «12 345₽»
+function fmtCalc(n){ return fmt(n); }
 
 
 // ═══ init.js ═══
@@ -10523,6 +10680,37 @@ function init(){
   // Auto-sync on start if URL configured
   initSyncWidget();
   if(DB.syncUrl){ syncCycle(); startAutoSync(); }
+  // Просим систему не вычищать хранилище: в браузерном Safari localStorage сайта,
+  // куда не заходили 7 дней, удаляется (ITP); установленную PWA это не касается,
+  // но без синка localStorage — единственная копия данных.
+  try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); } catch(_){}
+  _wireSwReload();
+}
+
+// ─── ОБНОВЛЕНИЕ SERVICE WORKER ──────────────────────────────────────
+// Новый SW (skipWaiting + clients.claim) перехватывает страницу сразу, и до
+// v1.82.0 head-скрипт тут же делал location.reload() — посреди набора траты
+// модалка пропадала вместе с введённым. Теперь: нет открытых модалок и фокуса
+// в поле — перезагружаем сразу; иначе ждём закрытия модалки (тост с кнопкой)
+// или ухода приложения в фон.
+let _swReloadPending = false;
+function _safeToReload(){
+  if(document.querySelector('.overlay.open')) return false;
+  const a = document.activeElement;
+  return !(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+}
+function _onSwUpdated(){
+  if(_safeToReload()) location.reload();
+  else _swReloadPending = true;
+}
+function _offerSwReload(){
+  if(!_swReloadPending) return;
+  toastUndo('Приложение обновлено', () => location.reload(), 8000, 'Перезагрузить');
+}
+function _wireSwReload(){
+  window._onSwUpdated = _onSwUpdated;
+  if(window._swUpdated) _onSwUpdated(); // SW сменился раньше, чем дошли сюда
+  document.addEventListener('visibilitychange', () => { if(document.hidden && _swReloadPending) location.reload(); });
 }
 
 // ─── ЕДИНЫЙ ЦИКЛ СИНХРОНИЗАЦИИ ───────────────────────────────────────
@@ -10533,6 +10721,11 @@ function init(){
 let _syncCyclePromise = null;
 let _syncFailCount = 0;
 let _lastPullTs = 0;
+// SHA-256 содержимого файла на Drive, каким мы его видели в последний раз (после
+// pull — по полученному тексту, после push — по отправленному payload). Уходит в
+// pull как hash: Code.gs ≥10.4 отвечает {unchanged:true}, если файл тот же, и
+// 200 КБ данных не едут каждые 5 минут. Старый Code.gs поле игнорирует.
+let _lastPullHash = '';
 
 function syncCycle(opts){
   if(!DB.syncUrl) return Promise.resolve({skipped:true});
@@ -10548,16 +10741,23 @@ async function _syncCycleRun(opts){
     // 1. Pull + merge (mergePullData сам сообщает, менялось ли что-то —
     // раньше это детектилось двойным JSON.stringify всей БД, 2×15-40мс каждые 15с)
     let merged = false;
-    const remote = await syncRequest('pull', null);
+    const hash = (opts.forcePull || !_lastPullHash) ? undefined : _lastPullHash;
+    const res = await syncRequest('pull', null, {hash, raw: true});
+    const remote = res.parsed;
     if(remote && remote.error) throw new Error(remote.error);
     _lastPullTs = Date.now();
-    if(remote && !remote.empty){
-      merged = mergePullData(remote);
+    if(!(remote && remote.unchanged)){
+      _lastPullHash = await _sha256(res.text);
+      if(remote && !remote.empty) merged = mergePullData(remote);
     }
     // 2. Push — если были локальные правки, merge что-то изменил или push запрошен явно
     if(DB._dirty || merged || opts.forcePush){
-      const pr = await syncRequest('push', buildPayload(), {force: !!opts.force});
+      const payload = buildPayload();
+      const pr = await syncRequest('push', payload, {force: !!opts.force});
       if(pr && pr.error) throw new Error(pr.error);
+      // На Drive теперь лежит ровно JSON.stringify(payload) — Code.gs сериализует
+      // body.data так же. Расхождение хэша безвредно: просто один лишний полный pull.
+      _lastPullHash = await _sha256(JSON.stringify(payload));
     }
     // 3. Финализация: _dirty снимаем только если во время await не появились новые
     // правки. Baseline лимитов — под тем же гардом: без него правка лимита во время
@@ -10712,7 +10912,7 @@ function _mergeList(d, key, colorKey){
   return true;
 }
 
-loadAppsScriptCode().then(() => init());
+init();
 
 </script>
 

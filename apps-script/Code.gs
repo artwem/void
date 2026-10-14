@@ -1,4 +1,4 @@
-// ===== BUDGET TRACKER APPS SCRIPT v10.3 — Drive Storage =====
+// ===== BUDGET TRACKER APPS SCRIPT v10.4 — Drive Storage =====
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 // Данные хранятся в файле nto_data.json в Google Drive (не в таблице)
@@ -15,9 +15,9 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     if (SECRET && body.token !== SECRET) return out({ error: 'Unauthorized' });
     const action = body.action || '';
-    if (action === 'ping') return out({ ok: true, version: '10.3' });
+    if (action === 'ping') return out({ ok: true, version: '10.4' });
     if (action === 'push') return out(saveData(JSON.stringify(body.data || {}), !!body.force));
-    if (action === 'pull') return readData();
+    if (action === 'pull') return readData(body.hash);
     return out({ error: 'Unknown action: ' + action });
   } catch(err) {
     return out({ error: err.message });
@@ -28,9 +28,9 @@ function doGet(e) {
   const p = e.parameter || {};
   if (SECRET && p.token !== SECRET) return out({ error: 'Unauthorized' });
   const action = p.action || '';
-  if (action === 'ping') return out({ ok: true, version: '10.3' });
-  if (action === 'pull') return readData();
-  return out({ info: 'Budget Tracker API v10.3' });
+  if (action === 'ping') return out({ ok: true, version: '10.4' });
+  if (action === 'pull') return readData(p.hash);
+  return out({ info: 'Budget Tracker API v10.4' });
 }
 
 // Файл ищем по сохранённому ID (стабильно), имя — только как fallback.
@@ -104,13 +104,23 @@ function backupIfDue(file) {
   } catch(_) {}
 }
 
-function readData() {
+// hash — SHA-256 (hex) содержимого, каким его видел клиент. Совпало — отдаём
+// короткое {unchanged:true} вместо всего файла: приложение опрашивает Drive
+// каждые 5 минут, и почти всегда там ничего не менялось. (v10.4)
+function readData(hash) {
   try {
     const file = getDataFile();
     if (!file) return out({ empty: true });
-    return ContentService.createTextOutput(file.getBlob().getDataAsString())
+    const content = file.getBlob().getDataAsString();
+    if (hash && sha256Hex(content) === String(hash).toLowerCase()) return out({ unchanged: true });
+    return ContentService.createTextOutput(content)
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) { return out({ error: err.message }); }
+}
+
+function sha256Hex(str) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, str, Utilities.Charset.UTF_8);
+  return bytes.map(function(b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
 }
 
 function out(obj) {
