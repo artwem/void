@@ -14,7 +14,7 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-**Тест-раннер есть:** `node tools/dt-check.mjs` — ~180 проверок геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
+**Тест-раннер есть:** `node tools/dt-check.mjs` — ~185 проверок геометрии и поведения на puppeteer-core + системном Chrome (`tools/harness.mjs` поднимает статический сервер и данные, `tools/shots.mjs` снимает скриншоты всех вкладок и подстраниц на пяти ширинах в `tools/shots/`). Прогонять после любой правки вёрстки или графиков; новые сюиты пишутся там же рядом. Линтера нет. Ручная проверка на Safari (iOS), Chrome (Android) и десктопе остаётся сверх этого.
 
 **Два набора данных для тестов (since v1.69.0).** `suite(width, title, fn)` идёт на минимальной
 `FIXTURE` из `harness.mjs`, `suite(..., { demo: true })` — на полном демо-наборе; раннер делит
@@ -287,6 +287,14 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Year-over-year in the report** (`renderReport`): categories, groups and tags get a `.rep-yoy` delta against `yr−1`. The comparison window is identical for both years: from `max('01', first tracked month if it falls in the previous year)` to today's month/day when `yr` is the current year, else the full year. The printed row sum stays the full-year total; only the delta uses the window. Header reads «vs 2025» or «vs 2025 · сен–окт». «новое» when the previous year had nothing. Suite `доли печатаются с одним знаком` excludes `.rep-yoy`.
 - **About shows storage use**: `openAbout()` → `_dbSizeInfo()` (bytes of `budgetDB_v2` and of all localStorage, live counts, tombstones) in `#about-db-size`; amber from 80% of ~5 MB.
 - Suites `идеи v1.83.0` (fixture) and `идеи v1.83.0 — демо` (demo set) in `tools/dt-check.mjs`.
+
+### Conventions added in v1.84.0 (kopecks)
+
+- **Money is stored to the kopeck and printed to the kopeck only when it is non-zero.** `parseMoney` has always rounded to 2 decimals; since v1.84.0 `fmt(n)` prints «12 345,50₽» for a fractional value and «12 345₽» for a whole one (it rounds to hundredths first, so float tails like 0.1+0.2 never reach the screen; `|| 0` kills `-0`). Everything that prints money goes through `fmt`/`fmtH`/`fmtN`, so no caller changed. `fmtShort`/`fmtCompact`/`fmtAxis` stay whole-rouble — they label axes and chips.
+- **Never `Math.round()` a user-entered amount.** `setMoneyInput` and the asset-snapshot row prefill round to hundredths, not to the rouble (editing 12,50 and saving used to store 13). Spec plan, oneoff threshold, closed-deposit interest and split payments keep kopecks; `_splitRegen` splits in kopecks and the last payment takes the remainder. Computed values (deposit projections, forecasts, chart series, averages) may still round to the rouble — they are not input.
+- **`formatMoneyInput` caps the fraction at 2 digits** while typing, so a third digit is not silently dropped on save. Its thousands separator is a regular space; tests strip whitespace before comparing.
+- Excel export writes amounts with `#,##0.00` (`NUM` in `exportExcel`).
+- Suite `копейки` in `tools/dt-check.mjs`.
 
 ### UI State Patterns
 

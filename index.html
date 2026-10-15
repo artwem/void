@@ -1409,7 +1409,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.83.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1732,7 +1732,15 @@ function readSyncUrlFromCookie(){
 
 // ─── HELPERS ────────────────────────────────────────────────────────
 function monthKey(y,m){return y+'-'+String(m+1).padStart(2,'0')}
-function fmt(n){return Math.round(n).toLocaleString('ru-RU')+'₽'}
+// Копейки печатаются только когда они есть: «12 345,50₽», круглые — «12 345₽»
+// (since v1.84.0; раньше всё округлялось до рубля, и трата 12,50 читалась как
+// 13₽). Сначала округление до сотых: сумма трат с копейками — это float, и без
+// него хвост сложения вроде 0.1+0.2 печатался бы «,30000001₽». `|| 0` гасит -0.
+function fmt(n){
+  const v = Math.round((+n || 0) * 100) / 100 || 0;
+  if(Number.isInteger(v)) return v.toLocaleString('ru-RU') + '₽';
+  return v.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '₽';
+}
 // Значки для разметки, собираемой в JS, — те же ссылки на спрайт #ico-sprite,
 // что и в статическом HTML. Строки, а не DOM: почти вся разметка тут innerHTML.
 const ICO = {
@@ -1769,7 +1777,9 @@ function formatMoneyInput(inp){
     intStr = normalized; decStr = null;
   } else {
     intStr = normalized.slice(0, firstSep);
-    decStr = normalized.slice(firstSep + 1).replace(/[.,]/g,'');
+    // Не больше двух знаков: parseMoney всё равно округлит до копеек, и третья
+    // цифра молча пропадала бы при сохранении
+    decStr = normalized.slice(firstSep + 1).replace(/[.,]/g,'').slice(0, 2);
   }
 
   // Format integer part with spaces
@@ -1796,7 +1806,8 @@ function setMoneyInput(id, val){
   const inp = document.getElementById(id);
   if(!inp) return;
   if(val==='' || val===null || val===undefined){ inp.value=''; return; }
-  inp.value = String(Math.round(val));
+  // До копеек, не до рубля: иначе правка траты 12,50 после «Сохранить» давала 13
+  inp.value = String(Math.round(val * 100) / 100);
   formatMoneyInput(inp);
 }
 
@@ -2014,7 +2025,7 @@ function _kindBadge(e){
 // оттуда он читается только как стартовое значение, пока в базе порога нет.
 function _oneoffThreshold(){
   const v = DB.oneoffThreshold != null ? DB.oneoffThreshold : uiGet('oneoffThreshold', '6000');
-  return Math.max(0, parseInt(v) || 0);
+  return Math.max(0, parseFloat(v) || 0);
 }
 
 // Перенос старых «особых»: категория, где особые были в ≥3 разных месяцах,
@@ -2479,7 +2490,7 @@ function renderSpecEditor(){
 function specDraftSet(i, str){
   const r = _specDraftRows[Number(i)];
   if(!r) return;
-  r.val = Math.max(0, Math.round(parseMoney(str)));
+  r.val = Math.max(0, parseMoney(str));
   renderSpecEditor();
 }
 
@@ -2512,7 +2523,7 @@ function _specPlanWrite(catId, val, mk){
   if(!DB.specPlan) DB.specPlan = {};
   if(!DB.specPlan[mk]) DB.specPlan[mk] = {};
   if(val == null) delete DB.specPlan[mk][catId];
-  else DB.specPlan[mk][catId] = Math.max(0, Math.round(val));
+  else DB.specPlan[mk][catId] = Math.max(0, Math.round(val * 100) / 100);
   if(!Object.keys(DB.specPlan[mk]).length) delete DB.specPlan[mk];
 }
 
@@ -2530,7 +2541,7 @@ function openKindsManager(){
 }
 
 function setOneoffThreshold(str){
-  DB.oneoffThreshold = Math.max(0, Math.round(parseMoney(str) || 0));
+  DB.oneoffThreshold = Math.max(0, parseMoney(str) || 0);
   touchList('oneoffThreshold');
   saveDB();
   renderKinds();
@@ -5519,11 +5530,11 @@ function _splitRegen(){
   const buy   = document.getElementById('split-buy-date').value || today();
   const firstNow = document.getElementById('split-first-now').checked;
   if(total <= 0 || parts < 1 || parts > 24){ _splitGenPayments = []; _splitRenderGenList(); return; }
-  const base = Math.floor(total / parts);
+  const base = Math.floor(total * 100 / parts) / 100;  // до копейки, не до рубля
   const prevPaid = _splitGenPayments.map(p => !!p.paid); // при редактировании галки оплаты переживают перегенерацию
   _splitGenPayments = Array.from({length: parts}, (_, i) => ({
     date: _splitShiftDate(buy, firstNow ? i : i + 1),
-    amount: i === parts - 1 ? total - base * (parts - 1) : base,  // последний забирает округление
+    amount: i === parts - 1 ? Math.round((total - base * (parts - 1)) * 100) / 100 : base,  // последний забирает округление
     paid: prevPaid[i] || false
   }));
   _splitRenderGenList();
@@ -7228,7 +7239,7 @@ function confirmCloseDeposit(){
   if(!d) return;
   const date = document.getElementById('close-dep-date').value;
   if(!date || date < d.openDate || date > today()){ toast('Проверьте дату закрытия'); return; }
-  const interest = Math.max(0, Math.round(parseMoney(document.getElementById('close-dep-interest').value) || 0));
+  const interest = Math.max(0, parseMoney(document.getElementById('close-dep-interest').value) || 0);
   // проценты — отдельной записью в доходы датой закрытия (если не сняли галку); снимок в банк не создаётся
   const toIncome = interest > 0 && document.getElementById('close-dep-to-income').checked;
   if(toIncome){
@@ -7502,7 +7513,7 @@ function saveDeposit(){
         if(!closedAt || closedAt < openDate || closedAt > today()){ toast('Проверьте дату закрытия'); return; }
         upd._deleted = true;
         upd.closedAt = closedAt;
-        upd.closedInterest = Math.max(0, Math.round(parseMoney(document.getElementById('deposit-closed-interest').value) || 0));
+        upd.closedInterest = Math.max(0, parseMoney(document.getElementById('deposit-closed-interest').value) || 0);
       }
       DB.deposits[idx] = upd;
     }
@@ -7775,7 +7786,7 @@ function openEditAssetDate(date, carryForward){
     inp.inputMode = 'decimal';
     inp.id = 'asset-edit-inp-'+idx;
     inp.placeholder = '—';
-    if(existing !== undefined){ inp.value = String(Math.round(existing)); formatMoneyInput(inp); }
+    if(existing !== undefined){ inp.value = String(Math.round(existing * 100) / 100); formatMoneyInput(inp); }
     inp.style.cssText = 'width:104px;text-align:right;padding:6px 8px;font-size:14px;border:0.5px solid '+(carried?'var(--hint)':'var(--border2)')+';border-radius:var(--r-sm);background:var(--card);color:'+(carried?'var(--muted)':'var(--text)');
     function _clearCarried(){
       if(!carried) return;
@@ -9176,7 +9187,7 @@ function _excelSummarySheet(X, yr){
     const lum = 0.299*parseInt(h.slice(0,2),16) + 0.587*parseInt(h.slice(2,4),16) + 0.114*parseInt(h.slice(4,6),16);
     return lum > 150 ? '1A1A18' : 'FFFFFF';
   };
-  const NUM = '#,##0';
+  const NUM = '#,##0.00';  // копейки видны в выгрузке (since v1.84.0)
   const thin = {style:'thin', color:{rgb:'DDDDDD'}};
   const S = {
     title:  {font:{bold:true, sz:14, color:{rgb:'1A1A18'}}},

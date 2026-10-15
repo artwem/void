@@ -3049,6 +3049,91 @@ suite(390, 'идеи v1.83.0', () => {
   });
 });
 
+// Копейки (v1.84.0). parseMoney и раньше принимал «12,50», но fmt округлял до
+// рубля (трата 12,50 читалась как 13₽), а setMoneyInput — при подстановке в поле,
+// так что правка траты после «Сохранить» теряла копейки. Теперь копейки печатаются
+// только когда они есть, круглые суммы — как раньше.
+suite(390, 'копейки', () => {
+  check('fmt печатает копейки только когда они есть', async p => {
+    const got = await p.evaluate(() => ({
+      kop: fmt(12.5), whole: fmt(1234), tail: fmt(0.1 + 0.2), big: fmt(12345.678), zero: fmt(-0.001),
+      neg: fmt(-7.25), negExp: (-7.25).toLocaleString('ru-RU', { minimumFractionDigits: 2 }) + '₽',
+      bigExp: (12345.68).toLocaleString('ru-RU', { minimumFractionDigits: 2 }) + '₽',
+      h: fmtH(3.3), short: fmtShort(12.5),
+    }));
+    eq(got.kop, '12,50₽', 'с копейками');
+    eq(got.whole, (1234).toLocaleString('ru-RU') + '₽', 'круглая — как раньше');
+    eq(got.tail, '0,30₽', 'хвост сложения float погашен');
+    eq(got.big, got.bigExp, 'округление до сотых');
+    eq(got.zero, '0₽', 'без «-0»');
+    eq(got.neg, got.negExp, 'отрицательная с копейками');
+    if (!/>3,30₽</.test(got.h)) throw new Error('fmtH: ' + got.h);
+    eq(got.short, '13', 'fmtShort (оси, чипы) остаётся целым');
+  });
+
+  check('правка траты сохраняет копейки, поле режет третий знак', async p => {
+    const got = await p.evaluate(() => {
+      showPage('day', document.getElementById('nav-day'));
+      DB.expenses.push({ id: 'kop1', date: today(), cat: 1, catId: DB.catIds[1], amount: 12.5, comment: 'коп', updatedAt: Date.now() });
+      editExpense('kop1');
+      const field = document.getElementById('exp-amount').value;
+      saveExpense();
+      const after = DB.expenses.find(x => x.id === 'kop1').amount;
+      const shown = document.getElementById('page-day').textContent;
+      const inp = document.getElementById('exp-amount');
+      inp.value = '1234,567'; formatMoneyInput(inp);
+      const cut = inp.value;
+      setMoneyInput('exp-amount', 99.9);
+      const nine = inp.value;
+      setMoneyInput('exp-amount', 500);
+      const whole = inp.value;
+      closeModal('modal-expense');
+      DB.expenses = DB.expenses.filter(x => x.id !== 'kop1');
+      return { field, after, shown: /12,50₽/.test(shown), cut, nine, whole };
+    });
+    eq(got.field, '12,5', 'поле показывает копейки');
+    eq(got.after, 12.5, 'после «Сохранить» копейки на месте');
+    eq(got.shown, true, 'в списке дня трата с копейками');
+    eq(got.cut.replace(/\s/g, ''), '1234,56', 'третий знак отрезан при наборе');
+    eq(got.nine, '99,9', 'подстановка 99.9');
+    eq(got.whole, '500', 'круглая подставляется без хвоста');
+  });
+
+  check('снимок счёта, сплит, бронь и порог не округляются до рубля', async p => {
+    const got = await p.evaluate(() => {
+      const t = today();
+      DB.assets.push({ id: 'kopA', date: t, bank: 0, bankName: DB.banks[0], amount: 1000.55, updatedAt: Date.now() });
+      openEditAssetDate(t, false);
+      const field = document.getElementById('asset-edit-inp-0').value;
+      closeModal('modal-asset-edit');
+      DB.assets = DB.assets.filter(x => x.id !== 'kopA');
+
+      document.getElementById('split-total').value = '1000,01';
+      document.getElementById('split-parts').value = '3';
+      document.getElementById('split-buy-date').value = t;
+      _splitRegen();
+      const parts = _splitGenPayments.map(x => x.amount).join('|');
+      const sum = Math.round(_splitGenPayments.reduce((s, x) => s + x.amount, 0) * 100) / 100;
+      _splitGenPayments = [];
+
+      _specPlanWrite('cat0002', 150.75, '2030-01');
+      const spec = DB.specPlan['2030-01']['cat0002'];
+      delete DB.specPlan['2030-01'];
+
+      const prevThr = DB.oneoffThreshold;
+      setOneoffThreshold('5000,5');
+      const thr = _oneoffThreshold();
+      DB.oneoffThreshold = prevThr;
+      return { field, parts, sum, spec, thr };
+    });
+    eq(got.field.replace(/\s/g, ''), '1000,55', 'поле снимка счёта с копейками');
+    eq(got.parts, '333.33|333.33|333.35', 'части сплита до копейки, остаток — в последнем');
+    eq(got.sum, 1000.01, 'сумма частей сходится с итогом');
+    eq(got.spec, 150.75, 'бронь особых хранит копейки');
+    eq(got.thr, 5000.5, 'порог «разовая?» хранит копейки');
+  });
+});
+
 suite(390, 'идеи v1.83.0 — демо', () => {
   check('годовой отчёт: дельты к прошлому году у категорий, групп и тегов', async p => {
     const got = await p.evaluate(() => {
