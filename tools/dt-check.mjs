@@ -3151,6 +3151,31 @@ suite(390, 'шапка «Доходов» — три карточки, как в
     eq(got.i, got.b, 'те же левые края и ширины, что у карточек «Бюджета»');
     eq(got.lbls, 'Доход|Расходы|Баланс', 'подписи');
   });
+
+  // v1.84.2: с копейками сумма шире трети экрана — колонки minmax(0,1fr) и
+  // _fitVals ужимают шрифт, карточка не уезжает за правый край
+  check('длинные суммы с копейками не выталкивают карточку за экран', async p => {
+    const got = await p.evaluate(() => {
+      DB.incomes.push({ id: 'fitI', date: today(), source: 'тест', amount: 1223628.37, updatedAt: Date.now() });
+      showPage('income', document.getElementById('nav-income'));
+      const vw = document.documentElement.clientWidth;
+      const cards = [...document.querySelectorAll('#page-income .summary-grid > .s-card')];
+      const vals = [...document.querySelectorAll('#page-income .summary-grid .s-val')];
+      const r = { vw, right: Math.max(...cards.map(c => Math.round(c.getBoundingClientRect().right))),
+        widths: cards.map(c => Math.round(c.getBoundingClientRect().width)).join('|'),
+        fits: vals.every(v => v.scrollWidth <= v.clientWidth + 1),
+        shrunk: parseFloat(getComputedStyle(vals[0]).fontSize), text: vals[0].textContent };
+      DB.incomes = DB.incomes.filter(x => x.id !== 'fitI');
+      showPage('income', document.getElementById('nav-income'));
+      r.restored = parseFloat(getComputedStyle(vals[0]).fontSize);
+      return r;
+    });
+    eq(got.right <= got.vw - 16, true, 'правая карточка в пределах отступа 16 px: ' + got.right + ' из ' + got.vw);
+    eq(new Set(got.widths.split('|')).size, 1, 'карточки одной ширины: ' + got.widths);
+    eq(got.fits, true, 'суммы влезают в карточки: ' + got.text);
+    eq(got.shrunk < 16, true, 'шрифт длинной суммы ужат: ' + got.shrunk);
+    eq(got.restored, 16, 'после короткой суммы шрифт штатный');
+  });
 });
 
 suite(390, 'идеи v1.83.0 — демо', () => {

@@ -294,6 +294,7 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Never `Math.round()` a user-entered amount.** `setMoneyInput` and the asset-snapshot row prefill round to hundredths, not to the rouble (editing 12,50 and saving used to store 13). Spec plan, oneoff threshold, closed-deposit interest and split payments keep kopecks; `_splitRegen` splits in kopecks and the last payment takes the remainder. Computed values (deposit projections, forecasts, chart series, averages) may still round to the rouble — they are not input.
 - **`formatMoneyInput` caps the fraction at 2 digits** while typing, so a third digit is not silently dropped on save. Its thousands separator is a regular space; tests strip whitespace before comparing.
 - Excel export writes amounts with `#,##0.00` (`NUM` in `exportExcel`).
+- **Summary cards never overflow the screen (v1.84.2).** `.summary-grid` and `#rep-summary` use `minmax(0,1fr)` columns (plain `1fr` has a min-content minimum, and «223 628,37₽» pushed the right card past the edge on 375 px). `_fitVals(root)` (db.js, next to `fmtH`) shrinks `.s-val` font-size from the stylesheet size down to 11 px until the text fits, one size per grid; called at the end of `renderBudget`/`renderIncome`/`renderReport`, in `showPage` (hidden pages measure 0 and are skipped) and on `resize`/`fonts.ready`. New headline cards: give the value `.s-val`, do not set its font-size inline (`.rep-val` is the CSS variant).
 - Suite `копейки` in `tools/dt-check.mjs`.
 
 ### UI State Patterns
