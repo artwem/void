@@ -3134,6 +3134,25 @@ suite(390, 'копейки', () => {
   });
 });
 
+// Шапка «Доходов» (v1.84.1): три отдельные карточки, как в «Бюджете». Раньше
+// одна карточка с тремя колонками внутри — цифры сливались в строку без границ.
+suite(390, 'шапка «Доходов» — три карточки, как в «Бюджете»', () => {
+  check('карточки доходов совпадают по раскладке с бюджетными', async p => {
+    const got = await p.evaluate(() => {
+      const cards = sel => [...document.querySelectorAll(sel + ' .summary-grid > .s-card')].map(c => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.width)]; });
+      showPage('budget', document.getElementById('nav-budget'));
+      const b = cards('#page-budget');
+      showPage('income', document.getElementById('nav-income'));
+      const i = cards('#page-income');
+      const lbls = [...document.querySelectorAll('#page-income .summary-grid .s-lbl')].map(x => x.textContent).join('|');
+      return { b: JSON.stringify(b), i: JSON.stringify(i), n: i.length, lbls };
+    });
+    eq(got.n, 3, 'три карточки');
+    eq(got.i, got.b, 'те же левые края и ширины, что у карточек «Бюджета»');
+    eq(got.lbls, 'Доход|Расходы|Баланс', 'подписи');
+  });
+});
+
 suite(390, 'идеи v1.83.0 — демо', () => {
   check('годовой отчёт: дельты к прошлому году у категорий, групп и тегов', async p => {
     const got = await p.evaluate(() => {

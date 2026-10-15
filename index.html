@@ -148,12 +148,12 @@ if ('serviceWorker' in navigator) {
       <button class="mn-btn" onclick="changeIncomeMonth(1)">›</button>
     </div>
   </div>
+  <!-- Три отдельные карточки, как в шапке «Бюджета»: одна общая карточка с
+       тремя колонками внутри сливалась в строку цифр без границ (v1.84.1) -->
   <div class="summary-grid">
-    <div class="s-card" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr">
-      <div><div class="s-lbl">Доход</div><div class="s-val ok" id="income-total">0₽</div></div>
-      <div><div class="s-lbl">Расходы</div><div class="s-val" id="income-expenses">0₽</div></div>
-      <div><div class="s-lbl">Баланс</div><div class="s-val" id="income-balance">0₽</div></div>
-    </div>
+    <div class="s-card"><div class="s-lbl">Доход</div><div class="s-val ok" id="income-total">0₽</div></div>
+    <div class="s-card"><div class="s-lbl">Расходы</div><div class="s-val" id="income-expenses">0₽</div></div>
+    <div class="s-card"><div class="s-lbl">Баланс</div><div class="s-val" id="income-balance">0₽</div></div>
   </div>
   <div style="padding:8px 16px"><button class="btn" style="width:100%" onclick="openAddIncome()">+ Добавить доход</button></div>
   <div class="sec-hdr"><span class="sec-title">Источники дохода</span></div>
@@ -1409,7 +1409,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
