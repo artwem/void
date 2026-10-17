@@ -3493,13 +3493,26 @@ suite(390, 'дизайн v1.86.0', () => {
       obl.querySelector('.bh-val').click();
       const open = !!document.getElementById('modal-spec').offsetParent || getComputedStyle(document.getElementById('modal-spec')).display !== 'none';
       closeModal('modal-spec');
-      return { inHero, lbl, open, cls: obl.className };
+      // v1.86.1: подпись «оплачено · ждём · разовые» своей строкой и целиком,
+      // шеврон сразу за суммой, цифры героя по центру ячейки
+      const sub = obl.querySelector('.bh-sub'), val = obl.querySelector('.bh-val');
+      const sr = sub.getBoundingClientRect(), vr = val.getBoundingClientRect();
+      const chev = obl.querySelector('.bh-chev');
+      const cell = document.querySelector('#budget-days-row .bh-cell');
+      return { inHero, lbl, open, cls: obl.className,
+        subBelowVal: sr.top >= vr.bottom - 1, subFits: sub.scrollWidth <= sub.clientWidth + 1,
+        subOverflow: getComputedStyle(sub).textOverflow, chevInVal: chev?.parentElement === val,
+        align: getComputedStyle(cell).textAlign, card: getComputedStyle(document.querySelector('.summary-grid .s-card')).textAlign };
     });
     if (got.none) throw new Error('строки обязательных нет (фикстура должна её давать)');
     eq(got.inHero, true, 'ячейка внутри #budget-days-row');
     eq(/bh-cell/.test(got.cls) && /bh-obl/.test(got.cls), true, 'классы: ' + got.cls);
     eq(got.lbl, 'Обязательные', 'подпись');
     eq(got.open, true, 'тап по сумме открывает модалку брони');
+    eq(got.subBelowVal, true, 'подпись под суммой, а не в одной строке с ней');
+    eq(got.subFits && got.subOverflow !== 'ellipsis', true, 'подпись не обрезана троеточием');
+    eq(got.chevInVal, true, 'шеврон стоит сразу за суммой');
+    eq(got.align === 'center' && got.card === 'center', true, 'герой и карточки сводки по центру');
   });
 
   check('знак рубля — отдельный span, текст суммы не меняется', async p => {

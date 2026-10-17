@@ -324,6 +324,7 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Deposits page list is `#deposits-list.dep-list`** with `.dep-row` rows; row actions are text buttons in `.dep-actions` (closed deposit keeps the «Перенести в банк» pill).
 - **Day rows open the editor on tap** (`row.onclick = () => editExpense(id)`), no pencil button; swipe-to-delete stays. Income rows and the Analytics search list keep their pencil.
 - Settings rows have no emoji; «Очистить все данные» sits alone in `#danger-zone` at the bottom. Quick-add placeholder is «Сумма».
+- **Hero cells and summary cards are centred (v1.86.1):** `.bh-cell` and `.summary-grid/#rep-summary .s-card` have `text-align:center`; calc-page `.s-card`s are form fields and stay left. `.bh-sub` wraps instead of ellipsising (a cut «сверх на 5 7…» lost the number that mattered). In `.bh-obl` the sub is its own line (`order:1; flex-basis:100%`) and the chevron sits inside `.bh-val` right after the sum, in both layouts.
 - Suites `дизайн v1.86.0` (390) and `дизайн v1.86.0 — десктоп` (1600).
 
 ### UI State Patterns
