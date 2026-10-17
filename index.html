@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.84.2">
+<link rel="stylesheet" href="css/app.css?v=1.84.3">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -1409,7 +1409,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3864,6 +3864,20 @@ function _incomeTagWriteoffOrder(){
 function _incomeTagOrderLabel(tag){ return tag === '' ? 'Без тега' : tag; }
 function _incomeTagOrderColor(tag){ return tag === '' ? 'rgba(128,128,128,0.55)' : getIncomeTagColor(tag); }
 
+// Строка списка с полоской: точка | название | полоска | сумма | доля. Ячейки — дети
+// .ss-row (display:contents), колонки задаёт сетка .ss-list (css/app.css). Поэтому
+// сумма любой ширины (с копейками) не сдвигает полоски соседних строк, а в сводке
+// Аналитики на мобильном все три списка делят одни колонки.
+function _ssRow(color, name, barW, sumHtml, pct, sub){
+  return `<div class="ss-row">`
+    +`<i class="ss-dot" style="background:${color}"></i>`
+    +`<div class="ss-name">${esc(name)}${sub?`<div class="ss-sub">${esc(sub)}</div>`:''}</div>`
+    +`<div class="ss-track"><div style="width:${barW}%;background:${color}"></div></div>`
+    +`<div class="ss-sum">${sumHtml}</div>`
+    +`<div class="ss-pct">${pct}</div>`
+    +`</div>`;
+}
+
 // «Из чего накоплено»: доходы периода по тегам, расходы поглощают источники в
 // заданном порядке списания (_incomeTagWriteoffOrder) первыми, остаток каждого =
 // вклад в накопления. Возвращает html (заголовок + stacked bar + строки) или ''.
@@ -3892,21 +3906,11 @@ function _savingsBreakdownHtml(periodIncs, totalExp){
     const w = Math.round(s.saved/balance*100);
     return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}${DB.privacyMode?'':': '+fmt(s.saved)}"></div>`;
   }).join('');
-  return `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
-    +`<div style="display:flex;border-radius:4px;overflow:hidden;height:8px;margin-bottom:10px;gap:1px">${stackedBar}</div>`
-    +activeSav.map(s=>{
-      const pct  = (s.saved/balance*100).toFixed(1);
-      const barW = Math.round(s.saved/balance*100);
-      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
-        +`<div style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0"></div>`
-        +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>`
-        +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
-        +  `<div style="width:${barW}%;height:100%;background:${s.color};border-radius:3px"></div>`
-        +`</div>`
-        +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(s.saved)}</div>`
-        +`<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
-        +`</div>`;
-    }).join('');
+  return `<div class="ss-h" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
+    +`<div class="ss-stack">${stackedBar}</div>`
+    +`<div class="ss-list">`+activeSav.map(s=>
+      _ssRow(s.color, s.name, Math.round(s.saved/balance*100), fmtH(s.saved), (s.saved/balance*100).toFixed(1)+'%')
+    ).join('')+`</div>`;
 }
 
 // ─── THEME ──────────────────────────────────────────────────────────
@@ -3951,6 +3955,17 @@ function _normTag(inc){
 }
 
 // ─── STATS SUMMARY ──────────────────────────────────────────────────
+// Полоска-состав над списком колонки сводки. Видна только на десктопе (.ss-comp):
+// там три списка стоят колонками, и без неё строки «Расходов» и «Доходов» начинались
+// бы выше строк «Из чего накоплено», у которого такая полоска есть всегда.
+function _ssCompBar(items){
+  const sum = items.reduce((s,x)=>s+x.total,0);
+  if(sum <= 0) return '';
+  return `<div class="ss-comp">`+items.map(x=>
+    `<div style="flex:${x.total/sum*100};background:${x.color};min-width:2px" title="${esc(x.name)}${DB.privacyMode?'':': '+fmt(x.total)}"></div>`
+  ).join('')+`</div>`;
+}
+
 function _renderStatsSummary(lastN){
   const totalExp = lastN.reduce((s,x)=>s+x.totalExp,0);
   // Доходы месяцев до начала учёта трат видны в «Доходы», но в «Накоплено» и проценты
@@ -3988,33 +4003,15 @@ function _renderStatsSummary(lastN){
   const maxCat = catTotals[0]?.total || 1;
 
   // Expense category row: bar vs maxCat, pct vs totalInc
-  const expBarRow = (color, name, total) => {
-    const barW = Math.round(total / maxCat * 100);
-    const pct  = totalInc > 0 ? (total / totalInc * 100).toFixed(1) + '%' : '';
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
-      +`<div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>`
-      +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>`
-      +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
-      +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
-      +`</div>`
-      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
-      +(pct ? `<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}</div>` : '')
-      +`</div>`;
-  };
+  const expBarRow = (color, name, total) =>
+    _ssRow(color, name, Math.round(total / maxCat * 100), fmtH(total),
+      totalInc > 0 ? (total / totalInc * 100).toFixed(1) + '%' : '');
 
   // Income tag row: bar proportional to % of totalInc
   const incBarRow = (color, name, total) => {
     const pct  = totalIncAll > 0 ? (total / totalIncAll * 100).toFixed(1) : '0.0';
     const barW = totalIncAll > 0 ? Math.min(100, Math.round(total / totalIncAll * 100)) : 0;
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
-      +`<div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>`
-      +`<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>`
-      +`<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px;flex-shrink:0">`
-      +  `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div>`
-      +`</div>`
-      +`<div style="font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0;min-width:54px;text-align:right">${fmtH(total)}</div>`
-      +`<div style="font-size:10px;color:var(--muted);flex-shrink:0;width:34px;text-align:right">${pct}%</div>`
-      +`</div>`;
+    return _ssRow(color, name, barW, fmtH(total), pct + '%');
   };
 
   const el = document.getElementById('stats-summary');
@@ -4046,12 +4043,14 @@ function _renderStatsSummary(lastN){
       +`</div>`;
   }
 
+  // Три списка ниже — колонки .ss-col: на десктопе стоят рядом (css/app.css), на мобильном друг под другом
+  const cols = [];
   // Savings breakdown — общий рендер с годовым отчётом (см. _savingsBreakdownHtml)
   if(balance > 0 && totalInc > 0){
     const mkSet = new Set(lastN.filter(x=>x.tracked).map(x=>monthKey(x.y,x.m)));
     const periodIncs = (DB.incomes||[]).filter(inc=>!inc._deleted&&inc.date&&mkSet.has(inc.date.slice(0,7)));
-    html += _savingsBreakdownHtml(periodIncs, totalExp);
-    html += `<div style="margin-bottom:16px"></div>`;
+    const sb = _savingsBreakdownHtml(periodIncs, totalExp);
+    if(sb) cols.push(sb);
   }
 
   // Expense categories / groups toggle
@@ -4076,42 +4075,32 @@ function _renderStatsSummary(lastN){
         +`</div>`
       : '';
 
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`
+    let ch = `<div class="ss-h" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`
       +`<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">`
       +`Расходы ${showGroups?'по группам':'по категориям'}${hdrPct}</div>`
-      +toggleHtml+`</div>`;
+      +toggleHtml+`</div>`
+      +_ssCompBar(showGroups ? groupArr.map(g=>({name:g.cats[0], color:g.color, total:g.total})) : catTotals);
 
     if(showGroups){
       const maxG = groupArr[0].total || 1;
-      html += groupArr.map(g => {
-        const barW = Math.round(g.total / maxG * 100);
-        const pct = totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '';
-        const sub = g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '';
-        return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">`
-          +`<div style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;margin-top:3px"></div>`
-          +`<div style="flex:1;min-width:0">`
-          +  `<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.cats[0])}</div>`
-          +  (sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div>` : '')
-          +`</div>`
-          +`<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">`
-          +  `<div style="width:60px;background:rgba(128,128,128,.12);border-radius:3px;height:5px">`
-          +    `<div style="width:${barW}%;height:100%;background:${g.color};border-radius:3px"></div>`
-          +  `</div>`
-          +  `<div style="font-size:12px;font-weight:600;color:var(--muted);min-width:54px;text-align:right">${fmtH(g.total)}</div>`
-          +(pct?`<div style="font-size:10px;color:var(--muted);width:34px;text-align:right">${pct}</div>`:'')
-          +`</div>`
-          +`</div>`;
-      }).join('');
+      ch += `<div class="ss-list">`+groupArr.map(g =>
+        _ssRow(g.color, g.cats[0], Math.round(g.total / maxG * 100), fmtH(g.total),
+          totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '',
+          g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '')
+      ).join('')+`</div>`;
     } else {
-      html += catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('');
+      ch += `<div class="ss-list">`+catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('')+`</div>`;
     }
+    cols.push(ch);
   }
 
   // Income tags
   if(tagTotals.length){
-    html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 8px">Доходы по источникам</div>`
-      + tagTotals.map(t=>incBarRow(t.color,t.tag,t.total)).join('');
+    cols.push(`<div class="ss-h" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Доходы по источникам</div>`
+      + _ssCompBar(tagTotals.map(t=>({name:t.tag, color:t.color, total:t.total})))
+      + `<div class="ss-list">`+tagTotals.map(t=>incBarRow(t.color,t.tag,t.total)).join('')+`</div>`);
   }
+  if(cols.length) html += `<div class="ss-cols">`+cols.map(c=>`<div class="ss-col">${c}</div>`).join('')+`</div>`;
 
   el.innerHTML = html;
 }

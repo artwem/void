@@ -584,3 +584,47 @@ body.privacy-mode .prv *{color:transparent!important}
     position:sticky; top:0;
   }
 }
+
+/* ═══ СПИСКИ С ПОЛОСКАМИ: сводка Аналитики, «Из чего накоплено» в отчёте (v1.84.3) ═══
+   Строка .ss-row — display:contents, её ячейки встают прямо в сетку .ss-list:
+   точка | название | полоска | сумма | доля. Колонка суммы — auto, то есть по
+   самой широкой сумме, поэтому «314 387,50₽» не сдвигает полоски соседних строк.
+   В сводке на мобильном .ss-col и .ss-list тоже растворяются (contents), и все
+   три списка делят ОДНУ сетку .ss-cols — колонки стоят ровно сверху донизу. */
+.ss-list,.ss-cols{display:grid;grid-template-columns:8px minmax(0,1fr) 60px auto 38px;column-gap:8px;row-gap:6px;align-items:center}
+.ss-cols .ss-col,.ss-cols .ss-list,.ss-row{display:contents}
+.ss-cols .ss-h,.ss-cols .ss-stack,.ss-cols .ss-comp{grid-column:1/-1}
+.ss-cols .ss-h{margin-bottom:2px !important}
+.ss-cols .ss-col+.ss-col .ss-h{margin-top:10px}
+.ss-dot{width:8px;height:8px;border-radius:50%}
+.ss-name{font-size:12px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-sub{font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis}
+.ss-track{height:5px;border-radius:3px;background:rgba(128,128,128,.12);overflow:hidden}
+.ss-track>div{height:100%;border-radius:3px}
+.ss-sum{font-size:12px;font-weight:600;color:var(--muted);text-align:right;white-space:nowrap}
+.ss-pct{font-size:10px;color:var(--muted);text-align:right;white-space:nowrap}
+.ss-stack,.ss-comp{display:flex;gap:1px;height:8px;border-radius:4px;overflow:hidden}
+.ss-stack{margin-bottom:10px}
+.ss-cols .ss-stack{margin-bottom:4px}
+.ss-comp{display:none}
+
+/* Десктоп: три списка сводки — три колонки рядом, у каждой своя сетка.
+   Полоска-состав .ss-comp есть у всех трёх, как у «Из чего накоплено», и
+   заголовки одной высоты — строки колонок начинаются на одном уровне. */
+@media (min-width:1000px){
+  .ss-cols{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:0;row-gap:0;align-items:start}
+  .ss-cols .ss-col{display:block;padding:0 20px;border-left:.5px solid var(--border);min-width:0}
+  .ss-cols .ss-col:first-child{padding-left:0;border-left:0}
+  .ss-cols .ss-col:last-child{padding-right:0}
+  .ss-cols .ss-list{display:grid}
+  .ss-cols .ss-h{min-height:26px;margin-bottom:6px !important;line-height:13px}
+  .ss-cols .ss-col+.ss-col .ss-h{margin-top:0}
+  .ss-cols .ss-comp{display:flex;margin-bottom:10px}
+  .ss-cols .ss-stack{margin-bottom:10px}
+}
+/* 1000–1279 px: колонка ~210 px, и с полоской в строке названию оставалось ~50 px
+   («Ремонт…»). Пропорции здесь показывает полоска-состав над колонкой. */
+@media (min-width:1000px) and (max-width:1279px){
+  .ss-cols .ss-list{grid-template-columns:8px minmax(0,1fr) auto 34px}
+  .ss-cols .ss-track{display:none}
+}

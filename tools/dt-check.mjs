@@ -612,6 +612,39 @@ suite(1280, 'доли печатаются с одним знаком после
   });
 }, { demo: true });
 
+// Сводка «Аналитики» колонками (v1.84.3): на мобильном три списка делят одну сетку,
+// на десктопе стоят тремя колонками, и первые строки начинаются на одном уровне.
+const ssGeom = () => {
+  const r = el => el.getBoundingClientRect();
+  const cols = [...document.querySelectorAll('#stats-summary .ss-col')];
+  return {
+    cols: cols.length,
+    sumRight: [...new Set([...document.querySelectorAll('#stats-summary .ss-sum')].map(x => Math.round(r(x).right)))],
+    nameLeft: [...new Set([...document.querySelectorAll('#stats-summary .ss-name')].map(x => Math.round(r(x).left)))],
+    firstRowTop: [...new Set(cols.map(c => Math.round(r(c.querySelector('.ss-name')).top)))],
+    trunc: [...document.querySelectorAll('#stats-summary .ss-name')].filter(x => x.scrollWidth > x.clientWidth).map(x => x.textContent),
+  };
+};
+suite(390, 'сводка «Аналитики» колонками', () => {
+  check('все три списка делят одни колонки: суммы и названия на одной вертикали', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const g = await p.evaluate(ssGeom);
+    eq(g.cols, 3, 'списков в сводке');
+    eq(g.sumRight.length, 1, 'разных правых краёв сумм ' + g.sumRight.join(','));
+    eq(g.nameLeft.length, 1, 'разных левых краёв названий ' + g.nameLeft.join(','));
+  });
+}, { demo: true });
+[1000, 1440].forEach(w => suite(w, 'сводка «Аналитики» колонками', () => {
+  check('три колонки, первые строки на одном уровне, названия не обрезаны', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    const g = await p.evaluate(ssGeom);
+    eq(g.cols, 3, 'колонок');
+    eq(g.firstRowTop.length, 1, 'разных верхов первой строки ' + g.firstRowTop.join(','));
+    eq(g.nameLeft.length, 3, 'левых краёв названий (по одному на колонку)');
+    if (g.trunc.length) throw new Error('обрезаны: ' + g.trunc.join(', '));
+  });
+}, { demo: true }));
+
 // Чипы категорий поиска (v1.73.1): на телефоне лента со свайпом, на десктопе
 // свайпа нет — чипы, уехавшие за правый край, были просто недостижимы.
 const CHIP_GEOM = `(() => {
