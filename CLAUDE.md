@@ -297,6 +297,19 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Summary cards never overflow the screen (v1.84.2).** `.summary-grid` and `#rep-summary` use `minmax(0,1fr)` columns (plain `1fr` has a min-content minimum, and «223 628,37₽» pushed the right card past the edge on 375 px). `_fitVals(root)` (db.js, next to `fmtH`) shrinks `.s-val` font-size from the stylesheet size down to 11 px until the text fits, one size per grid; called at the end of `renderBudget`/`renderIncome`/`renderReport`, in `showPage` (hidden pages measure 0 and are skipped) and on `resize`/`fonts.ready`. New headline cards: give the value `.s-val`, do not set its font-size inline (`.rep-val` is the CSS variant).
 - Suite `копейки` in `tools/dt-check.mjs`.
 
+### Conventions added in v1.85.0 (design pass)
+
+- **Mono sums get `word-spacing:-.38em`.** `fmt` separates thousands with NBSP, and in JetBrains Mono an NBSP is a full digit cell — «1 616 330₽» read as three numbers. `word-spacing` applies to U+00A0 per CSS Text 3, so the rule lives next to `font-family:var(--font-num)` in `css/app.css` (one shared block: `.money,.s-val,.cat-spent,.total-val,.day-total,.day-env-val,.km-*`). Any new mono money class goes into that block, not a copy.
+- **Theme variables are 6-digit hex.** `_chartColors()` derives `rgba()` from `--muted/--green/--red/--blue` by slicing two chars at a time; `--muted:#888` in the dark theme produced `NaN` and black bars/grid. The parser now expands short hex defensively, but keep the themes 6-digit anyway.
+- **`CAT_COLORS` is 11 colours in a fixed order, validated with the dataviz skill's `validate_palette.js`** (light `#ffffff` and dark `#1e1e1c`, adjacent CVD ΔE ≥ 12.7, all-pairs normal ΔE ≥ 11.6, contrast ≥ 3:1). Do not append or reorder — re-run the validator instead. `INCOME_TAG_COLORS` and `DEFAULT_COLORS` draw from the same list. Existing `catColors` in user bases are untouched (keyed by `catId`).
+- **Colour is a state, not an article.** «Расходы»/«Доходы» in headline cards, the Analytics summary, the report cards and the monthly table are printed in text ink; «Доходы vs Расходы» uses blue (`cc.blue`) vs grey (`cc.mutedMid`). Red/green remain for sign and limit states only (`.s-val.ok/.over`, negative «Накоплено», over-limit badges, Δ columns).
+- **Budget header = hero pair + three cards.** `#budget-days-row.bh` holds two `.bh-cell` (day envelope from `_dayEnvelopeFrom`, month forecast `fc.total` vs limit) and sits *above* `.summary-grid`. The envelope suite reads `row.firstElementChild.textContent` and expects «слово → число» in the first cell — keep that order.
+- **Lists are flat rows inside one card.** `.entry-list`, `.settings-list` (also `#assets-list`, `#income-list`) are the bordered container; rows inside (`.entry-row`, `.setting-row`, `.asset-row`) have no border/radius and a hairline `border-top` between them. `.empty` on the container drops the frame for empty states (`renderDay` toggles it; `:empty` covers the rest). A `.setting-row`/`.asset-row` *outside* such a container is still a standalone card (modals rely on this).
+- **Desktop input tabs are capped at 760 px** (`#page-day/#page-budget/#page-income/#page-settings`), left-aligned to the sidebar; the FAB follows the column edge (`left:calc(sidebar + 760px − 66px)`). Analytics, Assets and Report keep the full width.
+- **Section titles are sentence case 13 px semibold in text colour** (`.sec-title`, `.chart-title`, `.sub-h` for titles built in JS). No `text-transform:uppercase` in new markup.
+- **Apps Script instructions collapse once `syncUrl` is set:** `renderSettings` toggles `body.sync-ready`; `#sync-help-toggle` («Настроено ✓ · показать инструкцию») reveals `#sync-help.open`.
+- Suites `дизайн v1.85.0` (390) and `дизайн v1.85.0 — десктоп` (1600) in `tools/dt-check.mjs`.
+
 ### UI State Patterns
 
 **UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**

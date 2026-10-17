@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.84.3">
+<link rel="stylesheet" href="css/app.css?v=1.85.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -87,12 +87,14 @@ if ('serviceWorker' in navigator) {
       <button class="mn-btn" onclick="changeMonth(1)">›</button>
     </div>
   </div>
+  <!-- Две главные цифры месяца (v1.85.0): остаток дня и прогноз. Идут ПЕРЕД
+       тремя карточками: это ответ на «как дела», карточки — справка. -->
+  <div id="budget-days-row" class="bh" style="display:none"></div>
   <div class="summary-grid">
     <div class="s-card"><div class="s-lbl">Потрачено</div><div class="s-val" id="sum-spent">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Лимит</div><div class="s-val" id="sum-limit">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
-  <div id="budget-days-row" style="display:none;flex-direction:column;align-items:flex-start;padding:4px 16px 4px;font-size:12px;color:var(--muted);gap:2px"></div>
   <div id="budget-obl-row" style="display:none;padding:0 16px 8px;font-size:11px;color:var(--hint);gap:10px;flex-wrap:wrap"></div>
   <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
@@ -151,7 +153,7 @@ if ('serviceWorker' in navigator) {
   <!-- Три отдельные карточки, как в шапке «Бюджета»: одна общая карточка с
        тремя колонками внутри сливалась в строку цифр без границ (v1.84.1) -->
   <div class="summary-grid">
-    <div class="s-card"><div class="s-lbl">Доход</div><div class="s-val ok" id="income-total">0₽</div></div>
+    <div class="s-card"><div class="s-lbl">Доход</div><div class="s-val" id="income-total">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Расходы</div><div class="s-val" id="income-expenses">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Баланс</div><div class="s-val" id="income-balance">0₽</div></div>
   </div>
@@ -163,7 +165,7 @@ if ('serviceWorker' in navigator) {
       oninput="renderIncomeSearch(this.value)"/>
   </div>
   <div id="income-tag-filter" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:6px"></div>
-  <div class="settings-list" id="income-list" style="padding:0 16px;gap:5px;display:flex;flex-direction:column"></div>
+  <div class="settings-list" id="income-list"></div>
   <div class="page-end"></div>
 </div>
 
@@ -353,7 +355,7 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
   <div id="assets-history-wrap" style="display:none;padding:0 16px 8px">
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 0 6px">История</div>
+    <div class="sub-h" style="padding:8px 0 6px">История</div>
     <table id="assets-history-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
   </div>
   </div>
@@ -447,7 +449,7 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div class="chart-card" style="margin-top:2px">
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:10px"><span id="calc-result-prefix">Итого через</span> <span id="calc-period-lbl">24 мес</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px"><span id="calc-result-prefix">Итого через</span> <span id="calc-period-lbl">24 мес</span></div>
       <div style="font-size:32px;font-weight:700;letter-spacing:-1px;margin-bottom:14px;color:var(--text)" id="calc-total">0 ₽</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Вложено</div><div style="font-size:17px;font-weight:600;color:var(--text)" id="calc-invested">0 ₽</div></div>
@@ -469,7 +471,7 @@ if ('serviceWorker' in navigator) {
       <div class="chart-box"><canvas id="chartCalc" role="img" aria-label="График роста вклада">График роста вклада по месяцам</canvas></div>
     </div>
     <div class="chart-card" style="padding:0;overflow:hidden">
-      <div style="padding:12px 14px 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">График</div>
+      <div class="sub-h" style="padding:12px 14px 8px">График</div>
       <div id="calc-table" style="overflow-x:auto"></div>
     </div>
     <div class="page-end"></div>
@@ -566,7 +568,9 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="spacer"></div>
   <div class="sec-hdr"><span class="sec-title">Синхронизация через Google Drive</span></div>
-  <div class="info-box">
+  <!-- После настройки URL инструкция свёрнута в строку (body.sync-ready, v1.85.0) -->
+  <div id="sync-help-toggle" onclick="document.getElementById('sync-help').classList.toggle('open')">Настроено ✓ · показать инструкцию</div>
+  <div class="info-box" id="sync-help">
     Данные хранятся в файле <b>nto_data.json</b> на вашем Google Drive.<br>
     1. Откройте Google Apps Script (script.google.com) → создайте проект<br>
     2. Вставьте скрипт (кнопка ниже) → Развернуть → Новое развертывание<br>
@@ -1382,7 +1386,7 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="fgrp"><label class="flbl">Дата покупки</label><input type="date" id="split-buy-date" class="finp" onchange="_splitRegen()"></div>
     <div class="fgrp" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="split-first-now" checked onchange="_splitRegen()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto"><label for="split-first-now" style="font-size:13px;color:var(--text)">Первая оплата сразу</label></div>
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 6px">График платежей — можно править</div>
+    <div class="sub-h" style="margin:8px 0 6px">График платежей — можно править</div>
     <div id="split-gen-list"></div>
     <button class="btn primary" onclick="saveSplit()" style="width:100%;margin-top:8px">Сохранить</button>
   </div>
@@ -1409,7 +1413,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.84.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.85.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1462,8 +1466,14 @@ if ('serviceWorker' in navigator) {
 
 // ─── DATA ───────────────────────────────────────────────────────────
 
-const CAT_COLORS  = ['#378add','#1d9e75','#d85a30','#ba7517','#d4537e','#639922','#534ab7','#e67e22','#185fa5','#993556','#3b6d11','#a32d2d','#0f6e56','#8e44ad','#993c1d','#7f8c8d'];
-const INCOME_TAG_COLORS = ['#185fa5','#1d9e75','#d85a30','#8e44ad','#d4537e','#ba7517','#378add','#639922'];
+// Палитра категорий (v1.85.0): 11 цветов, подобранных в OKLCH — соседние по
+// порядку различимы при дейтеранопии/протанопии (ΔE ≥ 12.7), любая пара — для
+// обычного зрения (ΔE ≥ 11.6), все проходят контраст 3:1 и на белой, и на
+// тёмной карточке. Прежние 16 содержали три тёплых оттенка с ΔE 8 между собой
+// и два, читавшихся серым. Проверка: scripts/validate_palette.js из скилла
+// dataviz, режимы light/dark. Порядок менять нельзя — он и есть гарантия.
+const CAT_COLORS  = ['#2d6ac1','#b93d42','#369dd1','#959a17','#d06793','#317f38','#9d4997','#d56f2c','#8f80d8','#945f0e','#1da687'];
+const INCOME_TAG_COLORS = ['#2d6ac1','#b93d42','#369dd1','#959a17','#d06793','#317f38','#9d4997','#d56f2c'];
 const TEMPLATE_COLORS = [
   '#185fa5','#378add','#5dade2','#2e86ab',
   '#1d9e75','#16a085','#27ae60','#639922','#3b6d11',
@@ -1485,12 +1495,12 @@ const DEFAULT_CATS = [
 ];
 const DEFAULT_LIMITS = [15000,3000, 18000,6000, 4000,5000, 3000,2000, 5000,2000, 3000,5000];
 const DEFAULT_COLORS = {
-  0:'#185fa5', 1:'#185fa5',   // Жильё
-  2:'#1d9e75', 3:'#1d9e75',   // Еда
-  4:'#d85a30', 5:'#d85a30',   // Транспорт
-  6:'#8e44ad', 7:'#8e44ad',   // Здоровье
-  8:'#d4537e', 9:'#d4537e',   // Личное
-  10:'#7f8c8d',11:'#7f8c8d'   // Разное
+  0:'#2d6ac1', 1:'#2d6ac1',   // Жильё
+  2:'#317f38', 3:'#317f38',   // Еда
+  4:'#d56f2c', 5:'#d56f2c',   // Транспорт
+  6:'#9d4997', 7:'#9d4997',   // Здоровье
+  8:'#d06793', 9:'#d06793',   // Личное
+  10:'#945f0e',11:'#945f0e'   // Разное
 };
 const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const SHORT_MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -2808,25 +2818,32 @@ function renderBudget(){
       const env = _dayEnvelopeFrom(y, m, f, daysLeft);
       // Темп — тот же, что в прогнозе: неособые / прожитых дней ВКЛЮЧАЯ сегодня.
       const dailySpent = fc ? Math.round(fc.pace) : (daysGone > 0 ? Math.round(f.varSpent / daysGone) : 0);
+      // Две ячейки (v1.85.0): слева остаток дня (та же цифра, что на «Дне»),
+      // справа прогноз месяца против лимита — ровно то число, что «Прогноз на
+      // конец месяца» в «День за днём». Порядок «слово → число» в первой ячейке
+      // держит сюита дневного конверта.
       let html = '';
       if(env){
         const envOver = env.left < 0;
-        html += '<div style="display:flex;align-items:baseline;gap:6px">' +
-          '<span>' + (envOver ? 'Перерасход сегодня' : 'Остаток на сегодня') + '</span>' +
-          '<span style="font-size:15px;font-weight:700;color:' + (envOver ? 'var(--red)' : 'var(--green)') + '">' +
-            fmtH(Math.abs(env.left)) + '</span></div>';
+        html += '<div class="bh-cell">' +
+          '<div class="bh-lbl">' + (envOver ? 'Перерасход сегодня' : 'Остаток на сегодня') + '</div>' +
+          '<div class="bh-val ' + (envOver ? 'over' : 'ok') + '">' + fmtH(Math.abs(env.left)) + '</div>' +
+          '<div class="bh-sub">из ' + fmtH(env.cap) + ' · осталось ' + daysLeft + ' дн.</div></div>';
       }
-      const sub = ['осталось ' + daysLeft + ' дн.'];
-      if(daysGone > 0) sub.push('факт ' + fmtH(dailySpent) + '/день');
       if(fc && daysGone > 0){
-        // Ровно то же число, что «Прогноз на конец месяца» в «День за днём»;
-        // «из лимита» рядом — иначе цифру не с чем сравнить.
         const projOver = fc.total > totalLimit && totalLimit > 0;
-        sub.push('<span style="color:' + (projOver ? 'var(--red)' : 'inherit') + '">прогноз ' +
-          fmtH(fc.total) + ' из ' + fmtH(totalLimit) + '</span>');
+        const diff = totalLimit - fc.total;
+        html += '<div class="bh-cell">' +
+          '<div class="bh-lbl">Прогноз на месяц</div>' +
+          '<div class="bh-val' + (projOver ? ' over' : '') + '">' + fmtH(fc.total) + '</div>' +
+          '<div class="bh-sub">из ' + fmtH(totalLimit) +
+            ' · ' + (projOver ? 'сверх на ' : 'запас ') + fmtH(Math.abs(diff)) + '</div></div>';
+      } else if(daysGone > 0){
+        html += '<div class="bh-cell"><div class="bh-lbl">Факт в день</div>' +
+          '<div class="bh-val">' + fmtH(dailySpent) + '</div>' +
+          '<div class="bh-sub">осталось ' + daysLeft + ' дн.</div></div>';
       }
-      html += '<div style="font-size:11px;color:var(--hint)">' + sub.join(' · ') + '</div>';
-      daysRow.style.display = 'flex';
+      daysRow.style.display = html ? 'flex' : 'none';
       daysRow.innerHTML = html;
       if(oblRow){
         const specList = (fc && fc.forecast) || [];
@@ -3232,6 +3249,7 @@ function renderDay(){
   renderTemplateChips();
   const list = document.getElementById('entry-list');
   list.innerHTML='';
+  list.classList.toggle('empty', !allEntries.length);
   if(!allEntries.length){
     list.innerHTML='<div class="empty-day"><div style="font-size:32px">📭</div><p>Нет расходов за этот день</p><p>Нажмите + чтобы добавить</p></div>';
     return;
@@ -3688,7 +3706,7 @@ function renderIncome(){
         <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
-      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
+      <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
@@ -3747,7 +3765,7 @@ function renderIncomeSearch(query){
         <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
-      <span style="font-size:15px;font-weight:600;color:var(--green);flex-shrink:0">+${fmtH(inc.amount)}</span>
+      <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
       <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
@@ -3906,7 +3924,7 @@ function _savingsBreakdownHtml(periodIncs, totalExp){
     const w = Math.round(s.saved/balance*100);
     return `<div style="flex:${w};background:${s.color};min-width:2px" title="${esc(s.name)}${DB.privacyMode?'':': '+fmt(s.saved)}"></div>`;
   }).join('');
-  return `<div class="ss-h" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Из чего накоплено</div>`
+  return `<div class="ss-h" style="font-size:12px;font-weight:600;margin-bottom:8px">Из чего накоплено</div>`
     +`<div class="ss-stack">${stackedBar}</div>`
     +`<div class="ss-list">`+activeSav.map(s=>
       _ssRow(s.color, s.name, Math.round(s.saved/balance*100), fmtH(s.saved), (s.saved/balance*100).toFixed(1)+'%')
@@ -4020,14 +4038,16 @@ function _renderStatsSummary(lastN){
   // Top 3-column card
   let html = `<div style="display:flex;gap:0;margin-bottom:${totalInc>0?'10px':'16px'};border:0.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden">`
     +[
-      {label:'Расходы',   val:totalExp, color:'var(--red)',                                         pct:expPct},
-      {label:'Доходы',    val:totalIncAll, color:'var(--green)',                                     pct:null},
-      {label:'Накоплено', val:balance,  color:balance>=0?'var(--blue)':'var(--red)', abs:true, pct:savePct}
+      // Расход и доход — статьи, а не состояния: чернилами текста. Цвет остаётся
+      // у «Накоплено», где знак и есть состояние (v1.85.0)
+      {label:'Расходы',   val:totalExp, color:'var(--text)',                                         pct:expPct},
+      {label:'Доходы',    val:totalIncAll, color:'var(--text)',                                     pct:null},
+      {label:'Накоплено', val:balance,  color:balance>=0?'var(--green)':'var(--red)', abs:true, pct:savePct}
     ].map((s,si)=>
       `<div style="flex:1;text-align:center;padding:10px 4px${si>0?';border-left:0.5px solid var(--border)':''}">`
       +`<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${s.label}</div>`
       +`<div style="font-size:14px;font-weight:700;color:${s.color}">${s.abs&&balance<0?'−':''}${fmtH(s.abs?Math.abs(s.val):s.val)}</div>`
-      +(s.pct!==null ? `<div style="font-size:10px;color:${s.color};opacity:0.8;margin-top:2px">${s.pct.toFixed(1)}%</div>` : '')
+      +(s.pct!==null ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${s.pct.toFixed(1)}%</div>` : '')
       +`</div>`
     ).join('')
     +`</div>`;
@@ -4066,7 +4086,7 @@ function _renderStatsSummary(lastN){
     const showGroups = hasGroups && _expViewMode === 'groups';
 
     const hdrPct = expPct !== null
-      ? ` — <span style="color:var(--red);font-weight:600">${expPct.toFixed(1)}%</span> от дохода`
+      ? ` — <span style="font-weight:600">${expPct.toFixed(1)}%</span> от дохода`
       : '';
     const toggleHtml = hasGroups
       ? `<div class="seg">`
@@ -4076,7 +4096,7 @@ function _renderStatsSummary(lastN){
       : '';
 
     let ch = `<div class="ss-h" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`
-      +`<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">`
+      +`<div style="font-size:12px;font-weight:600">`
       +`Расходы ${showGroups?'по группам':'по категориям'}${hdrPct}</div>`
       +toggleHtml+`</div>`
       +_ssCompBar(showGroups ? groupArr.map(g=>({name:g.cats[0], color:g.color, total:g.total})) : catTotals);
@@ -4096,7 +4116,7 @@ function _renderStatsSummary(lastN){
 
   // Income tags
   if(tagTotals.length){
-    cols.push(`<div class="ss-h" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Доходы по источникам</div>`
+    cols.push(`<div class="ss-h" style="font-size:12px;font-weight:600;margin-bottom:8px">Доходы по источникам</div>`
       + _ssCompBar(tagTotals.map(t=>({name:t.tag, color:t.color, total:t.total})))
       + `<div class="ss-list">`+tagTotals.map(t=>incBarRow(t.color,t.tag,t.total)).join('')+`</div>`);
   }
@@ -4196,7 +4216,10 @@ function _chartColors(){
   const cs = getComputedStyle(document.documentElement);
   const v = n => cs.getPropertyValue(n).trim();
   const rgba = (n, a) => {
-    const c = v(n); if(!c || c[0]!=='#') return `rgba(128,128,128,${a})`;
+    let c = v(n); if(!c || c[0]!=='#') return `rgba(128,128,128,${a})`;
+    // #888 → #888888: короткий hex резался по два символа и давал NaN — на тёмной
+    // теме столбцы «Дней недели» и сетка красились чёрным (v1.85.0)
+    if(c.length === 4) c = '#' + c[1]+c[1] + c[2]+c[2] + c[3]+c[3];
     const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),b=parseInt(c.slice(5,7),16);
     return `rgba(${r},${g},${b},${a})`;
   };
@@ -4257,7 +4280,7 @@ function renderSavingsCharts(){
   if(avgIncExpEl){
     if(done.length){
       const ai = Math.round(done.reduce((s,x)=>s+x.totalInc,0)/done.length);
-      avgIncExpEl.innerHTML = '⌀ в месяц: доход <b style="color:var(--green)">'+fmtH(ai)+'</b> · расход <b style="color:var(--red)">'+fmtH(ae)+'</b>';
+      avgIncExpEl.innerHTML = '⌀ в месяц: доход <b>'+fmtH(ai)+'</b> · расход <b>'+fmtH(ae)+'</b>';
       avgIncExpEl.title = avgTitle;
     } else avgIncExpEl.textContent = '';
   }
@@ -4273,7 +4296,9 @@ function renderSavingsCharts(){
           {
             label:'Доходы',
             data: lastN.map(x=>Math.round(x.totalInc)),
-            backgroundColor:_chartColors().green,
+            // Две статьи, не два состояния: синий (основной ряд приложения) и
+            // серый вместо зелёного/красного — расход не «плохо» (v1.85.0)
+            backgroundColor:_chartColors().blue,
             borderRadius:4, borderSkipped:false, order:2
           },
           {
@@ -4281,7 +4306,7 @@ function renderSavingsCharts(){
             // пустое место рядом с доходом читалось как «ничего не потратил»
             label:'Расходы',
             data: lastN.map(x=>x.tracked ? Math.round(x.totalExp) : (ae || null)),
-            backgroundColor: lastN.map(x=>x.tracked ? _chartColors().red : _hatchPattern(_chartColors().red)),
+            backgroundColor: lastN.map(x=>x.tracked ? _chartColors().mutedMid : _hatchPattern(_chartColors().mutedMid)),
             borderRadius:4, borderSkipped:false, order:1
           }
         ]
@@ -4292,7 +4317,7 @@ function renderSavingsCharts(){
           // Цвета легенды — явно: у «Расходов» цвет массивом, и первый месяц со штриховкой красил бы квадратик
           legend:{display:true, labels:{color:_chartColors().muted, font:{size:10}, boxWidth:10, padding:8,
             generateLabels: ch => Chart.defaults.plugins.legend.labels.generateLabels(ch)
-              .map(l => ({...l, fillStyle: l.datasetIndex === 1 ? _chartColors().red : _chartColors().green}))}},
+              .map(l => ({...l, fillStyle: l.datasetIndex === 1 ? _chartColors().mutedMid : _chartColors().blue}))}},
           tooltip:{callbacks:{label:v=>v.datasetIndex === 1 && !lastN[v.dataIndex].tracked
             ? 'Расходы не вносились'
             : v.dataset.label+': '+(DB.privacyMode?'—':fmt(v.raw))}}
@@ -5423,7 +5448,7 @@ function renderStats(){
 
   if(charts.grouped) charts.grouped._voidTracked = expN.map(x=>x.tracked);
   _renderStackLegend(charts.grouped || null, 'grouped-legend', 'grouped-avg', 'var(--red)');
-  _renderStackAvg(charts.grouped || null, 'grouped-avg', 'var(--red)');
+  _renderStackAvg(charts.grouped || null, 'grouped-avg', 'var(--text)');
 
   // ── 7. Доходы по тегам ────────────────────────────────────────────
   if(charts.incomeTags){ charts.incomeTags.destroy(); charts.incomeTags = null; }
@@ -5488,7 +5513,7 @@ function renderStats(){
       });
     }
     _renderStackLegend(charts.incomeTags || null, 'income-tags-legend', 'income-tags-avg', 'var(--green)');
-    _renderStackAvg(charts.incomeTags || null, 'income-tags-avg', 'var(--green)');
+    _renderStackAvg(charts.incomeTags || null, 'income-tags-avg', 'var(--text)');
     if(!active.length){
       if(emptyEl) emptyEl.style.display = 'block';
       if(canvasEl) canvasEl.style.display = 'none';
@@ -6551,7 +6576,7 @@ function _depYieldHtml(y, mode, o){
       <thead><tr style="border-bottom:0.5px solid var(--border)">${head}</tr></thead>
       <tbody>${body}</tbody>${foot ? `<tfoot><tr style="border-top:1px solid var(--border);font-weight:700">${foot}</tr></tfoot>` : ''}</table></div>`;
   const rowAttr = (cls, d) => `class="${cls}" onclick="openDepositModal('${esc(d.id)}')" style="border-top:0.5px solid var(--border);cursor:pointer"`;
-  const section = t => `<tr><td colspan="4" style="padding:12px 0 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${t}</td></tr>`;
+  const section = t => `<tr><td colspan="4" class="sub-h" style="padding:12px 0 4px;display:table-cell">${t}</td></tr>`;
 
   if(mode === 'rec'){
     const got = y.rows.filter(r=>r.received > 0);
@@ -7592,7 +7617,7 @@ function renderBankManager(){
   const creditRows = (DB.creditBanks||[]).map((b,i) => bankRow(b,'credit',i)).join('');
   document.getElementById('bank-manager-list').innerHTML =
     (normalRows||'<div style="padding:8px 0;font-size:13px;color:var(--muted)">Нет счетов</div>') +
-    '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:10px 0 4px">Кредитные (вычитаются)</div>' +
+    '<div class="sub-h" style="padding:10px 0 4px">Кредитные (вычитаются)</div>' +
     (creditRows||'<div style="padding:4px 0;font-size:13px;color:var(--muted)">Нет кредитных</div>');
 }
 
@@ -7982,6 +8007,7 @@ function deleteAssetDateConfirm(){
 // ─── RENDER: SETTINGS ───────────────────────────────────────────────
 function renderSettings(){
   const hasSyncUrl = !!DB.syncUrl;
+  document.body.classList.toggle('sync-ready', hasSyncUrl);
   document.getElementById('sync-url-display').textContent =
     hasSyncUrl ? DB.syncUrl.slice(0,40)+'…' : 'Не задан';
   ['sync-test-row','sync-pull-row','sync-push-row','sync-last-row','sync-interval-row','sync-script-row','sync-merge-row','sync-backups-row'].forEach(id=>{
@@ -8085,7 +8111,7 @@ function renderCatManager(){
   if(grpEl){
     if(groups.length){
       grpEl.style.display = 'block';
-      grpEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:12px 0 6px">Группы</div>'
+      grpEl.innerHTML = '<div class="sub-h" style="padding:12px 0 6px">Группы</div>'
         + groups.map(g =>
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">'
             + '<input type="color" value="'+g.color+'" onchange="setGroupColor(\''+g.color+'\',this.value)"'
@@ -10431,9 +10457,9 @@ function renderReport(){
 
   let h = `
   <div id="rep-summary">
-    <div class="s-card"><div class="s-lbl">Доходы</div><div class="s-val rep-val" style="color:var(--green)">${fmtH(totInc)}</div></div>
-    <div class="s-card"><div class="s-lbl">Расходы</div><div class="s-val rep-val" style="color:var(--red)">${fmtH(totExp)}</div></div>
-    <div class="s-card"><div class="s-lbl">Накоплено</div><div class="s-val rep-val" style="color:${totSaved>=0?'var(--green)':'var(--red)'}">${fmtH(totSaved)}</div></div>
+    <div class="s-card"><div class="s-lbl">Доходы</div><div class="s-val rep-val">${fmtH(totInc)}</div></div>
+    <div class="s-card"><div class="s-lbl">Расходы</div><div class="s-val rep-val">${fmtH(totExp)}</div></div>
+    <div class="s-card"><div class="s-lbl">Накоплено</div><div class="s-val rep-val"${totSaved<0?' style="color:var(--red)"':''}>${fmtH(totSaved)}</div></div>
     <div class="s-card"><div class="s-lbl">Норма накопления</div><div class="s-val rep-val">${totRate!==null?totRate+'%':'—'}</div></div>
     ${expNote}
   </div>`;
@@ -10536,9 +10562,9 @@ function renderReport(){
       const rt = ivT>0 ? Math.round(sv/ivT*100) : null;
       monthRows.push(`<tr style="border-top:0.5px solid var(--border)">
         <td style="padding:8px 4px 8px 0;font-size:12px;color:var(--muted)">${y2}</td>
-        <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--green)">${fmtH(iv)}</td>
-        <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--red)">${fmtH(ev)}</td>
-        <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600;color:${sv>=0?'var(--green)':'var(--red)'}">${fmtH(sv)}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right">${fmtH(iv)}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right">${fmtH(ev)}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600${sv<0?';color:var(--red)':''}">${fmtH(sv)}</td>
         <td style="padding:8px 0 8px 4px;font-size:12px;text-align:right;color:var(--muted)">${rt!==null?rt+'%':'—'}</td>
       </tr>`);
     });
@@ -10549,7 +10575,7 @@ function renderReport(){
     if(!tracked(yr+'-'+String(mm+1).padStart(2,'0'))){
       monthRows.push(`<tr style="border-top:0.5px solid var(--border)" title="Расходы за этот месяц не вносились">
         <td style="padding:8px 4px 8px 0;font-size:12px;color:var(--muted)">${SHORT_MONTHS[mm]}</td>
-        <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--green)">${fmtH(mInc[mm])}</td>
+        <td style="padding:8px 4px;font-size:12px;text-align:right">${fmtH(mInc[mm])}</td>
         <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--muted)">—</td>
         <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--muted)">—</td>
         <td style="padding:8px 0 8px 4px;font-size:12px;text-align:right;color:var(--muted)">—</td>
@@ -10560,9 +10586,9 @@ function renderReport(){
     const rt = mInc[mm]>0 ? Math.round(sv/mInc[mm]*100) : null;
     monthRows.push(`<tr style="border-top:0.5px solid var(--border)">
       <td style="padding:8px 4px 8px 0;font-size:12px;color:var(--muted)">${SHORT_MONTHS[mm]}</td>
-      <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--green)">${fmtH(mInc[mm])}</td>
-      <td style="padding:8px 4px;font-size:12px;text-align:right;color:var(--red)">${fmtH(mExp[mm])}</td>
-      <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600;color:${sv>=0?'var(--green)':'var(--red)'}">${fmtH(sv)}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right">${fmtH(mInc[mm])}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right">${fmtH(mExp[mm])}</td>
+      <td style="padding:8px 4px;font-size:12px;text-align:right;font-weight:600${sv<0?';color:var(--red)':''}">${fmtH(sv)}</td>
       <td style="padding:8px 0 8px 4px;font-size:12px;text-align:right;color:var(--muted)">${rt!==null?rt+'%':'—'}</td>
     </tr>`);
   }

@@ -3247,6 +3247,182 @@ suite(390, 'идеи v1.83.0 — демо', () => {
   });
 }, { demo: true });
 
+// Дизайн-правки v1.85.0: пробел в суммах, короткий hex в темах, палитра,
+// шапка «Бюджета», плоские списки, строчные заголовки, цвет статей,
+// свёрнутая инструкция синка.
+suite(390, 'дизайн v1.85.0', () => {
+  check('разделитель тысяч в моно-сумме уже половины цифры', async p => {
+    const got = await p.evaluate(() => {
+      showPage('budget', document.getElementById('nav-budget'));
+      const host = document.getElementById('sum-spent');
+      const mk = t => { const s = document.createElement('span'); s.className = 's-val'; s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; s.textContent = t; host.parentElement.appendChild(s); const w = s.getBoundingClientRect().width; s.remove(); return w; };
+      const digit = mk('11') - mk('1');
+      const sep = mk('1 1') - mk('11');
+      return { digit, sep, ws: getComputedStyle(host).wordSpacing };
+    });
+    eq(got.sep < got.digit * 0.5, true, `NBSP ${got.sep.toFixed(1)}px при цифре ${got.digit.toFixed(1)}px (word-spacing ${got.ws})`);
+  });
+
+  check('короткий hex в CSS-переменной не ломает цвета графиков', async p => {
+    const got = await p.evaluate(() => {
+      const root = document.documentElement;
+      root.style.setProperty('--muted', '#888');
+      const short = _chartColors().mutedBar;
+      root.style.removeProperty('--muted');
+      root.classList.add('dark');
+      const dark = { muted: getComputedStyle(root).getPropertyValue('--muted').trim(), bar: _chartColors().mutedBar };
+      root.classList.remove('dark');
+      return { short, dark };
+    });
+    eq(got.short, 'rgba(136,136,136,0.35)', 'парсер разворачивает #888');
+    eq(got.dark.muted.length, 7, 'в тёмной теме --muted шестизначный: ' + got.dark.muted);
+    eq(/NaN/.test(got.dark.bar), false, 'mutedBar тёмной темы: ' + got.dark.bar);
+  });
+
+  check('палитра категорий: 11 шестизначных уникальных цветов', async p => {
+    const got = await p.evaluate(() => ({
+      n: CAT_COLORS.length, uniq: new Set(CAT_COLORS).size,
+      hex: CAT_COLORS.every(c => /^#[0-9a-f]{6}$/.test(c)),
+      tagsIn: INCOME_TAG_COLORS.every(c => CAT_COLORS.includes(c)),
+      defIn: Object.values(DEFAULT_COLORS).every(c => CAT_COLORS.includes(c)),
+    }));
+    eq(got.n, 11, 'цветов'); eq(got.uniq, 11, 'уникальных'); eq(got.hex, true, 'формат');
+    eq(got.tagsIn, true, 'цвета тегов — из той же палитры');
+    eq(got.defIn, true, 'цвета по умолчанию — из той же палитры');
+  });
+
+  check('шапка «Бюджета»: две главные цифры над карточками', async p => {
+    const got = await p.evaluate(() => {
+      showPage('budget', document.getElementById('nav-budget'));
+      const row = document.getElementById('budget-days-row');
+      const cells = [...row.querySelectorAll('.bh-cell')];
+      const grid = document.querySelector('#page-budget .summary-grid');
+      return {
+        cls: row.className, n: cells.length,
+        l1: cells[0]?.querySelector('.bh-lbl')?.textContent, l2: cells[1]?.querySelector('.bh-lbl')?.textContent,
+        v1: parseFloat(getComputedStyle(cells[0].querySelector('.bh-val')).fontSize),
+        above: row.getBoundingClientRect().bottom <= grid.getBoundingClientRect().top + 1,
+      };
+    });
+    eq(got.cls.includes('bh'), true, 'класс .bh');
+    eq(got.n, 2, 'ячеек');
+    eq(/^(Остаток|Перерасход) на сегодня|^Перерасход сегодня/.test(got.l1), true, 'первая подпись: ' + got.l1);
+    eq(/^Прогноз на месяц|^Факт в день/.test(got.l2), true, 'вторая подпись: ' + got.l2);
+    eq(got.v1 >= 18, true, 'цифра крупная: ' + got.v1);
+    eq(got.above, true, 'блок стоит над тремя карточками');
+  });
+
+  check('списки — плоские строки внутри одной карточки', async p => {
+    const got = await p.evaluate(() => {
+      showPage('day', document.getElementById('nav-day'));
+      const list = document.getElementById('entry-list');
+      // В фикстуре на один день — не больше одной траты: подсыпаем две на сегодня
+      const tmp = [{ id: 'dsgA', cat: 1, amount: 100, comment: 'a' }, { id: 'dsgB', cat: 2, amount: 200, comment: 'b' }]
+        .map(e => ({ ...e, date: today(), catId: DB.catIds[e.cat], updatedAt: Date.now() }));
+      DB.expenses.push(...tmp); renderDay();
+      const rows = [...list.querySelectorAll('.entry-row')];
+      const d = { rows: rows.length, listBorder: getComputedStyle(list).borderTopStyle,
+        rowRadius: rows.map(r => getComputedStyle(r).borderTopLeftRadius), rowBorder: rows.slice(1).every(r => getComputedStyle(r).borderTopWidth !== '0px') };
+      DB.expenses = DB.expenses.filter(e => !tmp.some(t => t.id === e.id)); renderDay();
+      showPage('settings', document.getElementById('nav-settings'));
+      const sl = document.querySelector('#page-settings .settings-list');
+      d.setBorder = getComputedStyle(sl).borderTopStyle;
+      d.setRadius = getComputedStyle(sl.querySelector('.setting-row')).borderTopLeftRadius;
+      showPage('assets', document.getElementById('nav-assets'));
+      const ar = document.querySelector('#assets-list > .asset-row');
+      d.assetRadius = ar ? getComputedStyle(ar).borderTopLeftRadius : '0px';
+      return d;
+    });
+    eq(got.rows > 1, true, 'на «Дне» есть строки: ' + got.rows);
+    eq(got.listBorder, 'solid', 'рамка у контейнера списка');
+    eq(got.rowRadius.every(r => r === '0px'), true, 'строки без радиуса: ' + [...new Set(got.rowRadius)].join(','));
+    eq(got.rowBorder, true, 'между строками разделитель');
+    eq(got.setBorder, 'solid', 'рамка у блока настроек');
+    eq(got.setRadius, '0px', 'строка настроек без радиуса');
+    eq(got.assetRadius, '0px', 'строка счёта без радиуса');
+  });
+
+  check('пустой день — без рамки', async p => {
+    const got = await p.evaluate(() => {
+      showPage('day', document.getElementById('nav-day'));
+      const list = document.getElementById('entry-list');
+      for (let i = 0; i < 40 && !list.classList.contains('empty'); i++) changeDay(1);
+      return { empty: list.classList.contains('empty'), border: getComputedStyle(list).borderTopStyle };
+    });
+    eq(got.empty, true, 'нашёлся пустой день');
+    eq(got.border, 'none', 'рамки нет');
+  });
+
+  check('заголовки секций строчные, цветом текста', async p => {
+    const got = await p.evaluate(() => {
+      showPage('stats', document.getElementById('nav-stats'));
+      const text = getComputedStyle(document.body).color;
+      const pick = sel => [...document.querySelectorAll(sel)].filter(e => e.offsetParent).slice(0, 3)
+        .map(e => ({ tt: getComputedStyle(e).textTransform, col: getComputedStyle(e).color === text }));
+      return { sec: pick('.sec-title'), ch: pick('.chart-title'), inl: [...document.querySelectorAll('#page-stats [style*="uppercase"]')].length };
+    });
+    eq(got.ch.length > 0 && got.ch.every(x => x.tt === 'none' && x.col), true, 'заголовки карточек: ' + JSON.stringify(got.ch));
+    eq(got.inl, 0, 'инлайновых uppercase на «Аналитике»');
+  });
+
+  check('статьи дохода/расхода не окрашены, цвет только у состояния', async p => {
+    const got = await p.evaluate(() => {
+      showPage('income', document.getElementById('nav-income'));
+      const text = getComputedStyle(document.body).color;
+      const inc = document.getElementById('income-total'), bal = document.getElementById('income-balance');
+      showPage('stats', document.getElementById('nav-stats'));
+      const sum = document.getElementById('stats-summary');
+      const cells = [...sum.querySelectorAll('div[style*="font-weight:700"]')].slice(0, 2);
+      return { incCls: inc.className, incCol: getComputedStyle(inc).color === text, balCls: bal.className,
+        statsTop: cells.map(c => getComputedStyle(c).color === text) };
+    });
+    eq(/\bok\b/.test(got.incCls), false, 'у «Доход» нет постоянного зелёного: ' + got.incCls);
+    eq(got.incCol, true, '«Доход» цветом текста');
+    eq(/\b(ok|over)\b/.test(got.balCls), true, '«Баланс» остаётся состоянием: ' + got.balCls);
+    eq(got.statsTop.length === 2 && got.statsTop.every(Boolean), true, 'Расходы/Доходы в сводке чернилами текста');
+  });
+
+  check('инструкция по Apps Script свёрнута после настройки URL', async p => {
+    const got = await p.evaluate(() => {
+      showPage('settings', document.getElementById('nav-settings'));
+      const help = document.getElementById('sync-help'), tg = document.getElementById('sync-help-toggle');
+      const vis = el => !!(el.offsetWidth || el.offsetHeight);
+      const saved = DB.syncUrl;
+      DB.syncUrl = ''; renderSettings(); help.classList.remove('open');
+      const before = { help: vis(help), tg: vis(tg) };
+      DB.syncUrl = 'https://script.google.com/macros/s/test/exec'; renderSettings();
+      const after = { help: vis(help), tg: vis(tg), ready: document.body.classList.contains('sync-ready') };
+      tg.click();
+      const opened = vis(help);
+      DB.syncUrl = ''; renderSettings(); help.classList.remove('open');
+      const reset = { help: vis(help), tg: vis(tg) };
+      DB.syncUrl = saved; renderSettings();
+      return { before, after, opened, reset };
+    });
+    eq(got.before.help && !got.before.tg, true, 'без URL: инструкция видна, переключателя нет');
+    eq(got.after.ready && !got.after.help && got.after.tg, true, 'с URL: инструкция спрятана, строка-переключатель видна');
+    eq(got.opened, true, 'тап по строке раскрывает инструкцию');
+    eq(got.reset.help && !got.reset.tg, true, 'после сброса URL всё как было');
+  });
+});
+
+suite(1600, 'дизайн v1.85.0 — десктоп', () => {
+  check('вкладки ввода — колонка до 760 px, аналитика во всю ширину', async p => {
+    const got = await p.evaluate(() => {
+      const w = id => { showPage(id, document.getElementById('nav-' + id)); return Math.round(document.getElementById('page-' + id).getBoundingClientRect().width); };
+      const r = { day: w('day'), budget: w('budget'), income: w('income'), settings: w('settings'), stats: w('stats'), assets: w('assets') };
+      showPage('budget', document.getElementById('nav-budget'));
+      const fab = document.getElementById('fab').getBoundingClientRect();
+      const page = document.getElementById('page-budget').getBoundingClientRect();
+      r.fabRight = Math.round(fab.right); r.pageRight = Math.round(page.right);
+      return r;
+    });
+    for (const k of ['day', 'budget', 'income', 'settings']) eq(got[k] <= 760, true, `#page-${k}: ${got[k]}px`);
+    eq(got.stats > 1000 && got.assets > 1000, true, `аналитика ${got.stats}, активы ${got.assets}`);
+    eq(got.fabRight <= got.pageRight && got.fabRight >= got.pageRight - 80, true, `FAB у края колонки: ${got.fabRight} при крае ${got.pageRight}`);
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

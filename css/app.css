@@ -26,9 +26,9 @@
   --font-num:'JetBrains Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
 }
 @media(prefers-color-scheme:dark){
-  html:not(.light):not(.dark):not(.sepia):not(.sakura):not(.ocean):not(.forest):not(.gruvbox):not(.dracula):not(.solarized):not(.neon){--bg:#141412;--card:#1e1e1c;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);--text:#f0efe8;--muted:#888;--hint:#7a7a74;--red-bg:rgba(192,57,43,.15);--green-bg:rgba(45,122,79,.15);--amber-bg:rgba(176,125,26,.15);--blue-bg:rgba(26,95,168,.15);}
+  html:not(.light):not(.dark):not(.sepia):not(.sakura):not(.ocean):not(.forest):not(.gruvbox):not(.dracula):not(.solarized):not(.neon){--bg:#141412;--card:#1e1e1c;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);--text:#f0efe8;--muted:#8a8a84;--hint:#7a7a74;--red-bg:rgba(192,57,43,.15);--green-bg:rgba(45,122,79,.15);--amber-bg:rgba(176,125,26,.15);--blue-bg:rgba(26,95,168,.15);}
 }
-html.dark{--bg:#141412;--card:#1e1e1c;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);--text:#f0efe8;--muted:#888;--hint:#7a7a74;--red-bg:rgba(192,57,43,.15);--green-bg:rgba(45,122,79,.15);--amber-bg:rgba(176,125,26,.15);--blue-bg:rgba(26,95,168,.15);}
+html.dark{--bg:#141412;--card:#1e1e1c;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);--text:#f0efe8;--muted:#8a8a84;--hint:#7a7a74;--red-bg:rgba(192,57,43,.15);--green-bg:rgba(45,122,79,.15);--amber-bg:rgba(176,125,26,.15);--blue-bg:rgba(26,95,168,.15);}
 html.gruvbox{--bg:#282828;--card:#32302f;--border:rgba(235,219,178,.1);--border2:rgba(235,219,178,.2);--text:#ebdbb2;--muted:#928374;--hint:#7c6f64;--red:#fb4934;--red-bg:rgba(251,73,52,.15);--red-light:rgba(251,73,52,.15);--green:#b8bb26;--green-bg:rgba(184,187,38,.1);--amber:#fabd2f;--amber-bg:rgba(250,189,47,.1);--blue:#83a598;--blue-bg:rgba(131,165,152,.1);--accent:#d79921;}
 html.sakura{--bg:#fdf2f5;--card:#fff8fa;--border:rgba(210,120,150,.15);--border2:rgba(210,120,150,.3);--text:#2d1f23;--muted:#b08090;--hint:#b7899a;--red:#d44070;--red-bg:rgba(212,64,112,.1);--red-light:rgba(212,64,112,.15);--green:#5a9e72;--green-bg:rgba(90,158,114,.1);--amber:#c07820;--amber-bg:rgba(192,120,32,.1);--blue:#7060b0;--blue-bg:rgba(112,96,176,.1);--accent:#e0607a;}
 html.dracula{--bg:#282a36;--card:#313442;--border:rgba(248,248,242,.08);--border2:rgba(248,248,242,.18);--text:#f8f8f2;--muted:#6272a4;--hint:#6a6f8c;--red:#ff5555;--red-bg:rgba(255,85,85,.15);--red-light:rgba(255,85,85,.15);--green:#50fa7b;--green-bg:rgba(80,250,123,.1);--amber:#f1fa8c;--amber-bg:rgba(241,250,140,.1);--blue:#8be9fd;--blue-bg:rgba(139,233,253,.1);--accent:#bd93f9;}
@@ -87,17 +87,40 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 .s-val.over{color:var(--red)}
 .s-val.ok{color:var(--green)}
 
+/* Шапка «Бюджета» (v1.85.0): две главные цифры — остаток дня и прогноз месяца —
+   крупно, в одной карточке с разделителем, как пара итогов на «Дне». Раньше они
+   стояли 12-пиксельной строкой через точки под тремя одинаковыми карточками. */
+.bh{margin:12px 16px 0;background:var(--card);border:0.5px solid var(--border);border-radius:var(--r);display:flex}
+.bh-cell{flex:1;min-width:0;padding:10px 12px}
+.bh-cell+.bh-cell{border-left:0.5px solid var(--border)}
+.bh-lbl{font-size:11px;color:var(--muted)}
+.bh-val{font-size:20px;font-weight:700;line-height:1.2;margin-top:1px;white-space:nowrap}
+.bh-val.ok{color:var(--green)}
+.bh-val.over{color:var(--red)}
+.bh-sub{font-size:11px;color:var(--hint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#budget-days-row.bh{padding:0}
+
 /* Денежные значения: моноширинные табличные цифры, чтобы колонки сумм
    вставали знак под знак. Отрицательный трекинг компенсирует ширину моно. */
-.money,.s-val,.cat-spent,.total-val,.day-total,.day-env-val{
+.money,.s-val,.cat-spent,.total-val,.day-total,.day-env-val,
+.km-total,.km-amt,.km-sub b,.km-date{
   font-family:var(--font-num);
   font-variant-numeric:tabular-nums;
   letter-spacing:-.02em;
+  /* Разделитель тысяч у fmt — NBSP (U+00A0), а в моно он шириной с цифру:
+     «1 616 330₽» читалось как три числа. word-spacing по CSS Text 3 действует
+     и на NBSP, поэтому ужимаем именно его, не трогая ширину цифр. */
+  word-spacing:-.38em;
 }
 
 /* SECTIONS */
 .sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:4px 16px 6px}
-.sec-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+/* Заголовки секций и карточек — строчные, цветом текста (v1.85.0). Капс с
+   трекингом в кириллице шире и тяжелее латинского, а на «Аналитике» таких
+   заголовков десяток на экран; .sub-h — тот же стиль для заголовков,
+   собираемых в JS. */
+.sec-title,.sub-h{font-size:13px;font-weight:600;color:var(--text);letter-spacing:0;text-transform:none}
+.sub-h{display:block;line-height:1.3}
 .sec-action{font-size:12px;color:var(--blue);cursor:pointer;padding:10px 8px;margin:-8px -8px -8px 0}
 
 /* CATEGORY LIST */
@@ -185,9 +208,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .day-env-val.ok{color:var(--green)}
 .day-env-val.over{color:var(--red)}
 .day-env-sub{font-size:11px;color:var(--hint);margin-top:2px}
-.entry-list{padding:0 16px;display:flex;flex-direction:column;gap:5px}
-.entry-row{background:var(--card);border-radius:var(--r);padding:10px 14px;border:0.5px solid var(--border);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s}
+/* Списки записей — плоские строки с разделителями внутри ОДНОЙ карточки
+   (v1.85.0). Раньше каждая трата, счёт и строка настроек были отдельной
+   карточкой с рамкой и радиусом 12: день с дюжиной трат — дюжина рамок с
+   зазором 5 px, вложенные траты под категорией — карточки ни в чём.
+   Карточка остаётся объектам: группе категорий, графику, сводке. */
+.entry-list{margin:0 16px;background:var(--card);border-radius:var(--r);border:0.5px solid var(--border);overflow:hidden;display:flex;flex-direction:column}
+.entry-list.empty{background:none;border:none}
+.entry-row{padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s}
+.entry-row+.entry-row{border-top:0.5px solid var(--border)}
 .entry-row:active{background:var(--bg)}
+/* Поиск по тратам живёт внутри .chart-card: вторая рамка внутри первой не нужна */
+.chart-card .entry-list{border:none;border-radius:0;background:none}
 .entry-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .entry-info{flex:1;min-width:0}
 .entry-cat{font-size:13px;font-weight:500}
@@ -218,7 +250,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .spec-seg>button.on{background:rgba(128,128,128,0.18);color:var(--text);font-weight:600}
 .spec-seg>button+button{border-left:1px solid var(--border)}
 .entry-special{opacity:.55}
-.entry-special-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 4px 2px;font-size:12px;color:var(--muted);font-weight:600}
+.entry-special-hdr{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:12px;color:var(--muted);font-weight:600;background:var(--bg);border-top:0.5px solid var(--border)}
+.entry-special-hdr+.entry-row{border-top:none}
 .spec-badge{font-size:10px;color:var(--muted);margin-left:5px;font-weight:400}
 .kind-note{font-size:11px;color:var(--muted);line-height:1.4;margin-top:6px}
 /* «Обязательные и разовые» (v1.79.4): чипы категорий, месяц — блок на фоне
@@ -241,21 +274,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .km{background:var(--bg);border-radius:var(--r);padding:12px 12px 4px;margin-bottom:10px}
 .km-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .km-name{font-size:14px;font-weight:600}
-.km-total{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700}
+.km-total{font-size:14px;font-weight:700}
 .km-strip{display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;margin:8px 0 2px}
 .km-strip i{display:block;min-width:3px}
 .ks-one{background:repeating-linear-gradient(135deg,var(--muted) 0 2px,transparent 2px 5px)}
 .ks-swatch{display:inline-block;width:10px;height:8px;border-radius:2px;margin-right:6px;vertical-align:0}
 .km-sub{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);padding:12px 0 3px}
-.km-sub b{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:600;color:var(--text)}
+.km-sub b{font-weight:600;color:var(--text)}
 .km-row{display:flex;align-items:center;gap:8px;min-height:30px;padding:3px 0;font-size:13px;min-width:0}
 .km-sub+.km-row{border-top:none}
 .km-row+.km-row{border-top:0.5px solid var(--border)}
 .km-row .kc-dot{margin:0 4px 0 2px}
-.km-date{font-family:var(--font-num);font-size:11px;color:var(--muted);width:36px;flex-shrink:0}
+.km-date{font-size:11px;color:var(--muted);width:36px;flex-shrink:0}
 .km-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .km-lbl small{display:block;font-size:11px;color:var(--hint);overflow:hidden;text-overflow:ellipsis}
-.km-amt{font-family:var(--font-num);font-variant-numeric:tabular-nums;flex-shrink:0}
+.km-amt{flex-shrink:0}
 .km-mark{flex-shrink:0;width:80px;padding:5px 0;border-radius:13px;font-family:inherit;font-size:11px;cursor:pointer;border:0.5px dashed var(--border2);background:none;color:var(--muted)}
 .km-mark.on{border:0.5px solid color-mix(in srgb,var(--text) 35%,transparent);background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text);font-weight:600}
 .kind-chip:focus-visible,.km-mark:focus-visible{outline:2px solid var(--text);outline-offset:2px}
@@ -267,7 +300,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .chart-box.h180{height:180px}
 .chart-box.h160{height:160px}
 .chart-card{background:var(--card);border-radius:var(--r);padding:14px;border:0.5px solid var(--border)}
-.chart-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.chart-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
 
 /* Своя легенда стэк-графиков («Расходы по группам», «Доходы по тегам»).
    Встроенная легенда Chart.js рисуется внутри канваса и даёт тап-зону высотой
@@ -285,6 +318,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 
 /* ASSETS */
 .asset-row{background:var(--card);border-radius:var(--r);padding:10px 14px;border:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+/* Внутри .settings-list (счета на «Накоплениях») — плоская строка, см. .entry-list */
+.settings-list>.asset-row{border:none;border-radius:0;background:none}
+.settings-list>.asset-row+.asset-row{border-top:0.5px solid var(--border)}
 .asset-name{font-size:14px;font-weight:500}
 .asset-amount{font-size:15px;font-weight:600;color:var(--blue)}
 .total-bar{padding:12px 16px 4px;display:flex;justify-content:space-between;align-items:baseline}
@@ -292,8 +328,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .total-val{font-size:24px;font-weight:700;letter-spacing:-0.6px}
 
 /* SETTINGS */
-.settings-list{padding:0 16px;display:flex;flex-direction:column;gap:5px}
+.settings-list{margin:0 16px;background:var(--card);border-radius:var(--r);border:0.5px solid var(--border);overflow:hidden;display:flex;flex-direction:column}
+.settings-list:empty,.settings-list.empty{background:none;border:none}
 .setting-row{background:var(--card);border-radius:var(--r);padding:12px 14px;border:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .12s}
+.settings-list>.setting-row{border:none;border-radius:0;background:none}
+.settings-list>.setting-row+.setting-row{border-top:0.5px solid var(--border)}
 .setting-row:active{background:var(--bg)}
 .setting-label{font-size:14px;font-weight:500}
 .setting-value{font-size:13px;color:var(--muted);max-width:160px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -317,6 +356,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 /* MISC */
 .spacer{height:12px}
 .info-box{background:var(--blue-bg);border:0.5px solid rgba(26,95,168,.2);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;color:var(--blue);line-height:1.5;margin:0 16px 12px}
+/* Инструкция по Apps Script после настройки URL свёрнута в одну строку (v1.85.0) */
+#sync-help-toggle{display:none;margin:0 16px 8px;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 0}
+body.sync-ready #sync-help-toggle{display:block}
+body.sync-ready #sync-help:not(.open){display:none}
 .info-box code{background:rgba(26,95,168,.12);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px}
 .sync-widget{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:20px;border:0.5px solid var(--border);background:var(--card);cursor:pointer;transition:background .12s;flex-shrink:0}
 .sync-widget:active{background:var(--bg)}
@@ -475,6 +518,13 @@ body.privacy-mode .prv *{color:transparent!important}
   /* СТРАНИЦЫ */
   .page{grid-area:main; min-width:0}
   .page.slide-l,.page.slide-r{animation:fadeIn .18s ease}
+  /* Вкладки ввода — колонка до 760 px, прижата к сайдбару (v1.85.0). На 1600 px
+     строка траты растягивалась во всю ширину: название слева, сумма в полутора
+     тысячах пикселей справа, полоска прогресса 1300 px. Аналитика, Активы и
+     Отчёт остаются в две колонки — там ширина работает на графики. */
+  #page-day,#page-budget,#page-income,#page-settings{max-width:760px}
+  /* FAB — у правого края колонки, а не экрана */
+  .fab{right:auto; left:calc(64px + 760px - 66px)}
 
   /* ОВЕРЛЕИ: три десктопных амплуа вместо нижней шторки.
      Содержимое модалок не меняется — только позиционирование. */
@@ -569,6 +619,7 @@ body.privacy-mode .prv *{color:transparent!important}
   .nav-lbl{display:inline}
   /* Сайдбар шире — левый край затемнения едет вместе с ним */
   .overlay[data-dt="insp"]{left:208px}
+  .fab{left:calc(208px + 760px - 66px)}
 }
 
 @media (min-width:1440px){
