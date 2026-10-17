@@ -90,19 +90,38 @@ body{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:max(130px,cal
 /* Шапка «Бюджета» (v1.85.0): две главные цифры — остаток дня и прогноз месяца —
    крупно, в одной карточке с разделителем, как пара итогов на «Дне». Раньше они
    стояли 12-пиксельной строкой через точки под тремя одинаковыми карточками. */
-.bh{margin:12px 16px 0;background:var(--card);border:0.5px solid var(--border);border-radius:var(--r);display:flex}
+.bh{margin:12px 16px 0;background:var(--card);border:0.5px solid var(--border);border-radius:var(--r);display:flex;flex-wrap:wrap}
 .bh-cell{flex:1;min-width:0;padding:10px 12px}
 .bh-cell+.bh-cell{border-left:0.5px solid var(--border)}
-.bh-lbl{font-size:11px;color:var(--muted)}
-.bh-val{font-size:20px;font-weight:700;line-height:1.2;margin-top:1px;white-space:nowrap}
-.bh-val.ok{color:var(--green)}
-.bh-val.over{color:var(--red)}
-.bh-sub{font-size:11px;color:var(--hint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bh-lbl,.day-env-lbl{font-size:11px;color:var(--muted)}
+.bh-val,.day-env-val{font-size:20px;font-weight:700;line-height:1.2;margin-top:1px;white-space:nowrap}
+.bh-val.ok,.day-env-val.ok{color:var(--green)}
+.bh-val.over,.day-env-val.over{color:var(--red)}
+.bh-sub,.day-env-sub{font-size:11px;color:var(--hint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #budget-days-row.bh{padding:0}
+/* Третья ячейка героя «Бюджета» — обязательные (v1.86.0). До 600 px это полоса
+   под двумя цифрами (три суммы по 20 px в 390 px не помещаются), шире — равная
+   ячейка справа. Вся ячейка — тап-зона модалки брони, как и прежняя строка. */
+.bh-obl{flex:1 1 100%;border-top:0.5px solid var(--border);display:flex;align-items:baseline;gap:8px;padding:8px 12px;cursor:pointer}
+.bh-cell+.bh-obl{border-left:none}
+.bh-obl .bh-lbl{white-space:nowrap}
+.bh-obl .bh-val{font-size:15px;margin-top:0}
+.bh-obl .bh-sub{flex:1;margin-top:0}
+.bh-chev{color:var(--muted);font-size:15px;line-height:1}
+@media (min-width:600px){
+  .bh-obl{flex:1 1 0;border-top:none;display:block;padding:10px 28px 10px 12px;position:relative}
+  .bh-cell+.bh-obl{border-left:0.5px solid var(--border)}
+  .bh-obl .bh-val{font-size:20px;margin-top:1px}
+  .bh-obl .bh-sub{margin-top:2px}
+  .bh-obl .bh-chev{position:absolute;right:12px;top:10px}
+}
+/* Знак рубля — отдельный span .cur (fmtH, v1.86.0): в моно он весом с цифру
+   и слипался с последней. Легче, меньше и приглушён — как суффикс, а не цифра. */
+.cur{font-weight:500;font-size:.82em;opacity:.7;margin-left:.06em}
 
 /* Денежные значения: моноширинные табличные цифры, чтобы колонки сумм
    вставали знак под знак. Отрицательный трекинг компенсирует ширину моно. */
-.money,.s-val,.cat-spent,.total-val,.day-total,.day-env-val,
+.money,.s-val,.cat-spent,.total-val,.day-total,.day-env-val,.bh-val,
 .km-total,.km-amt,.km-sub b,.km-date{
   font-family:var(--font-num);
   font-variant-numeric:tabular-nums;
@@ -193,21 +212,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .day-hdr{padding:16px 16px 8px;background:var(--card);border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:50}
 .date-nav{display:flex;align-items:center;gap:4px;width:100%;margin-top:8px}
 .date-label{flex:1;text-align:center;font-size:15px;font-weight:600}
-.day-total{text-align:center;font-size:22px;font-weight:700;padding:12px 16px 4px;letter-spacing:-0.5px}
-.day-total-lbl{text-align:center;font-size:12px;color:var(--muted);padding-bottom:10px}
-/* Две цифры дня (v1.79.1): всего и повседневные — равный вес, разделитель посередине */
-.dt-pair{display:flex;justify-content:center;align-items:flex-start}
-.dt-cell{flex:1;min-width:0}
-.dt-cell+.dt-cell{border-left:0.5px solid var(--border)}
-.dt-cell .day-total-lbl{font-family:var(--font-text);font-weight:400;letter-spacing:0;padding:2px 0 6px}
-/* Дневной конверт (v1.60.0): «Остаток на сегодня» под итогом дня. Плашкой, а не
-   очередной строкой текста — иначе тонет между итогом дня и чипами шаблонов. */
-.day-env{margin:0 16px 12px;padding:8px 12px;background:var(--card);border:0.5px solid var(--border);border-radius:var(--r);text-align:center}
-.day-env-lbl{font-size:11px;color:var(--muted)}
-.day-env-val{font-size:19px;font-weight:700;line-height:1.2;margin-top:1px}
-.day-env-val.ok{color:var(--green)}
-.day-env-val.over{color:var(--red)}
-.day-env-sub{font-size:11px;color:var(--hint);margin-top:2px}
+/* Шапка дня (v1.86.0) — тот же герой .bh, что в «Бюджете»: слева расходы дня,
+   справа конверт «Остаток на сегодня» (v1.60.0). До этого сумма дня стояла
+   крупно по центру и ещё раз внутри плашки конверта («потрачено 14 420₽»).
+   Стили ячеек — общие .bh-lbl/.bh-val/.bh-sub, здесь только отступ карточки. */
+#day-hero{margin:12px 16px}
 /* Списки записей — плоские строки с разделителями внутри ОДНОЙ карточки
    (v1.85.0). Раньше каждая трата, счёт и строка настроек были отдельной
    карточкой с рамкой и радиусом 12: день с дюжиной трат — дюжина рамок с
@@ -226,6 +235,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .entry-note{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry-amount{font-size:15px;font-weight:600;flex-shrink:0}
 .entry-del{padding:12px 12px;margin:-8px -4px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;flex-shrink:0}
+/* Вклады (v1.86.0) — такая же карточка со строками, как остальные списки;
+   действия строки — текстовые ссылки, а не пилюли под каждым вкладом. */
+.dep-list{margin:0 16px 8px;background:var(--card);border:0.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.dep-list.empty{background:none;border:none}
+.dep-row{padding:12px 14px;cursor:pointer;transition:background .12s}
+.dep-row+.dep-row{border-top:0.5px solid var(--border)}
+.dep-row:active{background:var(--bg)}
+.dep-actions{display:flex;gap:16px;margin-top:6px;font-size:12px}
+.dep-actions>button{background:none;border:none;padding:4px 0;color:var(--blue);font:inherit;font-size:12px;cursor:pointer}
 .empty-day{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
 .empty-day p{margin-top:8px;font-size:13px;color:var(--hint)}
 
@@ -400,6 +418,9 @@ body.sync-ready #sync-help:not(.open){display:none}
 }
 
 .page-end{height:max(80px,calc(64px + env(safe-area-inset-bottom)))}
+/* На «Бюджете» живёт FAB (низ 96 px + 50 px высоты): без запаса он ложился на
+   суммы последних категорий. На «Дне» FAB снят (v1.86.0) — там строка ввода. */
+#page-budget .page-end{height:max(156px,calc(140px + env(safe-area-inset-bottom)))}
 
 
 /* ── Toggle switch ── */
@@ -566,19 +587,20 @@ body.privacy-mode .prv *{color:transparent!important}
   #page-stats > .spacer,
   #page-stats > .page-end,
   #cw-summary,
-  #cw-daycompare,
-  #cw-search{grid-column:1 / -1}
-  /* Высоты холстов переехали из инлайна в классы именно ради этой строки:
-     на широкой карточке мобильные 190 px выглядят приплюснуто. */
-  #page-stats .chart-box{height:300px}
-  #page-stats #cw-daycompare .chart-box{height:260px}
-  #page-assets .chart-box{height:240px}
-  #page-calc .chart-box{height:280px}
+  #cw-daycompare{grid-column:1 / -1}
+  /* Поиск с v1.86.0 — обычная полуширинная карточка: так сетка складывается в
+     пары дни недели|подушка, поиск|структура, группы|теги, и «Доходы по
+     тегам» не висят одни на полуширине внизу. */
+  /* Высота холста на десктопе — от ширины (v1.86.0): фиксированные 260–300 px
+     на карточке в 800–960 px давали ленту с почти плоской линией. 2.4:1 с
+     потолком 360. overflow:hidden обязателен — без него aspect-ratio-бокс не
+     ужимается ниже содержимого, и после сужения окна холст не уменьшается. */
+  #page-stats .chart-box,#page-assets .chart-box,#page-calc .chart-box{height:auto;aspect-ratio:2.4;min-height:200px;max-height:360px;overflow:hidden}
 
   /* АКТИВЫ: слева то, что правят, справа то, на что смотрят.
-     Обёртки #assets-charts / #assets-lists идут в разметке в прежнем порядке
-     (сначала графики), поэтому на мобиле страница не изменилась ни на пиксель;
-     колонки им назначает грид, а он порядку DOM не подчиняется.
+     С v1.86.0 в разметке первыми идут #assets-lists (на телефоне счета, которые
+     правят, стояли после трёх графиков и истории — четыре экрана прокрутки);
+     колонки назначает грид, а он порядку DOM не подчиняется.
      Ряды заданы явно: при автоматическом размещении курсор не возвращается
      назад, и вторая колонка уехала бы на строку ниже первой. */
   #page-assets.active{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
@@ -658,6 +680,17 @@ body.privacy-mode .prv *{color:transparent!important}
 .ss-stack{margin-bottom:10px}
 .ss-cols .ss-stack{margin-bottom:4px}
 .ss-comp{display:none}
+/* Сводка на телефоне (v1.86.0): по три строки в списке, остальные за «ещё N» —
+   три полных списка текста занимали почти два экрана до первого графика.
+   Строка .ss-row — display:contents, поэтому прячутся её ячейки. На десктопе
+   списки стоят колонками и раскрыты всегда. */
+.ss-toggle{grid-column:1/-1;font-size:12px;color:var(--blue);cursor:pointer;padding:2px 0 6px}
+@media (max-width:999px){
+  .ss-col:not(.open) .ss-row.ss-more>*{display:none}
+}
+@media (min-width:1000px){
+  .ss-toggle{display:none}
+}
 
 /* Десктоп: три списка сводки — три колонки рядом, у каждой своя сетка.
    Полоска-состав .ss-comp есть у всех трёх, как у «Из чего накоплено», и

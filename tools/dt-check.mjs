@@ -186,8 +186,8 @@ suite(1600, 'раскладка «Аналитики»', () => {
     const cols = (await cssOf(p, '#page-stats', 'gridTemplateColumns')).trim().split(/\s+/);
     eq(cols.length, 2, `число колонок сетки (${cols.join(' ')})`);
     const full = await rect(p, '#cw-daycompare');
-    const half = await rect(p, '#cw-pie');
-    const other = await rect(p, '#cw-grouped');
+    const half = await rect(p, '#cw-weekday');
+    const other = await rect(p, '#cw-cushion');
     if (!(full.width > half.width * 1.8))
       throw new Error(`«День за днём» не во всю ширину: ${full.width} против ${half.width}`);
     // Две половинчатые карточки обязаны стоять рядом, а не одна под другой
@@ -195,9 +195,13 @@ suite(1600, 'раскладка «Аналитики»', () => {
     if (other.x <= half.x) throw new Error('карточки не разложились по колонкам');
   });
   check('холст на широкой карточке выше мобильного', async p => {
-    const h = await p.evaluate(() =>
-      getComputedStyle(document.getElementById('chartGrouped').parentElement).height);
-    eq(h, '300px', 'высота холста на десктопе');
+    // v1.86.0: высота от ширины (2.4:1, потолок 360), а не фиксированные 300 px
+    const g = await p.evaluate(() => {
+      const r = document.getElementById('chartGrouped').parentElement.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    });
+    eq(g.h > 200 && g.h <= 360, true, `высота холста на десктопе: ${Math.round(g.h)} при ширине ${Math.round(g.w)}`);
+    eq(g.h === 360 || Math.abs(g.w / g.h - 2.4) < 0.15, true, 'пропорция 2.4:1');
   });
 });
 
@@ -619,8 +623,9 @@ const ssGeom = () => {
   const cols = [...document.querySelectorAll('#stats-summary .ss-col')];
   return {
     cols: cols.length,
-    sumRight: [...new Set([...document.querySelectorAll('#stats-summary .ss-sum')].map(x => Math.round(r(x).right)))],
-    nameLeft: [...new Set([...document.querySelectorAll('#stats-summary .ss-name')].map(x => Math.round(r(x).left)))],
+    // только видимые: строки за «ещё N» (v1.86.0) свёрнуты и меряются нулём
+    sumRight: [...new Set([...document.querySelectorAll('#stats-summary .ss-sum')].filter(x => x.offsetParent).map(x => Math.round(r(x).right)))],
+    nameLeft: [...new Set([...document.querySelectorAll('#stats-summary .ss-name')].filter(x => x.offsetParent).map(x => Math.round(r(x).left)))],
     firstRowTop: [...new Set(cols.map(c => Math.round(r(c.querySelector('.ss-name')).top)))],
     trunc: [...document.querySelectorAll('#stats-summary .ss-name')].filter(x => x.scrollWidth > x.clientWidth).map(x => x.textContent),
   };
@@ -688,12 +693,18 @@ suite(1280, 'чипы категорий поиска — переносятся
   });
 });
 
-suite(1600, 'карточка поиска на десктопе во всю ширину', () => {
-  check('#cw-search растянута на обе колонки', async p => {
+suite(1600, 'карточка поиска на десктопе в полуширине', () => {
+  // До v1.86.0 поиск шёл на обе колонки, и «Доходы по тегам» оставались одни
+  // на полуширине внизу; теперь пары: поиск|структура, группы|теги.
+  check('#cw-search стоит рядом со «Структурой»', async p => {
     await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
-    const full = await rect(p, '#cw-search');
-    const half = await rect(p, '#cw-pie');
-    if (!(full.width > half.width * 1.8)) throw new Error('поиск не во всю ширину: ' + full.width + ' против ' + half.width);
+    const search = await rect(p, '#cw-search');
+    const pie = await rect(p, '#cw-pie');
+    const grouped = await rect(p, '#cw-grouped');
+    const tags = await rect(p, '#income-tags-chart-wrap');
+    if (!(search.width < pie.width * 1.2)) throw new Error('поиск шире соседней карточки: ' + search.width + ' против ' + pie.width);
+    near(search.y, pie.y, 'поиск и структура в одном ряду', 2);
+    near(grouped.y, tags.y, 'группы и теги в одном ряду', 2);
   });
 });
 
@@ -886,11 +897,10 @@ suite(390, 'значки интерфейса — иконки, а не симв
 
   check('карандаш правки и значок аудита тоже иконки', async p => {
     const got = await p.evaluate(() => {
-      window.showPage('day', document.getElementById('nav-day'));
-      // Сегодня трат может не быть — открываем день с записью через тот же
-      // путь, что и календарь: currentDay объявлен через let и в window не живёт.
-      window.onDayCalChange(DB.expenses.find(e => !e._deleted).date);
-      const pencil = document.querySelector('#entry-list .entry-del');
+      // Карандаш из строк «Дня» снят в v1.86.0 (правка — тапом по строке);
+      // иконку правки проверяем на списке доходов.
+      window.showPage('income', document.getElementById('nav-income'));
+      const pencil = document.querySelector('#income-list button');
       window.showPage('assets', document.getElementById('nav-assets'));
       const badge = document.getElementById('assets-audit-badge');
       return {
@@ -900,7 +910,7 @@ suite(390, 'значки интерфейса — иконки, а не симв
         badgeGlyph: badge.textContent.includes('⚠'),
       };
     });
-    eq(got.pencil, true, 'карандаш в списке трат — иконка');
+    eq(got.pencil, true, 'карандаш в списке доходов — иконка');
     eq(got.pencilGlyph, false, 'символ ✎ остался в кнопке правки');
     eq(got.badge, true, 'значок аудита — иконка');
     eq(got.badgeGlyph, false, 'символ ⚠ остался в значке аудита');
@@ -949,11 +959,16 @@ suite(390, 'остаток на сегодня', () => {
     const box = document.getElementById('day-envelope');
     const nums = t => (t.replace(/[   ](?=\d)/g, '').match(/-?\d+/g) || []).map(Number);
     const sub = nums(box.querySelector('.day-env-sub').textContent);
+    // С v1.86.0 «потрачено» в конверте не печатается — та же цифра стоит в
+    // соседней ячейке героя: #day-total, а при обязательных/разовых повседневные
+    // уходят в подпись #day-total-sub.
+    const tsub = document.getElementById('day-total-sub');
+    const spent = tsub.style.display !== 'none' ? nums(tsub.textContent)[0] : nums(document.getElementById('day-total').textContent)[0];
     return {
       lbl: box.querySelector('.day-env-lbl').textContent,
       val: nums(box.querySelector('.day-env-val').textContent)[0],
       cls: box.querySelector('.day-env-val').className,
-      cap: sub[0], spent: sub[1],
+      cap: sub[0], spent,
     };
   });
   const addToday = (p, e) => p.evaluate(ex => {
@@ -1243,8 +1258,10 @@ suite(390, 'обязательные и разовые', () => {
   });
 
   check('итог дня: без отдельных трат одна цифра, с разовой — «всего» и «повседневные»', async p => {
+    // v1.86.0: обе цифры в одной ячейке героя — крупно «всего», подписью повседневные
     const g = await p.evaluate(() => {
-      const nums = el => [...el.querySelectorAll('.dt-num')].map(n => Number(n.textContent.replace(/\D/g, '')));
+      const num = el => Number(el.textContent.replace(/\D/g, ''));
+      const nums = el => [num(el), num(document.getElementById('day-total-sub'))];
       currentDay = today();
       // Чужие траты дня прячем на время проверки и возвращаем: 1-го числа под
       // фильтр попадала фикстурная e01 (dd(1)), и следующая проверка её не находила.
@@ -1253,18 +1270,18 @@ suite(390, 'обязательные и разовые', () => {
       DB.expenses.push({ id: 'dA', date: today(), cat: 1, catId: 'cat0002', amount: 1200, comment: '', updatedAt: 1 });
       renderDay();
       const el = document.getElementById('day-total');
-      const one = { pair: !!el.querySelector('.dt-pair'), lbl: document.getElementById('day-total-lbl').style.display };
+      const one = { pair: document.getElementById('day-total-sub').style.display !== 'none', lbl: document.getElementById('day-total-lbl').textContent };
       DB.expenses.push({ id: 'dB', date: today(), cat: 4, catId: 'cat0005', amount: 9000, comment: '', special: true, updatedAt: 1 });
       renderDay();
-      const two = { nums: nums(el), lbl: document.getElementById('day-total-lbl').style.display };
+      const two = { nums: nums(el), lbl: document.getElementById('day-total-lbl').textContent };
       DB.expenses = saved;
       renderDay();
       return { one, two };
     });
-    eq(g.one.pair, false, 'без отдельных трат пары нет');
-    eq(g.one.lbl, '', 'подпись «расходы за день» видна');
+    eq(g.one.pair, false, 'без отдельных трат подписи «повседневные» нет');
+    eq(g.one.lbl, 'Расходы за день', 'подпись одной цифры');
     eq(g.two.nums.join('|'), '10200|1200', 'всего | повседневные');
-    eq(g.two.lbl, 'none', 'общая подпись скрыта при паре');
+    eq(g.two.lbl, 'Всего за день', 'подпись при двух цифрах');
   });
 
   check('модалка траты: в обязательной категории свой выбор, крупная сумма даёт подсказку', async p => {
@@ -2224,7 +2241,7 @@ suite(390, 'демо-набор покрывает всё приложение',
   check('бронь особых заполнена и видна в шапке «Бюджета»', async p => {
     await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
     const txt = await p.evaluate(() => document.getElementById('budget-days-row').parentElement.textContent);
-    eq(/обязательные/.test(txt), true, 'строка обязательных на месте');
+    eq(/обязательные/i.test(txt), true, 'ячейка обязательных на месте');
     eq(await p.evaluate(() => Object.keys(DB.specPlan[monthKey(new Date().getFullYear(), new Date().getMonth())] || {}).length), 2, 'категорий в брони');
   });
 
@@ -3100,7 +3117,7 @@ suite(390, 'копейки', () => {
     eq(got.big, got.bigExp, 'округление до сотых');
     eq(got.zero, '0₽', 'без «-0»');
     eq(got.neg, got.negExp, 'отрицательная с копейками');
-    if (!/>3,30₽</.test(got.h)) throw new Error('fmtH: ' + got.h);
+    if (got.h.replace(/<[^>]+>/g, '') !== '3,30₽') throw new Error('fmtH: ' + got.h); // ₽ — свой span (v1.86.0)
     eq(got.short, '13', 'fmtShort (оси, чипы) остаётся целым');
   });
 
@@ -3305,7 +3322,7 @@ suite(390, 'дизайн v1.85.0', () => {
       };
     });
     eq(got.cls.includes('bh'), true, 'класс .bh');
-    eq(got.n, 2, 'ячеек');
+    eq(got.n >= 2, true, 'ячеек: ' + got.n); // третья — обязательные (v1.86.0), когда они есть
     eq(/^(Остаток|Перерасход) на сегодня|^Перерасход сегодня/.test(got.l1), true, 'первая подпись: ' + got.l1);
     eq(/^Прогноз на месяц|^Факт в день/.test(got.l2), true, 'вторая подпись: ' + got.l2);
     eq(got.v1 >= 18, true, 'цифра крупная: ' + got.v1);
@@ -3403,6 +3420,211 @@ suite(390, 'дизайн v1.85.0', () => {
     eq(got.after.ready && !got.after.help && got.after.tg, true, 'с URL: инструкция спрятана, строка-переключатель видна');
     eq(got.opened, true, 'тап по строке раскрывает инструкцию');
     eq(got.reset.help && !got.reset.tg, true, 'после сброса URL всё как было');
+  });
+});
+
+// Дизайн-правки v1.86.0: герой «Дня», FAB только на «Бюджете», счета раньше
+// графиков, обязательные в герое, вклады карточкой, знак ₽ отдельным span,
+// даты без ISO, оси без единиц, сводка по три строки, настройки без эмодзи,
+// очистка отдельно, тап по строке = правка.
+suite(390, 'дизайн v1.86.0', () => {
+  check('шапка «Дня» — герой из двух ячеек, сумма дня печатается один раз', async p => {
+    const got = await p.evaluate(() => {
+      showPage('day', document.getElementById('nav-day'));
+      currentDay = today(); renderDay();
+      const hero = document.getElementById('day-hero');
+      const env = document.getElementById('day-envelope');
+      const t = s => (s.match(/\d[\d  ]*₽/g) || []).map(x => x.replace(/\D/g, ''));
+      return {
+        cls: hero.className, cells: hero.querySelectorAll('.bh-cell').length,
+        envInHero: env.parentElement === hero,
+        lbl: document.getElementById('day-total-lbl').textContent,
+        total: t(document.getElementById('day-total').textContent)[0],
+        envNums: t(env.textContent),
+        hasSpent: /потрачено/.test(env.textContent),
+      };
+    });
+    eq(/\bbh\b/.test(got.cls), true, 'класс .bh');
+    eq(got.cells, 2, 'ячеек');
+    eq(got.envInHero, true, 'конверт — ячейка героя');
+    eq(got.lbl, 'Расходы за день', 'подпись суммы дня');
+    eq(got.hasSpent, false, 'в конверте нет «потрачено»');
+    eq(got.envNums.includes(got.total), false, 'сумма дня в конверте не повторяется');
+  });
+
+  check('FAB только на «Бюджете»; в «Дне» подсказка пустого дня — про строку ввода', async p => {
+    const got = await p.evaluate(() => {
+      const vis = () => document.getElementById('fab').style.display;
+      showPage('day', document.getElementById('nav-day')); const day = vis();
+      showPage('budget', document.getElementById('nav-budget')); const bud = vis();
+      showPage('day', document.getElementById('nav-day'));
+      const list = document.getElementById('entry-list');
+      for (let i = 0; i < 40 && !list.classList.contains('empty'); i++) changeDay(1);
+      const txt = list.textContent;
+      currentDay = today(); renderDay();
+      const pe = getComputedStyle(document.querySelector('#page-budget .page-end')).height;
+      return { day, bud, txt, pe: parseFloat(pe), ph: document.getElementById('qa-amount').placeholder };
+    });
+    eq(got.day, 'none', 'FAB на «Дне»');
+    eq(got.bud, 'flex', 'FAB на «Бюджете»');
+    eq(/Нажмите \+/.test(got.txt), false, 'пустой день не зовёт нажать +: ' + got.txt.trim());
+    eq(got.pe >= 150, true, 'запас под FAB внизу «Бюджета»: ' + got.pe);
+    eq(got.ph, 'Сумма', 'плейсхолдер быстрого ввода');
+  });
+
+  check('«Активы» на телефоне: счета раньше графиков', async p => {
+    const got = await p.evaluate(() => {
+      showPage('assets', document.getElementById('nav-assets'));
+      const l = document.getElementById('assets-lists').getBoundingClientRect();
+      const c = document.getElementById('assets-charts').getBoundingClientRect();
+      return { listsTop: l.top, chartsTop: c.top, order: !!(document.getElementById('assets-lists').compareDocumentPosition(document.getElementById('assets-charts')) & Node.DOCUMENT_POSITION_FOLLOWING) };
+    });
+    eq(got.order, true, 'в DOM списки идут первыми');
+    eq(got.listsTop < got.chartsTop, true, `счета (${Math.round(got.listsTop)}) выше графиков (${Math.round(got.chartsTop)})`);
+  });
+
+  check('обязательные — ячейка героя «Бюджета», тап открывает бронь', async p => {
+    const got = await p.evaluate(() => {
+      showPage('budget', document.getElementById('nav-budget'));
+      const obl = document.getElementById('budget-obl-row');
+      if (!obl) return { none: true };
+      const inHero = obl.parentElement === document.getElementById('budget-days-row');
+      const lbl = obl.querySelector('.bh-lbl')?.textContent;
+      obl.querySelector('.bh-val').click();
+      const open = !!document.getElementById('modal-spec').offsetParent || getComputedStyle(document.getElementById('modal-spec')).display !== 'none';
+      closeModal('modal-spec');
+      return { inHero, lbl, open, cls: obl.className };
+    });
+    if (got.none) throw new Error('строки обязательных нет (фикстура должна её давать)');
+    eq(got.inHero, true, 'ячейка внутри #budget-days-row');
+    eq(/bh-cell/.test(got.cls) && /bh-obl/.test(got.cls), true, 'классы: ' + got.cls);
+    eq(got.lbl, 'Обязательные', 'подпись');
+    eq(got.open, true, 'тап по сумме открывает модалку брони');
+  });
+
+  check('знак рубля — отдельный span, текст суммы не меняется', async p => {
+    const got = await p.evaluate(() => {
+      const h = fmtH(1234.5);
+      const el = document.createElement('div'); el.innerHTML = h; document.body.appendChild(el);
+      const cur = el.querySelector('.cur');
+      const r = { text: el.textContent, expected: fmt(1234.5), hasCur: !!cur, curText: cur && cur.textContent,
+        smaller: cur && parseFloat(getComputedStyle(cur).fontSize) < parseFloat(getComputedStyle(el).fontSize),
+        prvWraps: el.firstElementChild.className === 'prv' };
+      el.remove(); return r;
+    });
+    eq(got.text, got.expected, 'textContent как у fmt');
+    eq(got.hasCur && got.curText === '₽', true, '.cur со знаком');
+    eq(got.smaller, true, '₽ мельче цифр');
+    eq(got.prvWraps, true, 'внешняя обёртка по-прежнему .prv');
+  });
+
+  check('даты без ISO: «17 окт» в текущем году, с годом — в другом', async p => {
+    const got = await p.evaluate(() => {
+      const y = new Date().getFullYear();
+      return {
+        cur: fmtDate(y + '-10-05'), prev: fmtDate((y - 1) + '-02-09'), wd: fmtDate(y + '-10-05', { weekday: true }),
+        full: fmtDate(y + '-10-05', { year: true }), hdr: (showPage('day', document.getElementById('nav-day')), currentDay = today(), renderDay(), document.getElementById('day-label').textContent),
+        inc: (showPage('income', document.getElementById('nav-income')), document.getElementById('income-list').textContent),
+        hist: (showPage('assets', document.getElementById('nav-assets')), [...document.querySelectorAll('#assets-history-table td:first-child')].map(td => td.textContent)),
+      };
+    });
+    eq(got.cur, '5 окт', 'текущий год без года');
+    eq(got.prev, '9 фев ' + (new Date().getFullYear() - 1), 'прошлый год с годом');
+    eq(/^[А-Я][а-я], 5 окт$/.test(got.wd), true, 'с днём недели: ' + got.wd);
+    eq(got.full, '5 окт ' + new Date().getFullYear(), 'year: true');
+    eq(/^[А-Я][а-я], \d{1,2} [а-я]{3} \d{4}$/.test(got.hdr), true, 'шапка дня строчным месяцем: ' + got.hdr);
+    eq(/\d{4}-\d{2}-\d{2}/.test(got.inc), false, 'ISO в списке доходов');
+    eq(got.hist.every(t => !/\d{4}-\d{2}/.test(t)), true, 'ISO в истории активов: ' + got.hist.join(','));
+  });
+
+  check('оси графиков без единицы на каждом делении', async p => {
+    const got = await p.evaluate(() => {
+      showPage('stats', document.getElementById('nav-stats'));
+      const lab = k => charts[k] && charts[k].scales && charts[k].scales.y ? charts[k].scales.y.ticks.map(t => String(t.label)).join(' ') : '';
+      return { cushion: lab('cushion'), grouped: lab('grouped'), weekday: lab('weekday') };
+    });
+    eq(/мес/.test(got.cushion), false, 'подушка: ' + got.cushion);
+    eq(/₽/.test(got.grouped + got.weekday), false, 'деньги: ' + got.grouped + ' | ' + got.weekday);
+  });
+
+  check('сводка «Аналитики» на телефоне: по три строки и «ещё N», состояние помнится', async p => {
+    const got = await p.evaluate(() => {
+      showPage('stats', document.getElementById('nav-stats'));
+      const col = [...document.querySelectorAll('#stats-summary .ss-col')].find(c => c.querySelector('.ss-toggle'));
+      if (!col) return { none: true, rows: [...document.querySelectorAll('#stats-summary .ss-list')].map(l => l.querySelectorAll('.ss-row').length) };
+      const vis = r => [...r.children].some(ch => ch.offsetParent);
+      const rows = [...col.querySelectorAll('.ss-row')];
+      const before = rows.filter(vis).length;
+      const tg = col.querySelector('.ss-toggle'); const label = tg.textContent;
+      tg.click();
+      const after = [...col.querySelectorAll('.ss-row')].filter(vis).length;
+      renderStats();
+      const col2 = [...document.querySelectorAll('#stats-summary .ss-col')].find(c => c.querySelector('.ss-toggle'));
+      const kept = [...col2.querySelectorAll('.ss-row')].filter(vis).length;
+      col2.querySelector('.ss-toggle').click();
+      return { total: rows.length, before, after, kept, label };
+    });
+    if (got.none) throw new Error('ни в одном списке сводки нет «ещё»: строк ' + got.rows.join(','));
+    eq(got.before, 3, 'видно строк до раскрытия');
+    eq(/^ещё \d+$/.test(got.label), true, 'подпись: ' + got.label);
+    eq(got.after, got.total, 'после «ещё» видны все');
+    eq(got.kept, got.total, 'после перерисовки раскрытие сохранилось');
+  });
+
+  check('настройки: без эмодзи в строках, очистка — отдельной карточкой внизу', async p => {
+    const got = await p.evaluate(() => {
+      showPage('settings', document.getElementById('nav-settings'));
+      const labels = [...document.querySelectorAll('#page-settings .setting-label')].map(l => l.textContent.trim());
+      const emoji = labels.filter(t => /^[^\wА-Яа-яЁё]/.test(t) && !/^[A-Za-zА-Яа-яЁё]/.test(t));
+      const dz = document.getElementById('danger-zone');
+      const lists = [...document.querySelectorAll('#page-settings .settings-list')];
+      return { emoji, dzLast: lists[lists.length - 1] === dz, dzRows: dz ? dz.querySelectorAll('.setting-row').length : 0 };
+    });
+    eq(got.emoji.length, 0, 'строки с эмодзи: ' + got.emoji.join(' | '));
+    eq(got.dzLast && got.dzRows === 1, true, 'очистка — последний блок из одной строки');
+  });
+
+  check('вклады — карточка со строками, действия текстом; тап по строке «Дня» открывает правку', async p => {
+    const got = await p.evaluate(() => {
+      showPage('deposits');
+      const list = document.getElementById('deposits-list');
+      const rows = [...list.querySelectorAll('.dep-row')];
+      const r = { depCls: list.className, border: getComputedStyle(list).borderTopStyle, rows: rows.length,
+        pills: list.querySelectorAll('.btn').length, links: list.querySelectorAll('.dep-actions button').length };
+      showPage('day', document.getElementById('nav-day'));
+      onDayCalChange(DB.expenses.find(e => !e._deleted).date);
+      r.pencils = document.querySelectorAll('#entry-list use[href="#i-edit"]').length;
+      const row = [...document.querySelectorAll('#entry-list .entry-row')].find(x => x.onclick);
+      row.click();
+      r.modal = getComputedStyle(document.getElementById('modal-expense')).display !== 'none';
+      r.title = document.getElementById('expense-modal-title').textContent;
+      closeModal('modal-expense');
+      return r;
+    });
+    eq(/dep-list/.test(got.depCls), true, 'класс контейнера: ' + got.depCls);
+    eq(got.rows === 0 || got.border === 'solid', true, 'рамка у карточки вкладов');
+    eq(got.pencils, 0, 'карандашей в списке дня');
+    eq(got.modal && got.title === 'Редактировать', true, 'тап по строке открыл правку: ' + got.title);
+  });
+});
+
+suite(1600, 'дизайн v1.86.0 — десктоп', () => {
+  check('высота холста от ширины, сводка раскрыта без переключателей, поиск в полуширине', async p => {
+    const got = await p.evaluate(() => {
+      showPage('stats', document.getElementById('nav-stats'));
+      const box = document.querySelector('#cw-daycompare .chart-box').getBoundingClientRect();
+      const wk = document.querySelector('#cw-weekday .chart-box').getBoundingClientRect();
+      const search = document.getElementById('cw-search').getBoundingClientRect();
+      const page = document.getElementById('page-stats').getBoundingClientRect();
+      const toggles = [...document.querySelectorAll('#stats-summary .ss-toggle')].filter(t => t.offsetParent).length;
+      const hidden = [...document.querySelectorAll('#stats-summary .ss-row.ss-more > *')].filter(e => !e.offsetParent).length;
+      return { boxH: box.height, boxW: box.width, wkH: wk.height, wkW: wk.width, searchW: search.width, pageW: page.width, toggles, hidden };
+    });
+    eq(got.boxH >= 300 && got.boxH <= 360, true, `«День за днём» ${Math.round(got.boxW)}×${Math.round(got.boxH)}`);
+    eq(Math.abs(got.wkW / got.wkH - 2.4) < 0.15 || got.wkH === 360, true, `дни недели ${Math.round(got.wkW)}×${Math.round(got.wkH)}`);
+    eq(got.searchW < got.pageW * 0.6, true, `поиск ${Math.round(got.searchW)} из ${Math.round(got.pageW)}`);
+    eq(got.toggles, 0, 'переключателей «ещё» на десктопе');
+    eq(got.hidden, 0, 'скрытых строк сводки на десктопе');
   });
 });
 

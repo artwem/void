@@ -310,6 +310,22 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Apps Script instructions collapse once `syncUrl` is set:** `renderSettings` toggles `body.sync-ready`; `#sync-help-toggle` («Настроено ✓ · показать инструкцию») reveals `#sync-help.open`.
 - Suites `дизайн v1.85.0` (390) and `дизайн v1.85.0 — десктоп` (1600) in `tools/dt-check.mjs`.
 
+### Conventions added in v1.86.0 (design pass, second layer)
+
+- **Day header is a `.bh` hero too** (`#day-hero`): left cell `#day-total-lbl`/`#day-total`/`#day-total-sub` («Расходы за день»; with obligatory/one-off expenses the label reads «Всего за день» and the sub prints «повседневные N»), right cell `#day-envelope` (same `.day-env-*` classes, sub «из N · осталось K дн.», no «потрачено» — that number is the left cell). `.dt-pair`/`.dt-num` are gone.
+- **FAB lives on Budget only.** Day's primary input is the quick-add row; `#page-budget .page-end` reserves 156 px so the FAB never covers the last category.
+- **Assets DOM order: `#assets-lists` before `#assets-charts`.** Desktop grid places them by explicit `grid-column`, so only mobile changed.
+- **Obligatory reserve is a hero cell:** `_oblRowHtml` returns `#budget-obl-row.bh-cell.bh-obl` appended into `#budget-days-row` (band under the two numbers < 600 px, third column above). The static `#budget-obl-row` div is gone; the whole cell opens `openSpecEditor`.
+- **`fmtH` wraps the rouble sign:** `<span class="prv">12 345<span class="cur">₽</span></span>`. `textContent` is unchanged, so tests comparing text still work; anything matching `fmtH` output by HTML must strip tags. `fmt` (plain text, canvas, toasts) is untouched.
+- **`fmtDate(ds, {weekday, year})`** (db.js, next to `fmtH`) is the one date formatter for UI: «17 окт» in the current year, «17 окт 2025» otherwise, lowercase month. `_fmtDateRu` is now an alias. ISO strings stay in exports, inputs and data. Income list, asset history, bank «обновлено», audit lists and the Day header use it.
+- **Axis ticks carry no unit** — `fmtAxis(v,t)` without `'₽'`, cushion ticks are bare numbers; the card title/subtitle names the unit once. Tooltips keep units.
+- **Desktop chart height follows width:** `#page-stats/#page-assets/#page-calc .chart-box{aspect-ratio:2.4;min-height:200px;max-height:360px;overflow:hidden}` (overflow is what lets an aspect-ratio box shrink). `#cw-search` is a half-width card so Analytics pairs up: weekday|cushion, search|pie, grouped|tags.
+- **Analytics summary lists collapse on mobile:** `_ssListHtml(rows, key)` marks rows from the 4th with `.ss-more` and adds `.ss-toggle` («ещё N»/«свернуть») when ≥ 2 rows would hide; state per list in `uiGet('ssOpen_'+key)` (`sav`/`exp`/`inc`), `.ss-col.open` shows all. Desktop (≥ 1000 px) never hides. The report passes no key and gets plain lists.
+- **Deposits page list is `#deposits-list.dep-list`** with `.dep-row` rows; row actions are text buttons in `.dep-actions` (closed deposit keeps the «Перенести в банк» pill).
+- **Day rows open the editor on tap** (`row.onclick = () => editExpense(id)`), no pencil button; swipe-to-delete stays. Income rows and the Analytics search list keep their pencil.
+- Settings rows have no emoji; «Очистить все данные» sits alone in `#danger-zone` at the bottom. Quick-add placeholder is «Сумма».
+- Suites `дизайн v1.86.0` (390) and `дизайн v1.86.0 — десктоп` (1600).
+
 ### UI State Patterns
 
 **UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**

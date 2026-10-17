@@ -30,7 +30,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.85.0">
+<link rel="stylesheet" href="css/app.css?v=1.86.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -95,7 +95,6 @@ if ('serviceWorker' in navigator) {
     <div class="s-card"><div class="s-lbl">Лимит</div><div class="s-val" id="sum-limit">0₽</div></div>
     <div class="s-card"><div class="s-lbl">Остаток</div><div class="s-val" id="sum-left">0₽</div></div>
   </div>
-  <div id="budget-obl-row" style="display:none;padding:0 16px 8px;font-size:11px;color:var(--hint);gap:10px;flex-wrap:wrap"></div>
   <div id="budget-progress-bar" style="display:none;padding:0 16px 10px"></div>
   <div class="sec-hdr">
     <span class="sec-title">Категории</span>
@@ -120,14 +119,22 @@ if ('serviceWorker' in navigator) {
       <button class="mn-btn" onclick="changeDay(1)">›</button>
     </div>
   </div>
-  <div class="day-total" id="day-total">0 ₽</div>
-  <div class="day-total-lbl" id="day-total-lbl">расходы за день</div>
-  <div class="day-env" id="day-envelope" style="display:none"></div>
+  <!-- Шапка дня (v1.86.0): одна карточка-герой, как в «Бюджете» — слева расходы
+       дня, справа конверт «Остаток на сегодня». Раньше сумма дня печаталась дважды:
+       крупно по центру и ещё раз в плашке конверта («потрачено 14 420₽»). -->
+  <div class="bh" id="day-hero">
+    <div class="bh-cell">
+      <div class="bh-lbl" id="day-total-lbl">Расходы за день</div>
+      <div class="bh-val day-total" id="day-total">0₽</div>
+      <div class="bh-sub" id="day-total-sub" style="display:none"></div>
+    </div>
+    <div class="bh-cell" id="day-envelope" style="display:none"></div>
+  </div>
   <div id="template-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 10px"></div>
   <!-- Быстрый ввод: категория+сумма+✓ одной строкой; комментарий подъезжает при фокусе -->
   <div style="display:flex;gap:8px;padding:0 16px 6px;align-items:center">
     <select id="qa-cat" style="flex:1;min-width:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-family:inherit"></select>
-    <input id="qa-amount" type="text" inputmode="decimal" placeholder="0 ₽" style="width:110px;flex-shrink:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-weight:600;text-align:right;font-family:inherit" oninput="formatMoneyInput(this)" onfocus="document.getElementById('qa-comment-row').style.display='block'"/>
+    <input id="qa-amount" type="text" inputmode="decimal" placeholder="Сумма" style="width:110px;flex-shrink:0;padding:9px 10px;border-radius:var(--r-sm);border:0.5px solid var(--border2);background:var(--card);color:var(--text);font-size:16px;font-weight:600;text-align:right;font-family:inherit" oninput="formatMoneyInput(this)" onfocus="document.getElementById('qa-comment-row').style.display='block'"/>
     <button onclick="quickAddSave(this)" aria-label="Добавить расход" style="width:44px;height:44px;flex-shrink:0;border:none;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:20px;cursor:pointer;font-family:inherit"><svg class="ico"><use href="#i-check"/></svg></button>
   </div>
   <div id="qa-comment-row" style="display:none;padding:0 16px 8px">
@@ -311,6 +318,28 @@ if ('serviceWorker' in navigator) {
   <div class="total-bar"><span class="total-lbl">Всего активов<span id="total-date" style="font-weight:400;color:var(--muted)"></span></span><span class="total-val" id="total-val">0 ₽</span></div>
   <div id="total-with-deps" style="display:none;text-align:right;font-size:12px;color:var(--muted);padding:0 16px;margin:-2px 0 10px">счета <span id="total-banks-val"></span><span id="total-deps-wrap"> · вклады <span id="total-deps-val"></span></span><span id="total-inv-wrap"> · инвест <span id="total-inv-val"></span></span></div>
   <div id="total-fx" style="display:none;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--muted);padding:0 16px;margin:-4px 0 10px"><span id="total-fx-txt"></span><span id="total-fx-seg" class="seg" style="flex-shrink:0"><button type="button" id="fxc-RUB" onclick="setAssetsFxCur('RUB')">₽</button><button type="button" id="fxc-USD" onclick="setAssetsFxCur('USD')">$</button><button type="button" id="fxc-EUR" onclick="setAssetsFxCur('EUR')">€</button><button type="button" id="fxc-CNY" onclick="setAssetsFxCur('CNY')">¥</button></span></div>
+  <div id="assets-lists">
+  <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
+  <div class="settings-list" id="assets-list"></div>
+  <div class="sec-hdr" id="credits-sec-hdr" style="margin-top:8px"><span class="sec-title">Кредиты</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openGraceModal()">+ Грейс</span><span class="sec-action" onclick="openSplitModal()">+ Сплит</span></span></div>
+  <div id="credits-list" style="padding:0 16px 8px;display:flex;flex-direction:column;gap:5px"></div>
+  <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('deposits')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
+    </button>
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('investments')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M3 18L8 12l3 3 7-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Мои инвестиции<span id="invest-btn-count" style="color:var(--muted);font-weight:400"></span>
+    </button>
+  </div>
+  <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
+    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('calc')">
+      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      Прогноз накоплений
+    </button>
+  </div>
+  </div>
   <div id="assets-charts">
   <div class="chart-wrap">
     <div class="chart-card">
@@ -357,28 +386,6 @@ if ('serviceWorker' in navigator) {
   <div id="assets-history-wrap" style="display:none;padding:0 16px 8px">
     <div class="sub-h" style="padding:8px 0 6px">История</div>
     <table id="assets-history-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
-  </div>
-  </div>
-  <div id="assets-lists">
-  <div class="sec-hdr"><span class="sec-title">Текущие счета</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openAssetSnapshot()">+ Внести</span><span class="sec-action" onclick="openBankManager()">Управлять</span></span></div>
-  <div class="settings-list" id="assets-list"></div>
-  <div class="sec-hdr" id="credits-sec-hdr" style="margin-top:8px"><span class="sec-title">Кредиты</span><span style="display:flex;gap:14px"><span class="sec-action" onclick="openGraceModal()">+ Грейс</span><span class="sec-action" onclick="openSplitModal()">+ Сплит</span></span></div>
-  <div id="credits-list" style="padding:0 16px 8px;display:flex;flex-direction:column;gap:5px"></div>
-  <div style="padding:8px 16px 0;display:flex;flex-direction:column;gap:8px">
-    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('deposits')">
-      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h16" stroke="currentColor" stroke-width="1.5"/><path d="M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Мои вклады<span id="deposits-btn-count" style="color:var(--muted);font-weight:400"></span>
-    </button>
-    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('investments')">
-      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M3 18L8 12l3 3 7-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Мои инвестиции<span id="invest-btn-count" style="color:var(--muted);font-weight:400"></span>
-    </button>
-  </div>
-  <div style="padding:4px 16px 0;display:flex;flex-direction:column;gap:8px">
-    <button class="btn" style="flex:none;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-width:1px" onclick="showPage('calc')">
-      <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M2 17L7 11l4 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      Прогноз накоплений
-    </button>
   </div>
   </div>
   <div class="page-end"></div>
@@ -486,7 +493,7 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="total-bar"><span class="total-lbl">На вкладах сейчас</span><span class="total-val" id="deposits-total-now">0 ₽</span></div>
   <div class="sec-hdr"><span class="sec-title">Открытые вклады</span><span class="sec-action" onclick="openDepositModal()">+ Добавить</span></div>
-  <div id="deposits-list" style="padding:0 16px 8px"></div>
+  <div id="deposits-list" class="dep-list"></div>
   <div class="chart-wrap" id="deposits-forecast-wrap" style="display:none">
     <div class="chart-card">
       <div class="chart-title">Сколько будет к дате</div>
@@ -580,16 +587,16 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="settings-list">
     <div class="setting-row" onclick="copyAppsScript()">
-      <span class="setting-label">📋 Скопировать Apps Script</span>
+      <span class="setting-label">Скопировать Apps Script</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" onclick="openSyncSettings()">
-      <span class="setting-label">🔗 URL веб-приложения</span>
+      <span class="setting-label">URL веб-приложения</span>
       <span class="setting-value" id="sync-url-display">Не задан</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-test-row" onclick="testSync()" style="display:none">
-      <span class="setting-label">⚡ Проверить подключение</span>
+      <span class="setting-label">Проверить подключение</span>
       <span class="setting-value" id="sync-test-result"></span>
     </div>
     <div class="setting-row" id="sync-last-row" style="display:none;cursor:default">
@@ -606,7 +613,7 @@ if ('serviceWorker' in navigator) {
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-backups-row" onclick="openDriveBackups()" style="display:none">
-      <span class="setting-label">🗂 Копии на Drive</span>
+      <span class="setting-label">Копии на Drive</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-interval-row" style="display:none;cursor:default">
@@ -619,11 +626,11 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div class="setting-row" id="sync-pull-row" onclick="pullFromSheets()" style="display:none">
-      <span class="setting-label">🔄 Синхронизировать сейчас</span>
+      <span class="setting-label">Синхронизировать сейчас</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" id="sync-push-row" onclick="pushToSheets()" style="display:none">
-      <span class="setting-label">⬆️ Выгрузить принудительно</span>
+      <span class="setting-label">Выгрузить принудительно</span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -635,7 +642,7 @@ if ('serviceWorker' in navigator) {
       <select id="theme-picker" onchange="setTheme(this.value)" style="border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:500;-webkit-appearance:none;appearance:none;cursor:pointer;font-family:inherit;max-width:140px"></select>
     </div>
     <div class="setting-row" onclick="setPrivacyMode(!DB.privacyMode)" style="cursor:pointer">
-      <span class="setting-label">🫣 Приватный режим</span>
+      <span class="setting-label">Приватный режим</span>
       <div class="sw-track" id="privacy-toggle"><div class="sw-thumb"></div></div>
     </div>
   </div>
@@ -643,20 +650,20 @@ if ('serviceWorker' in navigator) {
   <div class="sec-hdr"><span class="sec-title">Данные</span></div>
   <div class="settings-list">
     <div class="setting-row" onclick="backupDB()">
-      <span class="setting-label">💾 Скачать резервную копию</span>
+      <span class="setting-label">Скачать резервную копию</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" onclick="document.getElementById('restore-input').click()">
-      <span class="setting-label">📂 Восстановить из файла</span>
+      <span class="setting-label">Восстановить из файла</span>
       <span class="setting-chevron">›</span>
     </div>
     <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreDB(this)">
     <div class="setting-row" onclick="exportExcel()">
-      <span class="setting-label">📥 Экспорт Excel</span>
+      <span class="setting-label">Экспорт Excel</span>
       <span class="setting-chevron">›</span>
     </div>
     <div class="setting-row" onclick="openDataAudit()">
-      <span class="setting-label">🩺 Проверка данных</span>
+      <span class="setting-label">Проверка данных</span>
       <span class="setting-chevron">›</span>
     </div>
   </div>
@@ -682,11 +689,15 @@ if ('serviceWorker' in navigator) {
   <div class="spacer"></div>
   <div class="settings-list">
     <div class="setting-row" onclick="openAbout()">
-      <span class="setting-label">ℹ О приложении</span>
+      <span class="setting-label">О приложении</span>
       <span class="setting-chevron">›</span>
     </div>
+  </div>
+  <!-- Необратимое действие — своей карточкой в самом низу, отдельно от справки (v1.86.0) -->
+  <div class="spacer"></div>
+  <div class="settings-list" id="danger-zone">
     <div class="setting-row" onclick="confirmClearData()">
-      <span class="setting-label" style="color:var(--red)">🗑 Очистить все данные</span>
+      <span class="setting-label" style="color:var(--red)">Очистить все данные</span>
     </div>
   </div>
   <div class="page-end"></div>
@@ -1413,7 +1424,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.85.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.86.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1760,7 +1771,25 @@ const ICO = {
   warn:    '<svg class="ico"><use href="#i-warn"/></svg>',
   refresh: '<svg class="ico"><use href="#i-refresh"/></svg>',
 };
-function fmtH(n){return `<span class="prv">${fmt(n)}</span>`;}
+// Знак рубля — свой span .cur (v1.86.0): в JetBrains Mono «₽» весом и шириной с
+// цифру и слипался с последней. Текст не меняется (textContent тот же), меняется
+// только начертание — легче, меньше, приглушённее.
+function fmtH(n){ const t = fmt(n); return `<span class="prv">${t.slice(0,-1)}<span class="cur">₽</span></span>`; }
+// Даты в интерфейсе (v1.86.0): «17 окт» в текущем году, «17 окт 2025» — в другом;
+// weekday → «Сб, 17 окт», year → год всегда. ISO остаётся экспорту и бэкапам.
+// T12:00:00 — иначе 'YYYY-MM-DD' парсится как UTC-полночь и на западных
+// таймзонах getDate() отдаёт предыдущий день (конвенция всего файла).
+function fmtDate(ds, opts){
+  if(!ds) return '';
+  const d = new Date(ds + 'T12:00:00');
+  if(isNaN(d)) return ds;
+  const y = d.getFullYear();
+  let t = d.getDate() + ' ' + SHORT_MONTHS[d.getMonth()].toLowerCase();
+  if((opts && opts.year) || y !== new Date().getFullYear()) t += ' ' + y;
+  if(opts && opts.weekday) t = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][d.getDay()] + ', ' + t;
+  return t;
+}
+function _fmtDateRu(ds){ return fmtDate(ds); }
 // Сумма в карточке сводки (.s-val) ужимается по шрифту, когда не влезает в
 // карточку (since v1.84.2): с копейками «223 628,37₽» шире трети экрана на
 // 390 px, а колонки сетки растягивались под текст, и правая карточка уезжала
@@ -2315,9 +2344,10 @@ function showPage(name,btn){
       pageEl.classList.add(newIdx > prevIdx ? 'slide-r' : 'slide-l');
   }
   currentPage = name;
-  // FAB на Бюджете и Дне: быстрый ввод на Дне раньше жил в деном-виджете
-  // (удалён в v1.41.0) — openAddExpense сам подставит дату выбранного дня
-  document.getElementById('fab').style.display = (name==='budget'||name==='day') ? 'flex' : 'none';
+  // FAB — только на «Бюджете» (v1.86.0). На «Дне» три способа добавить трату
+  // на одном экране (чипы, строка ввода, FAB) — лишнее, а кнопка ещё и ложилась
+  // на колонку сумм. Главный ввод «Дня» — строка «категория + сумма + ✓».
+  document.getElementById('fab').style.display = (name==='budget') ? 'flex' : 'none';
   document.getElementById('fab').textContent = '+';
   if(name==='budget') renderBudget();
   if(name==='day') renderDay();
@@ -2474,13 +2504,15 @@ function _oblRowHtml(f, list){
   // «Лимиты ✎» у секции категорий, и две ссылки правки в двух сантиметрах
   // друг от друга читались как одно и то же действие. С v1.79.0 кликабельна
   // всегда: в модалке, кроме брони, вход в историю и разметку.
-  return '<div onclick="openSpecEditor()"' +
-    ' style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;cursor:pointer">' +
-    '<span>обязательные ' + fmtH(oblPaid + remain) + '</span>' +
-    '<span style="color:var(--hint)">оплачено ' + fmtH(oblPaid) +
+  // С v1.86.0 — третья ячейка героя #budget-days-row (.bh-obl), а не строка
+  // мелкого текста между героем и карточками.
+  return '<div id="budget-obl-row" class="bh-cell bh-obl" onclick="openSpecEditor()">' +
+    '<div class="bh-lbl">Обязательные</div>' +
+    '<div class="bh-val">' + fmtH(oblPaid + remain) + '</div>' +
+    '<div class="bh-sub">оплачено ' + fmtH(oblPaid) +
       (remain > 0 ? ' · ждём ' + fmtH(remain) : '') +
-      (f.oneoffSpent > 0 ? ' · разовые ' + fmtH(f.oneoffSpent) : '') + '</span>' +
-    '<span style="margin-left:auto;color:var(--muted);font-size:15px;line-height:1">›</span>' +
+      (f.oneoffSpent > 0 ? ' · разовые ' + fmtH(f.oneoffSpent) : '') + '</div>' +
+    '<span class="bh-chev">›</span>' +
     '</div>';
 }
 
@@ -2800,7 +2832,6 @@ function renderBudget(){
   // Days remaining row — current month only. Считается по переменным
   // расходам: особые вынуты в резерв (см. _budgetFree).
   const daysRow = document.getElementById('budget-days-row');
-  const oblRow  = document.getElementById('budget-obl-row');
   if(daysRow){
     const now = new Date();
     const isCurrentMonth = (y === now.getFullYear() && m === now.getMonth());
@@ -2843,18 +2874,15 @@ function renderBudget(){
           '<div class="bh-val">' + fmtH(dailySpent) + '</div>' +
           '<div class="bh-sub">осталось ' + daysLeft + ' дн.</div></div>';
       }
+      {
+        const specList = (fc && fc.forecast) || [];
+        if(f.reserve > 0 || specList.length || Object.keys(DB.catOblig || {}).length)
+          html += _oblRowHtml(f, specList);
+      }
       daysRow.style.display = html ? 'flex' : 'none';
       daysRow.innerHTML = html;
-      if(oblRow){
-        const specList = (fc && fc.forecast) || [];
-        if(f.reserve > 0 || specList.length || Object.keys(DB.catOblig || {}).length){
-          oblRow.style.display = 'block';
-          oblRow.innerHTML = _oblRowHtml(f, specList);
-        } else oblRow.style.display = 'none';
-      }
     } else {
       daysRow.style.display = 'none';
-      if(oblRow) oblRow.style.display = 'none';
     }
   }
   const progressBar = document.getElementById('budget-progress-bar');
@@ -3209,41 +3237,45 @@ function _renderDayEnvelope(){
   const env = (currentDay === today()) ? _dayEnvelope() : null;
   if(!env){ box.style.display = 'none'; return; }
   const over = env.left < 0;
+  const n = new Date();
+  const daysLeft = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate() - n.getDate() + 1;
   box.style.display = 'block';
+  // «потрачено» здесь больше не печатаем — та же цифра стоит в соседней ячейке
+  // героя; подпись совпадает с первой ячейкой шапки «Бюджета» (v1.86.0)
   box.innerHTML =
-    '<div class="day-env-lbl">' + (over ? 'Перерасход' : 'Остаток на сегодня') + '</div>' +
-    '<div class="day-env-val ' + (over ? 'over' : 'ok') + '">' + fmtH(Math.abs(env.left)) + '</div>' +
-    '<div class="day-env-sub">' + (env.cap > 0
-      ? 'из ' + fmtH(env.cap) + ' · потрачено ' + fmtH(env.spentToday)
-      : 'лимит месяца исчерпан · потрачено сегодня ' + fmtH(env.spentToday)) + '</div>';
+    '<div class="bh-lbl day-env-lbl">' + (over ? 'Перерасход' : 'Остаток на сегодня') + '</div>' +
+    '<div class="bh-val day-env-val ' + (over ? 'over' : 'ok') + '">' + fmtH(Math.abs(env.left)) + '</div>' +
+    '<div class="bh-sub day-env-sub">' + (env.cap > 0
+      ? 'из ' + fmtH(env.cap) + ' · осталось ' + daysLeft + ' дн.'
+      : 'лимит месяца исчерпан') + '</div>';
 }
 
 function renderDay(){
   renderQuickAdd();
   // Шапку обновляем всегда — иначе при активном фильтре висит итог чужого дня
-  const d = new Date(currentDay+'T12:00:00');
-  const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
   const calInp = document.getElementById('day-cal-input');
   if(calInp) calInp.value = currentDay;
-  document.getElementById('day-label').textContent =
-    weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+  document.getElementById('day-label').textContent = fmtDate(currentDay, {weekday:true, year:true});
   const allEntries = getDayExpenses(currentDay);
   const entries = allEntries.filter(e=>!_isSpec(e));
   const total = entries.reduce((s,e)=>s+e.amount,0);
   const fact = allEntries.reduce((s,e)=>s+e.amount,0);
   // v1.79.1: есть обязательные/разовые — две цифры: всё, что ушло за день, и
   // повседневные (то, что идёт в темп и в «Остаток на сегодня»). Нет — одна.
+  // С v1.86.0 обе в одной ячейке героя: крупно «всего», подписью — повседневные.
   const totEl = document.getElementById('day-total');
   const lblEl = document.getElementById('day-total-lbl');
+  const subEl = document.getElementById('day-total-sub');
   if(fact !== total){
-    totEl.innerHTML = '<div class="dt-pair">' +
-      '<div class="dt-cell"><div class="dt-num">' + fmtH(fact) + '</div><div class="day-total-lbl">всего за день</div></div>' +
-      '<div class="dt-cell"><div class="dt-num">' + fmtH(total) + '</div><div class="day-total-lbl">повседневные</div></div>' +
-      '</div>';
-    lblEl.style.display = 'none';
+    lblEl.textContent = 'Всего за день';
+    totEl.innerHTML = fmtH(fact);
+    subEl.innerHTML = 'повседневные ' + fmtH(total);
+    subEl.style.display = '';
   } else {
+    lblEl.textContent = 'Расходы за день';
     totEl.innerHTML = fmtH(total);
-    lblEl.style.display = '';
+    subEl.innerHTML = '';
+    subEl.style.display = 'none';
   }
   _renderDayEnvelope();
   renderTemplateChips();
@@ -3251,7 +3283,7 @@ function renderDay(){
   list.innerHTML='';
   list.classList.toggle('empty', !allEntries.length);
   if(!allEntries.length){
-    list.innerHTML='<div class="empty-day"><div style="font-size:32px">📭</div><p>Нет расходов за этот день</p><p>Нажмите + чтобы добавить</p></div>';
+    list.innerHTML='<div class="empty-day"><div style="font-size:32px">📭</div><p>Нет расходов за этот день</p><p>Сумма — в строке выше, или тапните шаблон</p></div>';
     return;
   }
   // Group by category
@@ -3290,8 +3322,8 @@ function renderDay(){
             <div class="entry-note">${e.comment ? esc(e.comment) : '<span style="color:var(--muted);font-style:italic">—</span>'}</div>
           </div>
           <div class="entry-amount">${fmtH(e.amount)}</div>
-          <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
         `;
+        row.onclick = () => editExpense(e.id);
         _makeSwipeable(row, ()=>deleteExpenseById(e.id));
         list.appendChild(row);
       });
@@ -3307,8 +3339,10 @@ function renderDay(){
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
-        <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
       `;
+      // Тап по строке открывает правку (v1.86.0): карандаш 16 px был
+      // единственным входом, а строка целиком ничего не делала.
+      row.onclick = () => editExpense(e.id);
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
     }
@@ -3332,8 +3366,8 @@ function renderDay(){
           ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
         </div>
         <div class="entry-amount">${fmtH(e.amount)}</div>
-        <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
       `;
+      row.onclick = () => editExpense(e.id);
       _makeSwipeable(row, ()=>deleteExpenseById(e.id));
       list.appendChild(row);
     });
@@ -3703,7 +3737,7 @@ function renderIncome(){
     row.innerHTML = `
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:500">${esc(inc.source)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
+        <div style="font-size:11px;color:var(--muted)">${fmtDate(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
@@ -3743,15 +3777,13 @@ function renderIncomeSearch(query){
   totalBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0 4px;font-size:13px';
   totalBar.innerHTML = `<span style="color:var(--muted)">Найдено: ${all.length}</span><span style="font-weight:700;color:var(--green)">+${fmtH(all.reduce((s,e)=>s+e.amount,0))}</span>`;
   list.appendChild(totalBar);
-  const weekdays = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
   let lastDate = null;
   all.forEach(inc => {
     if(inc.date !== lastDate){
       lastDate = inc.date;
-      const d = new Date(inc.date+'T12:00:00');
       const sep = document.createElement('div');
       sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600';
-      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+      sep.textContent = fmtDate(inc.date, {weekday:true});
       list.appendChild(sep);
     }
     const row = document.createElement('div');
@@ -3762,7 +3794,7 @@ function renderIncomeSearch(query){
     row.innerHTML = `
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:500">${esc(inc.source)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
+        <div style="font-size:11px;color:var(--muted)">${fmtDate(inc.date)}${inc.comment ? ' · '+esc(inc.comment) : ''}</div>
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
@@ -3900,7 +3932,28 @@ function _ssRow(color, name, barW, sumHtml, pct, sub){
 // заданном порядке списания (_incomeTagWriteoffOrder) первыми, остаток каждого =
 // вклад в накопления. Возвращает html (заголовок + stacked bar + строки) или ''.
 // Общая для сводки Аналитики и годового отчёта — periodIncs уже отфильтрованы по периоду и !_deleted.
-function _savingsBreakdownHtml(periodIncs, totalExp){
+// Список сводки с «ещё N» на телефоне (v1.86.0): строки с четвёртой получают
+// .ss-more и прячутся CSS, пока у колонки нет .open; состояние — uiGet по ключу
+// списка. Без key (годовой отчёт) — обычный список целиком.
+const SS_SHOW = 3;
+function _ssOpen(key){ return uiGet('ssOpen_' + key, '0') === '1'; }
+function _ssToggle(key, el){
+  const open = !_ssOpen(key);
+  uiSet('ssOpen_' + key, open ? '1' : '0');
+  const col = el.closest('.ss-col');
+  if(col) col.classList.toggle('open', open);
+  el.textContent = open ? 'свернуть' : 'ещё ' + el.dataset.n;
+}
+function _ssListHtml(rows, key){
+  // «ещё 1» ради одной строки не стоит тапа — сворачиваем от двух скрытых
+  if(!key || rows.length <= SS_SHOW + 1) return `<div class="ss-list">${rows.join('')}</div>`;
+  const more = rows.length - SS_SHOW;
+  const html = rows.map((r, i) => i >= SS_SHOW ? r.replace('class="ss-row"', 'class="ss-row ss-more"') : r).join('');
+  return `<div class="ss-list">${html}</div>`
+    + `<div class="ss-toggle" data-n="${more}" onclick="_ssToggle('${key}', this)">${_ssOpen(key) ? 'свернуть' : 'ещё ' + more}</div>`;
+}
+
+function _savingsBreakdownHtml(periodIncs, totalExp, ssKey){
   const totalInc = periodIncs.reduce((s,x)=>s+x.amount,0);
   const balance = totalInc - totalExp;
   if(balance <= 0 || totalInc <= 0) return '';
@@ -3926,9 +3979,9 @@ function _savingsBreakdownHtml(periodIncs, totalExp){
   }).join('');
   return `<div class="ss-h" style="font-size:12px;font-weight:600;margin-bottom:8px">Из чего накоплено</div>`
     +`<div class="ss-stack">${stackedBar}</div>`
-    +`<div class="ss-list">`+activeSav.map(s=>
+    +_ssListHtml(activeSav.map(s=>
       _ssRow(s.color, s.name, Math.round(s.saved/balance*100), fmtH(s.saved), (s.saved/balance*100).toFixed(1)+'%')
-    ).join('')+`</div>`;
+    ), ssKey);
 }
 
 // ─── THEME ──────────────────────────────────────────────────────────
@@ -4069,8 +4122,8 @@ function _renderStatsSummary(lastN){
   if(balance > 0 && totalInc > 0){
     const mkSet = new Set(lastN.filter(x=>x.tracked).map(x=>monthKey(x.y,x.m)));
     const periodIncs = (DB.incomes||[]).filter(inc=>!inc._deleted&&inc.date&&mkSet.has(inc.date.slice(0,7)));
-    const sb = _savingsBreakdownHtml(periodIncs, totalExp);
-    if(sb) cols.push(sb);
+    const sb = _savingsBreakdownHtml(periodIncs, totalExp, 'sav');
+    if(sb) cols.push({key:'sav', html:sb});
   }
 
   // Expense categories / groups toggle
@@ -4103,24 +4156,24 @@ function _renderStatsSummary(lastN){
 
     if(showGroups){
       const maxG = groupArr[0].total || 1;
-      ch += `<div class="ss-list">`+groupArr.map(g =>
+      ch += _ssListHtml(groupArr.map(g =>
         _ssRow(g.color, g.cats[0], Math.round(g.total / maxG * 100), fmtH(g.total),
           totalInc > 0 ? (g.total / totalInc * 100).toFixed(1) + '%' : '',
           g.cats.length > 1 ? g.cats.slice(1).join(' · ') : '')
-      ).join('')+`</div>`;
+      ), 'exp');
     } else {
-      ch += `<div class="ss-list">`+catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)).join('')+`</div>`;
+      ch += _ssListHtml(catTotals.slice(0,7).map(c=>expBarRow(c.color,c.name,c.total)), 'exp');
     }
-    cols.push(ch);
+    cols.push({key:'exp', html:ch});
   }
 
   // Income tags
   if(tagTotals.length){
-    cols.push(`<div class="ss-h" style="font-size:12px;font-weight:600;margin-bottom:8px">Доходы по источникам</div>`
+    cols.push({key:'inc', html:`<div class="ss-h" style="font-size:12px;font-weight:600;margin-bottom:8px">Доходы по источникам</div>`
       + _ssCompBar(tagTotals.map(t=>({name:t.tag, color:t.color, total:t.total})))
-      + `<div class="ss-list">`+tagTotals.map(t=>incBarRow(t.color,t.tag,t.total)).join('')+`</div>`);
+      + _ssListHtml(tagTotals.map(t=>incBarRow(t.color,t.tag,t.total)), 'inc')});
   }
-  if(cols.length) html += `<div class="ss-cols">`+cols.map(c=>`<div class="ss-col">${c}</div>`).join('')+`</div>`;
+  if(cols.length) html += `<div class="ss-cols">`+cols.map(c=>`<div class="ss-col${_ssOpen(c.key)?' open':''}">${c.html}</div>`).join('')+`</div>`;
 
   el.innerHTML = html;
 }
@@ -4324,7 +4377,7 @@ function renderSavingsCharts(){
         },
         scales:{
           x:{grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-          y:{grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
+          y:{grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)),font:{size:9},color:_chartColors().muted}}
         }
       }
     });
@@ -4705,12 +4758,10 @@ function renderExpenseSearch(){
   all.forEach(e => {
     if(e.date !== lastDate){
       lastDate = e.date;
-      const d = new Date(e.date+'T12:00:00');
-      const weekdays=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
       const sep = document.createElement('div');
       sep.dataset.date = e.date;
       sep.style.cssText = 'padding:6px 16px 2px;font-size:11px;color:var(--muted);font-weight:600;cursor:pointer';
-      sep.textContent = weekdays[d.getDay()]+', '+d.getDate()+' '+SHORT_MONTHS[d.getMonth()]+' '+d.getFullYear();
+      sep.textContent = fmtDate(e.date, {weekday:true});
       sep.addEventListener('click', ()=>{ currentDay=e.date; showPage('day', document.getElementById('nav-day')); });
       list.appendChild(sep);
     }
@@ -4901,7 +4952,7 @@ function _renderWeekdayChart(lastN){
         tooltip:{callbacks:{label:v=>'⌀ '+(DB.privacyMode?'—':fmt(v.raw))}} },
       scales:{
         x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
-        y:{grid:{color:cc.gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:cc.muted}}
+        y:{grid:{color:cc.gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)),font:{size:9},color:cc.muted}}
       }
     }
   });
@@ -4946,7 +4997,8 @@ function _renderCushionChart(lastN){
         tooltip:{callbacks:{label:v=>v.raw===null?'Нет данных':v.raw+' мес'}} },
       scales:{
         x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
-        y:{grid:{color:cc.gridLine}, beginAtZero:true, ticks:{callback:v=>v+' мес',font:{size:9},color:cc.muted}}
+        // единица — в подзаголовке карточки, на делениях только числа (v1.86.0)
+        y:{grid:{color:cc.gridLine}, beginAtZero:true, ticks:{callback:v=>v,font:{size:9},color:cc.muted}}
       }
     }
   });
@@ -5440,7 +5492,7 @@ function renderStats(){
         },
         scales:{
           x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-          y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
+          y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)),font:{size:9},color:_chartColors().muted}}
         }
       }
     });
@@ -5507,7 +5559,7 @@ function renderStats(){
           },
           scales:{
             x:{stacked:true, grid:{display:false}, ticks:{font:{size:10},color:_chartColors().muted}},
-            y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_chartColors().muted}}
+            y:{stacked:true, grid:{color:_chartColors().gridLine}, ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)),font:{size:9},color:_chartColors().muted}}
           }
         }
       });
@@ -5872,8 +5924,8 @@ function renderAssetsHistory(rows, showAll){
     const _date = r.date; // capture for closure
 
     const td1 = tr.insertCell();
-    td1.style.cssText = 'padding:12px 4px 12px 8px;font-size:12px;color:var(--muted)';
-    td1.textContent = r.date;
+    td1.style.cssText = 'padding:12px 4px 12px 8px;font-size:12px;color:var(--muted);white-space:nowrap';
+    td1.textContent = fmtDate(r.date);
 
     if(hasDeps || hasInv){
       const tdB = tr.insertCell();
@@ -6150,7 +6202,7 @@ function renderAssets(){
       const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(data.date+'T12:00:00'))/86400000);
       if(ageDays > 30)      freshLine = `<div style="font-size:11px;color:var(--red);margin-top:2px">${ICO.warn} ${ageDays} дн. без обновления</div>`;
       else if(ageDays > 14) freshLine = `<div style="font-size:11px;color:var(--amber);margin-top:2px">обновлено ${ageDays} дн. назад</div>`;
-      else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${data.date}</div>`;
+      else                  freshLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">обновлено ${fmtDate(data.date)}</div>`;
     } else {
       freshLine = `<div style="font-size:11px;color:var(--hint);margin-top:2px">нет данных</div>`;
     }
@@ -6296,7 +6348,7 @@ function renderAssets(){
       charts.assets=new Chart(document.getElementById('chartAssets'),{
         type:'line',
         data:{labels,datasets:[{data,borderColor:_cc.blue,backgroundColor:_cc.blueFill,fill:true,cubicInterpolationMode:'monotone',pointRadius:3,pointBackgroundColor:_cc.blue,borderWidth:2}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted}},y:{grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)+'₽'),font:{size:9},color:_cc.muted}}}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>(DB.privacyMode?'—':fmt(v.raw))}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted}},y:{grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>(DB.privacyMode?'':fmtAxis(v,t)),font:{size:9},color:_cc.muted}}}}
       });
     }
   }catch(e){ console.error('assets chart:', e); }
@@ -6867,13 +6919,6 @@ function _calcDepRate(amount, final, openDate, endDate, cap, contribs, accruals)
   return Math.round((lo+hi)/2 * 100) / 100;
 }
 
-function _fmtDateRu(ds){
-  // T12:00:00 — иначе 'YYYY-MM-DD' парсится как UTC-полночь и на западных
-  // таймзонах getDate() отдаёт предыдущий день (конвенция всего файла)
-  const d = new Date(ds + 'T12:00:00');
-  return d.getDate()+' '+SHORT_MONTHS[d.getMonth()].toLowerCase()+' '+d.getFullYear();
-}
-
 // Средние накопления в месяц: последние 6 ЗАКРЫТЫХ месяцев (текущий не
 // учитываем — по нему данные неполные), месяцы без доходов пропускаем
 function avgMonthlySavings(){
@@ -7155,8 +7200,9 @@ function renderDeposits(){
   const _tdNow = today();
   document.getElementById('deposits-total-now').innerHTML = fmtH(deps.reduce((s,d)=>s+depositValueAt(d,_tdNow),0));
   const fc = document.getElementById('deposits-forecast-wrap');
+  list.classList.toggle('empty', !deps.length);
   if(!deps.length){
-    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет вкладов — нажмите + чтобы добавить</p>';
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет вкладов — «+ Добавить» выше</p>';
     fc.style.display='none';
     return;
   }
@@ -7171,7 +7217,7 @@ function renderDeposits(){
     const closed = daysLeft <= 0;
     // эффективная годовая при ежемесячной капитализации: (1+r/12)^12 − 1
     const eff = d.capitalization!=='end' ? Math.round((Math.pow(1+(d.rate||0)/100/12,12)-1)*1000)/10 : null;
-    return `<div onclick="openDepositModal('${esc(d.id)}')" style="${idx>0?'border-top:1px solid var(--border);':''}padding:12px 0;cursor:pointer">
+    return `<div class="dep-row" onclick="openDepositModal('${esc(d.id)}')">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <span style="font-size:14px;font-weight:600">${esc(d.name)}</span>
         <span style="font-size:12px;color:var(--muted)">${d.rate}%${eff!==null?' · эфф. '+eff+'%':' год.'}</span>
@@ -7185,9 +7231,8 @@ function renderDeposits(){
         ? ICO.check+' Срок вышел '+_fmtDateRu(d.endDate)
         : 'до '+_fmtDateRu(d.endDate)+' · осталось '+daysLeft+' дн · '+(d.capitalization==='end'?'% в конце':'капитализация')}</div>
       ${closed
-        ? `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">→ Перенести в банк</button>`
-        : `<button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">+ Пополнить</button>
-           <button class="btn small" style="margin-top:6px" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">→ в калькулятор</button>`}
+        ? `<button class="btn small" style="margin-top:8px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">Перенести в банк</button>`
+        : `<div class="dep-actions"><button type="button" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">Пополнить</button><button type="button" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">В калькулятор</button></div>`}
     </div>`;
   }).join('');
   // дефолт даты прогноза — самое позднее закрытие
@@ -8812,7 +8857,7 @@ function renderDataAudit(){
       const r = latest[n], cnt = byName[n].length;
       h += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><b>${esc(n)}</b><span>${fmtH(r.amount)}</span></div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cnt} запис. · последняя ${r.date}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cnt} запис. · последняя ${fmtDate(r.date)}</div>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="ghost-target-${gi}" class="finp" style="flex:1;padding:6px;font-size:12px">${known.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('')}</select>
           <button class="btn small" onclick="auditMergeGhost(${gi})">Слить</button>
@@ -8825,7 +8870,7 @@ function renderDataAudit(){
   if(dups.length){
     h += `<div class="s-lbl" style="margin:10px 0 6px">Дубли записей (${dups.length})</div>
       <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Несколько записей одного банка на одну дату — в истории и итоге участвует одна, остальные мусор.</p>
-      ${dups.slice(0,10).map(d=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${esc(d.bank)} · ${d.date}</span><span style="color:var(--muted)">×${d.count}</span></div>`).join('')}
+      ${dups.slice(0,10).map(d=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${esc(d.bank)} · ${fmtDate(d.date)}</span><span style="color:var(--muted)">×${d.count}</span></div>`).join('')}
       ${dups.length>10?`<div style="color:var(--muted);font-size:12px">…и ещё ${dups.length-10}</div>`:''}
       <button class="btn small" style="margin-top:6px" onclick="auditFixDups()">Исправить — оставить последнюю по updatedAt</button>`;
   }
@@ -10944,7 +10989,7 @@ function calcUpdate(){
           ...(iR>0 ? [{label:'Реальные ₽',data:dataReal,borderColor:_cc.green,backgroundColor:'transparent',fill:false,cubicInterpolationMode:'monotone',pointRadius:0,borderWidth:1.5,borderDash:[2,3]}] : [])
         ]
       },
-      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>fmtAxis(v,t)+'₽',font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:v=>v.dataset.label+': '+fmtCalc(v.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:_cc.muted,maxTicksLimit:8,callback:(v,i)=>{const mo=labels[i];return mo%12===0?mo/12+'г':mo;}}},y:{min:0,grid:{color:_cc.gridLine},ticks:{callback:(v,i,t)=>fmtAxis(v,t),font:{size:9},color:_cc.muted,maxTicksLimit:6}}}}
     });
   }, 150);
 
@@ -11057,7 +11102,7 @@ function init(){
   const now=new Date();
   currentMonth={y:now.getFullYear(),m:now.getMonth()};
   currentDay=today();
-  document.getElementById('fab').style.display='flex';
+  document.getElementById('fab').style.display='none'; // стартовый таб — День, FAB там нет (v1.86.0)
   document.getElementById('fab').textContent='+';
   renderDay(); // стартовый таб — День (v1.42.0)
   checkAssetNotification();
