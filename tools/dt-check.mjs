@@ -3382,21 +3382,29 @@ suite(390, 'дизайн v1.85.0', () => {
     eq(got.inl, 0, 'инлайновых uppercase на «Аналитике»');
   });
 
-  check('статьи дохода/расхода не окрашены, цвет только у состояния', async p => {
+  // v1.86.2: доход — синим (как ряд «Доходы» на графике), расход — чернилами,
+  // зелёный/красный — только у знака («Баланс», «Накоплено»)
+  check('доход синим, расход чернилами, цвет знака только у состояния', async p => {
     const got = await p.evaluate(() => {
       showPage('income', document.getElementById('nav-income'));
       const text = getComputedStyle(document.body).color;
-      const inc = document.getElementById('income-total'), bal = document.getElementById('income-balance');
+      const probe = document.createElement('i'); probe.style.color = 'var(--blue)'; document.body.appendChild(probe);
+      const blue = getComputedStyle(probe).color; probe.remove();
+      const inc = document.getElementById('income-total'), exp = document.getElementById('income-expenses'), bal = document.getElementById('income-balance');
       showPage('stats', document.getElementById('nav-stats'));
       const sum = document.getElementById('stats-summary');
-      const cells = [...sum.querySelectorAll('div[style*="font-weight:700"]')].slice(0, 2);
-      return { incCls: inc.className, incCol: getComputedStyle(inc).color === text, balCls: bal.className,
-        statsTop: cells.map(c => getComputedStyle(c).color === text) };
+      const cells = [...sum.querySelectorAll('div[style*="font-weight:700"]')].slice(0, 2).map(c => getComputedStyle(c).color);
+      showPage('report', document.getElementById('nav-report') || document.getElementById('nav-stats'));
+      const rep = [...document.querySelectorAll('#rep-summary .rep-val')].slice(0, 2).map(c => getComputedStyle(c).color);
+      return { blue, incCls: inc.className, incCol: getComputedStyle(inc).color, expCol: getComputedStyle(exp).color, balCls: bal.className,
+        statsExp: cells[0], statsInc: cells[1], repInc: rep[0], repExp: rep[1], text };
     });
     eq(/\bok\b/.test(got.incCls), false, 'у «Доход» нет постоянного зелёного: ' + got.incCls);
-    eq(got.incCol, true, '«Доход» цветом текста');
+    eq(got.incCol, got.blue, '«Доход» на вкладке синим');
+    eq(got.expCol, got.text, '«Расходы» на вкладке чернилами');
     eq(/\b(ok|over)\b/.test(got.balCls), true, '«Баланс» остаётся состоянием: ' + got.balCls);
-    eq(got.statsTop.length === 2 && got.statsTop.every(Boolean), true, 'Расходы/Доходы в сводке чернилами текста');
+    eq(got.statsInc === got.blue && got.statsExp === got.text, true, 'сводка «Аналитики»: доход синий, расход чернилами');
+    eq(got.repInc === got.blue && got.repExp === got.text, true, 'отчёт: доход синий, расход чернилами');
   });
 
   check('инструкция по Apps Script свёрнута после настройки URL', async p => {
@@ -3472,15 +3480,15 @@ suite(390, 'дизайн v1.86.0', () => {
     eq(got.ph, 'Сумма', 'плейсхолдер быстрого ввода');
   });
 
-  check('«Активы» на телефоне: счета раньше графиков', async p => {
+  check('«Активы» на телефоне: графики раньше счетов (v1.86.2, откат порядка v1.86.0)', async p => {
     const got = await p.evaluate(() => {
       showPage('assets', document.getElementById('nav-assets'));
       const l = document.getElementById('assets-lists').getBoundingClientRect();
       const c = document.getElementById('assets-charts').getBoundingClientRect();
       return { listsTop: l.top, chartsTop: c.top, order: !!(document.getElementById('assets-lists').compareDocumentPosition(document.getElementById('assets-charts')) & Node.DOCUMENT_POSITION_FOLLOWING) };
     });
-    eq(got.order, true, 'в DOM списки идут первыми');
-    eq(got.listsTop < got.chartsTop, true, `счета (${Math.round(got.listsTop)}) выше графиков (${Math.round(got.chartsTop)})`);
+    eq(got.order, false, 'в DOM графики идут первыми');
+    eq(got.chartsTop < got.listsTop, true, `графики (${Math.round(got.chartsTop)}) выше счетов (${Math.round(got.listsTop)})`);
   });
 
   check('обязательные — ячейка героя «Бюджета», тап открывает бронь', async p => {
