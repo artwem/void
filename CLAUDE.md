@@ -331,6 +331,8 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 
 `_calcEffRate` (calc.js): term ≥ 1 year → money-weighted compound rate (XIRR); term < 1 year → the term's yield annualised by **simple** division, money-weighted (`(итог − вложено) / Σ сумма×годы`), the way banks print deposit yield. Compounding `^(1/T)` assumed the deposit is reopened all year round: 14% for 14 days read as 14.94%. Both formulas agree at T = 1. A partial last month with monthly capitalisation accrues simple interest (not yet capitalised); «Доход в год» divides by elapsed months, not by the rounded-up count. Both are fed the unrounded balance. `_depToCalc` passes `days` and the prefill switches the unit. Suite `калькулятор v1.86.3`.
 
+**Entry points (v1.86.4):** the «Калькулятор» button sits in the Assets button group next to «Мои вклады / Мои инвестиции» (it was a separate «Прогноз накоплений» button at the very bottom), and a «Калькулятор» link sits in the «Открытые вклады» header on `page-deposits`. `showPage` remembers the origin in `_calcBack` (`'deposits'` or `'assets'`); the «‹» (`#calc-back`) returns there.
+
 ### UI State Patterns
 
 **UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**

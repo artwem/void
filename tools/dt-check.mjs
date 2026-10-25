@@ -3691,6 +3691,25 @@ suite(360, 'калькулятор v1.86.3', () => {
     eq(two.eff, year.eff, '2 года без пополнений — та же годовая, не сумма за срок пополам');
   });
 
+  check('калькулятор открывается из «Активов» и со страницы вкладов, «‹» ведёт обратно', async p => {
+    const got = await p.evaluate(() => {
+      const back = () => { document.getElementById('calc-back').click(); return currentPage; };
+      showPage('deposits');
+      const depLink = [...document.querySelectorAll('#page-deposits .sec-action')].find(e => e.textContent === 'Калькулятор');
+      depLink.click();
+      const r1 = currentPage, b1 = back();
+      showPage('assets', document.getElementById('nav-assets'));
+      const asBtn = [...document.querySelectorAll('#page-assets .btn')].find(e => e.textContent.trim() === 'Калькулятор');
+      const inv = [...document.querySelectorAll('#page-assets .btn')].find(e => e.textContent.includes('Мои инвестиции'));
+      asBtn.click();
+      const r2 = currentPage, b2 = back();
+      return { r1, b1, r2, b2, sameGroup: asBtn.parentElement === inv.parentElement };
+    });
+    eq(got.r1 + '→' + got.b1, 'calc→deposits', 'со вкладов и обратно');
+    eq(got.r2 + '→' + got.b2, 'calc→assets', 'из «Активов» и обратно');
+    eq(got.sameGroup, true, 'кнопка стоит рядом с вкладами и инвестициями');
+  });
+
   check('переход со вклада ставит срок в днях, даже если до этого стояли годы', async p => {
     const got = await p.evaluate(() => {
       showPage('calc');
