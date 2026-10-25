@@ -433,19 +433,18 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="s-card" id="calc-duration-card">
-        <div class="s-lbl">Срок</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-          <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:20px;font-weight:700;background:transparent;width:52px;flex-shrink:0;letter-spacing:-0.5px;color:var(--text)" oninput="calcUpdate()"/>
-          <div style="display:flex;gap:4px" id="calc-unit-btns">
-            <button class="cu-btn active" data-val="months" onclick="setCalcUnit('months',this)">мес</button>
-            <button class="cu-btn" data-val="years" onclick="setCalcUnit('years',this)">год</button>
+      <div class="s-card" id="calc-duration-card" style="grid-column:1/-1">
+        <div class="s-lbl" style="display:flex;align-items:center;justify-content:space-between;gap:6px">Срок
+          <span style="display:flex;gap:4px" id="calc-unit-btns">
             <button class="cu-btn" data-val="days" onclick="setCalcUnit('days',this)">дней</button>
-          </div>
-          <input type="hidden" id="calc-unit" value="months"/>
+            <button class="cu-btn active" data-val="months" onclick="setCalcUnit('months',this)">мес</button>
+            <button class="cu-btn" data-val="years" onclick="setCalcUnit('years',this)">лет</button>
+          </span>
         </div>
+        <input type="hidden" id="calc-unit" value="months"/>
+        <input type="number" id="calc-duration" value="24" inputmode="numeric" min="1" style="border:none;padding:0;font-size:18px;font-weight:600;background:transparent;width:100%;color:var(--text)" oninput="calcUpdate()"/>
       </div>
-      <div class="s-card" id="calc-cap-card">
+      <div class="s-card" id="calc-cap-card" style="grid-column:1/-1">
         <div class="s-lbl">Капитализация</div>
         <select id="calc-cap" style="margin-top:4px;border:none;padding:0;font-size:16px;font-weight:500;background:transparent;width:100%;-webkit-appearance:none" onchange="calcUpdate()">
           <option value="daily">Ежедневная</option>
@@ -1424,7 +1423,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.86.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.86.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2314,7 +2313,7 @@ function initOverlays(){
 // ─── NAV / PAGES ────────────────────────────────────────────────────
 let currentPage = 'day'; // День — стартовый таб (v1.42.0): открывается чаще всего, для записи трат
 let _calcPrefill = null;
-// Deep-link в калькулятор: openInCalc({start, rate, months|target, cap})
+// Deep-link в калькулятор: openInCalc({start, rate, days|months|target, cap})
 function openInCalc(p){ _calcPrefill = p || null; showPage('calc'); }
 
 function showPage(name,btn){
@@ -2366,7 +2365,12 @@ function showPage(name,btn){
         setMoneyInput('calc-target', p.target);
       } else {
         setCalcMode('period');
-        if(p.months != null) document.getElementById('calc-duration').value = p.months;
+        const u = p.days != null ? 'days' : p.months != null ? 'months' : null;
+        if(u){
+          document.getElementById('calc-duration').value = u === 'days' ? p.days : p.months;
+          document.getElementById('calc-unit').value = u;
+          document.querySelectorAll('#calc-unit-btns .cu-btn').forEach(b => b.classList.toggle('active', b.dataset.val === u));
+        }
       }
       _renderCalcStartChips();
       setTimeout(calcUpdate, 50);
@@ -5698,7 +5702,7 @@ function _depToCalc(id){
   openInCalc({
     start: depositValueAt(d, today()),
     rate: d.rate,
-    months: Math.max(1, Math.round(days/30.4375)),
+    days,
     cap: d.capitalization === 'monthly' ? 'monthly' : 'none'
   });
 }
@@ -10775,8 +10779,6 @@ function setCalcMode(mode){
   document.getElementById('calc-mode-target').classList.toggle('active', mode==='target');
   document.getElementById('calc-target-card').style.display   = mode==='target' ? '' : 'none';
   document.getElementById('calc-duration-card').style.display = mode==='period' ? '' : 'none';
-  // в режиме «К сумме» срок скрыт — капитализация занимает весь ряд
-  document.getElementById('calc-cap-card').style.gridColumn   = mode==='target' ? '1/-1' : '';
   calcUpdate();
 }
 
@@ -10916,7 +10918,9 @@ function calcUpdate(){
     } else if(cap==='daily'){
       balance *= Math.pow(1 + r/365, 30.4375 * frac);
     } else if(cap==='monthly'){
-      balance *= Math.pow(1 + r/12, frac);
+      // неполный месяц: проценты начислены, но до капитализации не дошли —
+      // простые, как в банке (дробная степень давала чуть меньше)
+      balance *= frac < 1 ? 1 + r/12 * frac : 1 + r/12;
     } else if(cap==='yearly'){
       // проценты внутри года не капитализируются; в тело — на границе года и при закрытии
       yearAccr += body * (r / 12) * frac;
@@ -10933,12 +10937,13 @@ function calcUpdate(){
   const finalBalance  = balances[months-1] || 0;
   const finalInvested = invested[months-1]  || 0;
   const profit        = finalBalance - finalInvested;
-  const yearlyIncome  = profit * 12 / months;
+  // по фактическому сроку (14 дней ≠ целый месяц) и до округления до рубля
+  const yearlyIncome  = elapsed > 0 ? (balance - totalInvested) * 12 / elapsed : 0;
 
   // Effective annual rate — money-weighted (XIRR): каждый взнос работает
   // только со своего месяца, поэтому простая (итог/вложено)^(12/мес)
   // занижала ставку при пополнениях
-  const effRate = _calcEffRate(start, monthly, freq, months, lastFrac, finalBalance);
+  const effRate = _calcEffRate(start, monthly, freq, months, lastFrac, balance);
 
   document.getElementById('calc-total').textContent     = fmtCalc(finalBalance);
   document.getElementById('calc-invested').textContent  = fmtCalc(finalInvested);
@@ -11003,12 +11008,30 @@ function calcUpdate(){
   renderCalcTable();
 }
 
-// Money-weighted годовая ставка (XIRR): ищем x, при котором старт и каждый
-// взнос, наращенные по (1+x) за своё фактическое время, дают итоговый баланс.
-// Бисекция — потоки все положительные, FV(x) монотонно растёт.
+// Эффективная годовая ставка, взвешенная по деньгам: каждый взнос работает
+// только со своего месяца.
+// • Срок ≥ года — XIRR: x, при котором старт и взносы, наращенные по (1+x)
+//   за своё время, дают итог. Бисекция — потоки положительные, FV(x) растёт.
+// • Срок < года — доход за срок, пересчитанный на год ПРОСТЫМ делением
+//   (как банки печатают доходность вклада). Сложное x^(1/T) молча
+//   предполагало, что вклад переоткрывают каждые T лет весь год: 14% на
+//   14 дней превращались в 14,94% — капитализации, которой у короткого
+//   вклада нет. На T = 1 обе формулы совпадают.
 function _calcEffRate(start, monthly, freq, months, lastFrac, finalBalance){
   const T = (months - 1 + lastFrac) / 12;  // лет всего
   if(T <= 0 || finalBalance <= 0 || (start <= 0 && monthly <= 0)) return 0;
+  const flows = [[start, T]];  // [сумма, сколько лет работала]
+  if(monthly > 0){
+    for(let mo = 2; mo <= months; mo++){
+      if(freq === 'yearly' && (mo - 1) % 12 !== 0) continue;
+      flows.push([monthly, Math.max(0, (months - mo + lastFrac) / 12)]);
+    }
+  }
+  if(T < 1){
+    const inv = flows.reduce((s, [a]) => s + a, 0);
+    const w   = flows.reduce((s, [a, t]) => s + a * t, 0);
+    return w > 0 ? (finalBalance - inv) / w * 100 : 0;
+  }
   const fv = x => {
     let v = start * Math.pow(1 + x, T);
     if(monthly > 0){

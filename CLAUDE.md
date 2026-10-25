@@ -327,6 +327,10 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 - **Hero cells and summary cards are centred (v1.86.1):** `.bh-cell` and `.summary-grid/#rep-summary .s-card` have `text-align:center`; calc-page `.s-card`s are form fields and stay left. `.bh-sub` wraps instead of ellipsising (a cut «сверх на 5 7…» lost the number that mattered). In `.bh-obl` the sub is its own line (`order:1; flex-basis:100%`) and the chevron sits inside `.bh-val` right after the sum, in both layouts.
 - Suites `дизайн v1.86.0` (390) and `дизайн v1.86.0 — десктоп` (1600).
 
+### Calculator effective rate (v1.86.3)
+
+`_calcEffRate` (calc.js): term ≥ 1 year → money-weighted compound rate (XIRR); term < 1 year → the term's yield annualised by **simple** division, money-weighted (`(итог − вложено) / Σ сумма×годы`), the way banks print deposit yield. Compounding `^(1/T)` assumed the deposit is reopened all year round: 14% for 14 days read as 14.94%. Both formulas agree at T = 1. A partial last month with monthly capitalisation accrues simple interest (not yet capitalised); «Доход в год» divides by elapsed months, not by the rounded-up count. Both are fed the unrounded balance. `_depToCalc` passes `days` and the prefill switches the unit. Suite `калькулятор v1.86.3`.
+
 ### UI State Patterns
 
 **UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**

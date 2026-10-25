@@ -3649,6 +3649,66 @@ suite(1600, 'дизайн v1.86.0 — десктоп', () => {
   });
 });
 
+suite(360, 'калькулятор v1.86.3', () => {
+  // Задать поля калькулятора и пересчитать; вернуть печатаемые цифры
+  const calc = (p, o) => p.evaluate(o => {
+    showPage('calc');
+    setCalcMode('period');
+    setMoneyInput('calc-start', o.start); setMoneyInput('calc-monthly', o.monthly || 0);
+    document.getElementById('calc-rate').value = o.rate;
+    document.getElementById('calc-infl').value = 0;
+    document.getElementById('calc-cap').value = o.cap || 'monthly';
+    document.getElementById('calc-duration').value = o.n;
+    setCalcUnit(o.unit, document.querySelector(`#calc-unit-btns [data-val=${o.unit}]`));
+    const t = id => document.getElementById(id).textContent.replace(/\s/g, '');
+    return { eff: t('calc-eff-rate'), profit: t('calc-profit'), yearly: t('calc-yearly') };
+  }, o);
+
+  check('чипы срока помещаются в карточку на 360 px', async p => {
+    const got = await p.evaluate(() => {
+      showPage('calc');
+      const c = document.getElementById('calc-duration-card').getBoundingClientRect();
+      const b = document.getElementById('calc-unit-btns').getBoundingClientRect();
+      return { cR: c.right, bR: b.right, bL: b.left, cL: c.left, order: [...document.querySelectorAll('#calc-unit-btns .cu-btn')].map(x => x.dataset.val).join() };
+    });
+    eq(got.bR <= got.cR - 8 && got.bL >= got.cL, true, `чипы ${Math.round(got.bL)}–${Math.round(got.bR)}, карточка ${Math.round(got.cL)}–${Math.round(got.cR)}`);
+    eq(got.order, 'days,months,years', 'порядок дни → мес → лет');
+  });
+
+  check('14% на 14 дней — эффективная 14%, доход в год по фактическим дням', async p => {
+    const got = await calc(p, { start: 100000, rate: 14, n: 14, unit: 'days' });
+    eq(got.eff, '14.00%', 'короткий срок не наращивается переоткрытием');
+    // 100 000 × 14% × 14/365,25 = 536,62 → в год ровно 14 000
+    eq(got.yearly, '14000₽', 'доход в год = доход за срок × 365,25/14');
+  });
+
+  check('6 мес — простой пересчёт доходности за срок; год — сложная ставка', async p => {
+    const half = await calc(p, { start: 100000, rate: 14, n: 6, unit: 'months' });
+    eq(half.eff, (((1 + 0.14 / 12) ** 6 - 1) * 2 * 100).toFixed(2) + '%', '6 мес: (1+r/12)^6 − 1, ×2');
+    const year = await calc(p, { start: 100000, rate: 14, n: 1, unit: 'years' });
+    eq(year.eff, (((1 + 0.14 / 12) ** 12 - 1) * 100).toFixed(2) + '%', '1 год: (1+r/12)^12 − 1');
+    const two = await calc(p, { start: 100000, rate: 14, n: 2, unit: 'years' });
+    eq(two.eff, year.eff, '2 года без пополнений — та же годовая, не сумма за срок пополам');
+  });
+
+  check('переход со вклада ставит срок в днях, даже если до этого стояли годы', async p => {
+    const got = await p.evaluate(() => {
+      showPage('calc');
+      setCalcUnit('years', document.querySelector('#calc-unit-btns [data-val=years]'));
+      const end = new Date(); end.setDate(end.getDate() + 45);
+      const ds = end.toISOString().slice(0, 10);
+      DB.deposits = [{ id: 'dc1', name: 'x', amount: 50000, rate: 14, openDate: today(), endDate: ds, capitalization: 'monthly' }];
+      _depToCalc('dc1');
+      const r = { unit: document.getElementById('calc-unit').value, n: document.getElementById('calc-duration').value,
+        active: document.querySelector('#calc-unit-btns .cu-btn.active').dataset.val };
+      DB.deposits = [];
+      return r;
+    });
+    eq(got.unit + '/' + got.active, 'days/days', 'единица и подсветка');
+    eq(Math.abs(+got.n - 45) <= 1, true, `срок ${got.n} дн`);
+  });
+});
+
 suite(1600, 'дизайн v1.85.0 — десктоп', () => {
   check('вкладки ввода — колонка до 760 px, аналитика во всю ширину', async p => {
     const got = await p.evaluate(() => {
