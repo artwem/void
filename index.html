@@ -276,11 +276,17 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="chart-wrap" id="cw-grouped">
     <div class="chart-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:4px;gap:8px">
         <div class="chart-title" id="grouped-title" style="margin:0">Расходы по группам</div>
-        <div id="grouped-view-toggle" class="seg" style="flex-shrink:0">
-          <button type="button" id="gvm-cats" onclick="setGroupedViewMode('cats')">Кат.</button>
-          <button type="button" id="gvm-groups" onclick="setGroupedViewMode('groups')">Гр.</button>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:8px;min-width:0;margin-left:auto">
+          <div id="grouped-oneoff-toggle" class="seg" title="Разовые траты: показывать или убрать из столбцов, суммы и среднего">
+            <button type="button" id="gom-all" onclick="setGroupedOneoff(true)">Все</button>
+            <button type="button" id="gom-reg" onclick="setGroupedOneoff(false)">Без разовых</button>
+          </div>
+          <div id="grouped-view-toggle" class="seg" style="flex-shrink:0">
+            <button type="button" id="gvm-cats" onclick="setGroupedViewMode('cats')">Кат.</button>
+            <button type="button" id="gvm-groups" onclick="setGroupedViewMode('groups')">Гр.</button>
+          </div>
         </div>
       </div>
       <div id="grouped-avg" style="font-size:12px;color:var(--muted);margin:0 0 8px;min-height:15px"></div>
@@ -1421,7 +1427,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.86.4</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -3157,7 +3163,10 @@ function loadLimitEditor(){
     const exps = getMonthExpenses(yy,mm);
     if(!exps.length){ monthBuckets.push(null); continue; } // месяц без учёта пропускаем
     const spent = DB.categories.map(()=>0);
-    exps.forEach(e => { if(e.cat>=0 && e.cat<spent.length) spent[e.cat]+=e.amount; });
+    // Разовые в подсказку не идут (v1.87.0): лимит — про обычный месяц, а разовая
+    // покупка завышала бы его на N месяцев вперёд. Месяц с одними разовыми
+    // всё равно считается месяцем с учётом (выше проверяется весь список).
+    exps.forEach(e => { if(e.cat>=0 && e.cat<spent.length && !_isOneoff(e)) spent[e.cat]+=e.amount; });
     monthBuckets.push(spent);
   }
   const avgs = DB.categories.map((_,i)=>{
@@ -3172,7 +3181,7 @@ function loadLimitEditor(){
   const avgTotal = avgs.reduce((s,v)=>s+(v||0),0);
   const totEl = document.getElementById('limit-avg-total');
   if(totEl) totEl.innerHTML = avgTotal
-    ? '⌀ сумма: <b>'+fmtH(avgTotal)+'</b>/мес<br><span onclick="applyAllLimitAvgs()" style="color:var(--blue);cursor:pointer">подставить все</span>'
+    ? '<span title="Средние без разовых трат">⌀ сумма: <b>'+fmtH(avgTotal)+'</b>/мес</span><br><span onclick="applyAllLimitAvgs()" style="color:var(--blue);cursor:pointer">подставить все</span>'
     : '';
   const rows = document.getElementById('limit-editor-rows');
   rows.innerHTML = DB.categories.map((c,i)=>`
@@ -4248,6 +4257,11 @@ function setPieViewMode(m){ _pieViewMode=m; uiSet('pieViewMode', m); renderStats
 // «Кат. / Гр.» на стэк-графике расходов. По умолчанию группы — так график жил до v1.81.0.
 let _groupedViewMode = uiGet('groupedViewMode', 'groups') === 'cats' ? 'cats' : 'groups';
 function setGroupedViewMode(m){ _groupedViewMode=m; uiSet('groupedViewMode', m); renderStats(); }
+// «Все / Без разовых» у «Расходов по группам» (v1.87.0). Фильтрует столбцы,
+// сумму и ⌀ разом — иначе сумма не сходилась бы с нарисованным. По умолчанию
+// без разовых: карточка отвечает на «сколько уходит в обычный месяц».
+let _groupedInclOneoff = uiGet('groupedInclOneoff', '0') === '1';
+function setGroupedOneoff(v){ _groupedInclOneoff = !!v; uiSet('groupedInclOneoff', v?'1':'0'); renderStats(); }
 // '#rrggbb' → rgba(): оттенки категорий одной группы на стэк-графике
 function _hexAlpha(hex, a){
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||'');
@@ -4326,24 +4340,30 @@ function renderSavingsCharts(){
     if(m<0){m+=12;y--;}
     const exps = _statsExps(getMonthExpenses(y,m));
     const totalExp = exps.reduce((s,e)=>s+e.amount,0);
+    const oneoffExp = exps.reduce((s,e)=>s+(_isOneoff(e)?e.amount:0),0);
     const totalInc = (DB.incomes||[])
       .filter(inc=>!inc._deleted && inc.date && inc.date.startsWith(monthKey(y,m)))
       .reduce((s,inc)=>s+inc.amount,0);
-    lastN.push({label:SHORT_MONTHS[m]+(per>6?"'"+String(y).slice(2):''), totalExp, totalInc, tracked: !es || monthKey(y,m) >= es});
+    lastN.push({label:SHORT_MONTHS[m]+(per>6?"'"+String(y).slice(2):''), totalExp, oneoffExp, totalInc, tracked: !es || monthKey(y,m) >= es});
   }
 
   // Средние считаем по ЗАВЕРШЁННЫМ месяцам: текущий ещё неполный и занижал бы обе цифры.
-  // Средний расход — только по месяцам, где траты уже вносились (_expStartMk).
+  // Средний расход — только по месяцам, где траты уже вносились (_expStartMk),
+  // и без разовых (v1.87.0): среднее отвечает на «сколько уходит в обычный месяц».
+  // Столбцы графика остаются полными — это реальные деньги месяца.
   const done = lastN.length>1 ? lastN.slice(0,-1) : lastN;
   const doneT = done.filter(x=>x.tracked);
-  const ae = doneT.length ? Math.round(doneT.reduce((s,x)=>s+x.totalExp,0)/doneT.length) : 0;
+  const ae = doneT.length ? Math.round(doneT.reduce((s,x)=>s+x.totalExp-x.oneoffExp,0)/doneT.length) : 0;
+  const hasOneoff = doneT.some(x=>x.oneoffExp>0);
   const avgTitle = 'Среднее за ' + done.length + ' мес.' + (lastN.length>1 ? ', текущий месяц не в счёт' : '')
-    + (doneT.length < done.length ? '; расход — за ' + doneT.length + ' мес. с начала учёта трат' : '');
+    + (doneT.length < done.length ? '; расход — за ' + doneT.length + ' мес. с начала учёта трат' : '')
+    + '; разовые траты в средний расход не входят';
   const avgIncExpEl = document.getElementById('inc-exp-avg');
   if(avgIncExpEl){
     if(done.length){
       const ai = Math.round(done.reduce((s,x)=>s+x.totalInc,0)/done.length);
-      avgIncExpEl.innerHTML = '⌀ в месяц: доход <b>'+fmtH(ai)+'</b> · расход <b>'+fmtH(ae)+'</b>';
+      avgIncExpEl.innerHTML = '⌀ в месяц: доход <b>'+fmtH(ai)+'</b> · расход <b>'+fmtH(ae)+'</b>'
+        + (hasOneoff ? ' <span style="color:var(--hint)">без разовых</span>' : '');
       avgIncExpEl.title = avgTitle;
     } else avgIncExpEl.textContent = '';
   }
@@ -4893,12 +4913,15 @@ function _weekdayAvgs(from, to){
 const _WEEKDAY_LABELS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
 // Помесячные суммы расходов (особые входят) — знаменатель подушки
+// Расход по месяцам для подушки — БЕЗ разовых (v1.87.0): покупка ноутбука
+// не повторится и не должна укорачивать подушку на полгода. Месяц с одними
+// разовыми всё равно получает ключ (0) — он отмечает начало учёта трат.
 function _expTotalsByMonth(){
   const map = {};
   (DB.expenses||[]).forEach(e => {
     if(e._deleted || !e.date) return;
     const mk = e.date.slice(0,7);
-    map[mk] = (map[mk]||0) + e.amount;
+    map[mk] = (map[mk]||0) + (_isOneoff(e) ? 0 : e.amount);
   });
   return map;
 }
@@ -4907,7 +4930,8 @@ function _expTotalsByMonth(){
 // ÷ средний расход за последние 6 ЗАВЕРШЁННЫХ к дате месяцев. Окно скользящее
 // и фиксированное: чипы периода двигают глубину линии, но не знаменатель —
 // иначе «24 мес» разбавляли бы его образом жизни двухлетней давности.
-// Особые в расходы входят — это реальные деньги. null — нет снимков ≤ даты
+// Обязательные в расходы входят — это реальные деньги каждый месяц; разовые
+// нет (см. _expTotalsByMonth). null — нет снимков ≤ даты
 // или ни одного завершённого месяца с трат-историей.
 function _cushionAt(series, expBy, dateStr){
   let idx = -1;
@@ -4986,7 +5010,7 @@ function _renderCushionChart(lastN){
   const nowEl = document.getElementById('cushion-now');
   if(nowEl){
     if(nowC){
-      nowEl.innerHTML = `Сейчас: <b style="font-size:15px;color:var(--text)">${Math.round(nowC.months*10)/10} мес</b> <span style="color:var(--hint)">— активы ${fmtH(Math.round(nowC.assets))} ÷ ⌀ расход ${fmtH(Math.round(nowC.avgExp))} за 6 мес</span>`;
+      nowEl.innerHTML = `Сейчас: <b style="font-size:15px;color:var(--text)">${Math.round(nowC.months*10)/10} мес</b> <span style="color:var(--hint)">— активы ${fmtH(Math.round(nowC.assets))} ÷ ⌀ расход ${fmtH(Math.round(nowC.avgExp))} за 6 мес, без разовых</span>`;
     } else {
       nowEl.textContent = 'Мало истории — нужен снимок активов и 2+ месяца трат';
     }
@@ -5404,10 +5428,21 @@ function renderStats(){
   });
   const groups = Object.values(colorGroups);
 
+  // «Все / Без разовых»: тогл виден, только если в периоде есть разовые —
+  // иначе режимы совпадают (как у «Кат. / Гр.»)
+  const hasOneoffN = expN.some(month=>month.exps.some(_isOneoff));
+  const grpNoOneoff = hasOneoffN && !_groupedInclOneoff;
+  const gExps = month => grpNoOneoff ? month.exps.filter(e=>!_isOneoff(e)) : month.exps;
+  const gomToggle = document.getElementById('grouped-oneoff-toggle');
+  if(gomToggle){
+    gomToggle.style.display = hasOneoffN ? 'flex' : 'none';
+    _segActive([['gom-all', !grpNoOneoff], ['gom-reg', grpNoOneoff]]);
+  }
+
   // «Кат. / Гр.»: тот же график рядом на категорию. Тогл есть, только когда в периоде
   // у какой-то группы потрачено больше чем по одной категории — иначе режимы совпадают.
   const catRows = groups.map(g=>g.indices
-    .map(ci=>({ci, data:expN.map(month=>Math.round(month.exps.filter(e=>e.cat===ci).reduce((s,e)=>s+e.amount,0)))}))
+    .map(ci=>({ci, data:expN.map(month=>Math.round(gExps(month).filter(e=>e.cat===ci).reduce((s,e)=>s+e.amount,0)))}))
     .filter(r=>r.data.some(v=>v>0)));
   const hasCatGroups = catRows.some(rows=>rows.length>1);
   const showCats = hasCatGroups && _groupedViewMode==='cats';
@@ -5441,7 +5476,7 @@ function renderStats(){
     const data = expN.map(month=>{
       return Math.round(
         g.indices.reduce((s,ci)=>{
-          return s + month.exps.filter(e=>e.cat===ci).reduce((ss,e)=>ss+e.amount,0);
+          return s + gExps(month).filter(e=>e.cat===ci).reduce((ss,e)=>ss+e.amount,0);
         },0)
       );
     });
@@ -10579,7 +10614,7 @@ function renderReport(){
       const maxV = Math.max(...pts.map(p=>p.v), 0.1);
       h += `<div class="s-card" style="margin-bottom:14px">
         <div class="s-lbl" style="margin-bottom:2px">Финансовая подушка</div>
-        <div style="font-size:18px;font-weight:700;margin-bottom:8px">${last.v} мес <span style="font-size:11px;font-weight:400;color:var(--muted)">хватит активов при ⌀ расходе последних 6 мес</span></div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">${last.v} мес <span style="font-size:11px;font-weight:400;color:var(--muted)">хватит активов при ⌀ расходе последних 6 мес без разовых</span></div>
         <div style="display:flex;align-items:flex-end;gap:3px;height:48px">
           ${pts.map((p,i)=>`<div class="rb-bar" onclick="toast('${p.lbl}: ${p.v} мес')" title="${p.lbl}: ${p.v} мес" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div></div>`).join('')}
         </div>

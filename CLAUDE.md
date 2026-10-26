@@ -333,6 +333,18 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
 
 **Entry points (v1.86.4):** the «Калькулятор» button sits in the Assets button group next to «Мои вклады / Мои инвестиции» (it was a separate «Прогноз накоплений» button at the very bottom), and a «Калькулятор» link sits in the «Открытые вклады» header on `page-deposits`. `showPage` remembers the origin in `_calcBack` (`'deposits'` or `'assets'`); the «‹» (`#calc-back`) returns there.
 
+### Средний расход без разовых (v1.87.0)
+
+«⌀ расход в месяц» отвечает на «сколько уходит в обычный месяц», поэтому разовые (`_isOneoff`)
+из него вынуты в трёх местах: строка `#inc-exp-avg` на «Накоплениях» (столбцы графика полные;
+подпись «без разовых», если в завершённых месяцах они были), подушка (`_expTotalsByMonth`) и
+подсказки «⌀ подставить» в редакторе лимитов. «Расходы по группам» получили тогл
+`#grouped-oneoff-toggle` «Все / Без разовых» (`setGroupedOneoff`, `uiGet('groupedInclOneoff')`,
+по умолчанию без разовых): он фильтрует столбцы, сумму и ⌀ разом, чтобы сумма сходилась с
+нарисованным; тогл скрыт, если в периоде разовых нет. **Норма накоплений
+(`avgMonthlySavings`) разовые сохраняет намеренно** — они случаются регулярно, и без них прогноз
+накоплений по вкладам систематически завышался бы. Сюита `средние без разовых v1.87.0`.
+
 ### UI State Patterns
 
 **UI-состояние чипов — `localStorage` через `uiGet(key, def)` / `uiSet(key, val)` (since v1.73.0).**
@@ -365,6 +377,7 @@ Cache-first for assets, network-first for HTML. The `V` constant controls cache 
   четыре режима). До v1.65.0 эти два графика молча жили на `statsPeriod` с «Аналитики», где
   переключателя из «Активов» не видно. Чипов два ряда (у каждого графика свой), период у них один —
   `renderSavingsCharts()` подсвечивает оба ряда (`svp-*` и `svp2-*`)
+- `groupedInclOneoff` (`'0'`|`'1'`, default `'0'`) — тогл «Все / Без разовых» у «Расходов по группам»
 - `dayInclSpecial` — «Особые» toggle of «День за днём» (the only chart that filters special expenses; everything else includes them). Affects the fact/average lines and the drawn «Прогноз» line; the printed «Прогноз на конец месяца» total always includes specials (see the forecast section above)
 - `dayAvgMonths` (`3`|`6`|`12`|свой 1..36, default 6) — depth of the average line in «День за днём» (`setDayAvgMonths`)
 - `dayCompareMode` (`'today'`|`'full'`) — «Сегодня / Месяц» на «Дне за днём» (`setDayCompareMode`).
@@ -416,8 +429,8 @@ to)` (⌀ расход по дню недели, БЕЗ особых — раз�
 Потребители: Chart.js-карточки `#cw-weekday`/`#cw-cushion` на «Аналитике» (слушают общий
 `statsPeriod`) и CSS-блоки годового отчёта в `renderReport` (период = год или «всё время»).
 **Инварианты:** окно усреднения подушки фиксированное скользящее — чипы периода двигают глубину
-линии, но не знаменатель (иначе «24 мес» разбавляли бы его старым образом жизни); особые в
-расходы подушки входят (реальные деньги), а из дней недели исключены; число месяцев подушки не
+линии, но не знаменатель (иначе «24 мес» разбавляли бы его старым образом жизни); обязательные в
+расходы подушки входят (реальные деньги), разовые — нет (v1.87.0, `_expTotalsByMonth`), а из дней недели исключено и то и другое; число месяцев подушки не
 прячется в приватном режиме (как норма накопления), абсолютные суммы идут через `fmtH`.
 
 Filter state (module-level variables, reset on tab re-render):

@@ -3728,6 +3728,89 @@ suite(360, 'калькулятор v1.86.3', () => {
   });
 });
 
+// Средний расход — про «обычный месяц»: разовые (ноутбук, оплата связи на два
+// года вперёд) не повторятся и не должны тянуть ⌀, подушку и подсказки лимитов.
+// Столбцы графиков остаются полными; на «Расходах по группам» — тогл.
+suite(390, 'средние без разовых v1.87.0', () => {
+  const addOneoff = p => p.evaluate(() => {
+    const d = new Date(); let y = d.getFullYear(), m = d.getMonth() - 1; if (m < 0) { m = 11; y--; }
+    // Чеки одной сюиты делят страницу — добавляем ровно одну разовую
+    DB.expenses = DB.expenses.filter(e => e.id !== 'one1');
+    DB.expenses.push({ id: 'one1', date: monthKey(y, m) + '-10', cat: 1, catId: DB.catIds[1], amount: 12000, comment: 'ноутбук', oneoff: true, updatedAt: 1 });
+    saveDB();
+    return monthKey(y, m);
+  });
+  const digitsOf = (p, sel) => p.evaluate(s => {
+    const el = document.querySelector(s);
+    return el ? (el.textContent.match(/\d/g) || []).join('') : null;
+  }, sel);
+
+  check('⌀ расход на «Накоплениях» без разовых, столбец полный', async p => {
+    await addOneoff(p);
+    const r = await p.evaluate(() => {
+      window.showPage('assets', document.getElementById('nav-assets'));
+      setSavingsPeriod(6);
+      const ds = charts.incVsExp.data.datasets[1].data;
+      return {
+        bs: [...document.querySelectorAll('#inc-exp-avg b')].map(b => (b.textContent.match(/\d/g) || []).join('')),
+        txt: document.getElementById('inc-exp-avg').textContent,
+        bar: ds[ds.length - 2],
+      };
+    });
+    eq(r.bs[1], '50000', '⌀ расход без разовой: ' + r.txt);
+    eq(/без разовых/.test(r.txt), true, 'подписано «без разовых»');
+    eq(r.bar, 62000, 'столбец прошлого месяца — со всеми тратами');
+  });
+
+  check('подушка и подсказки лимитов без разовых', async p => {
+    // Прошлая проверка уже добавила разовую — убираем, иначе «до» её содержит
+    const before = await p.evaluate(() => {
+      DB.expenses = DB.expenses.filter(e => e.id !== 'one1'); saveDB();
+      window.showPage('budget', document.getElementById('nav-budget'));
+      window.openLimitEditor();
+      return _limitAvgs[1];
+    });
+    const mk = await addOneoff(p);
+    const r = await p.evaluate(mk => {
+      loadLimitEditor();
+      return { lim: _limitAvgs[1], exp: _expTotalsByMonth()[mk] };
+    }, mk);
+    eq(typeof before === 'number' && before > 0, true, 'у категории есть ⌀ до разовой: ' + before);
+    eq(r.lim, before, 'подсказка ⌀ категории не выросла от разовой');
+    eq(r.exp, 50000, 'расход месяца для подушки без разовой');
+  });
+
+  check('«Расходы по группам»: по умолчанию без разовых, тогл возвращает', async p => {
+    await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
+    await p.evaluate(() => setStatsPeriod(6));
+    // В фикстуре уже есть разовая (legacy special в необязательной категории) —
+    // но в текущем месяце, а среднее берёт только завершённые.
+    await addOneoff(p);
+    await p.evaluate(() => renderStats());
+    eq(await p.evaluate(() => getComputedStyle(document.getElementById('grouped-oneoff-toggle')).display), 'flex', 'есть разовые — тогл виден');
+    eq(await p.evaluate(() => document.getElementById('gom-reg').getAttribute('aria-pressed')), 'true', 'по умолчанию «Без разовых»');
+    eq(await digitsOf(p, '#grouped-avg .sa-avg'), '50000', '⌀ без разовой');
+    await p.evaluate(() => setGroupedOneoff(true));
+    eq(await digitsOf(p, '#grouped-avg .sa-avg'), '62000', '«Все» — ⌀ с разовой');
+    eq(await digitsOf(p, '#grouped-avg .sa-sum'),
+      await p.evaluate(() => String(Math.round(_stackVisTotals(charts.grouped).reduce((s, v) => s + v, 0)))),
+      'сумма = нарисованные столбцы');
+    eq(await p.evaluate(() => uiGet('groupedInclOneoff')), '1', 'выбор запомнен');
+  });
+
+  check('тогл помещается в карточку на 390', async p => {
+    // Ширину документа здесь не мерим: сразу после showPage страница едет
+    // анимацией slide-r и временно шире экрана. Сравнение с карточкой от сдвига не зависит.
+    const r = await p.evaluate(() => {
+      setGroupedViewMode('cats');
+      const card = document.querySelector('#cw-grouped .chart-card').getBoundingClientRect();
+      const t = document.getElementById('grouped-oneoff-toggle').getBoundingClientRect();
+      return { right: t.right, cardRight: card.right, left: t.left, cardLeft: card.left };
+    });
+    eq(r.right <= r.cardRight + 0.5 && r.left >= r.cardLeft - 0.5, true, `тогл внутри карточки (${r.left}–${r.right} в ${r.cardLeft}–${r.cardRight})`);
+  });
+});
+
 suite(1600, 'дизайн v1.85.0 — десктоп', () => {
   check('вкладки ввода — колонка до 760 px, аналитика во всю ширину', async p => {
     const got = await p.evaluate(() => {
