@@ -2,7 +2,7 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-11-03 v1.87.3';
+const V = '2026-11-04 v1.87.4';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
@@ -25,12 +25,12 @@ self.addEventListener('install', e => {
   );
 });
 
-// ACTIVATE: удаляем все старые кеши и захватываем управление
+// ACTIVATE: удаляем только свои старые кеши и захватываем управление
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+        keys.filter(k => k.startsWith('app-') && k !== CACHE).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim()) // ← контролируем уже открытые вкладки
   );

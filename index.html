@@ -1428,7 +1428,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.4</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -1928,10 +1928,11 @@ function fmtAxis(v, ticks){
 function pct1(part, whole){ return (whole > 0 ? part / whole * 100 : 0).toFixed(1); }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function jsArg(value){return esc(JSON.stringify(String(value ?? '')))}
 function renderColorPicker(elementId, palette, selectedColor, callbackName){
   const el=document.getElementById(elementId);
   if(!el) return;
-  el.innerHTML=palette.map(c=>`<div onclick="${callbackName}('${c}')" style="width:26px;height:26px;border-radius:50%;background:${c};cursor:pointer;box-sizing:border-box;border:2.5px solid ${c===selectedColor?'var(--text)':c}"></div>`).join('');
+  el.innerHTML=palette.map(c=>`<div onclick="${callbackName}(${jsArg(c)})" style="width:26px;height:26px;border-radius:50%;background:${c};cursor:pointer;box-sizing:border-box;border:2.5px solid ${c===selectedColor?'var(--text)':c}"></div>`).join('');
 }
 function today(){
   const d = new Date();
@@ -2702,8 +2703,8 @@ function renderKinds(){
       '<span class="km-lbl">' + esc(DB.categories[e.cat] || '—') +
         (e.comment ? '<small>' + esc(e.comment) + '</small>' : '') + '</span>' +
       '<span class="km-amt">' + fmtH(e.amount) + '</span>' +
-      '<button class="km-mark' + (on ? ' on' : '') + '" data-exp="' + e.id + '" aria-pressed="' + on + '"' +
-        ' onclick="toggleExpOneoff(\'' + e.id + '\')">' + (on ? SPEC_BADGE + ' разовая' : 'отметить') + '</button>' +
+      '<button class="km-mark' + (on ? ' on' : '') + '" data-exp="' + esc(e.id) + '" aria-pressed="' + on + '"' +
+        ' onclick="toggleExpOneoff(' + jsArg(e.id) + ')">' + (on ? SPEC_BADGE + ' разовая' : 'отметить') + '</button>' +
       '</div>';
   };
   const sub = (label, sum, mark) => '<div class="km-sub"><span>' + mark + label + '</span>' +
@@ -3069,7 +3070,7 @@ function renderCatExpensesList(catIdx, y, m) {
         <div class="exp-list-amount">${fmtH(e.amount)}${_kindBadge(e)}</div>
         ${e.comment ? `<div class="exp-list-comment">${esc(e.comment)}</div>` : ''}
       </div>
-      <button class="exp-list-edit" onclick="editExpenseFromCat('${e.id}')">Изм.</button>
+      <button class="exp-list-edit" onclick="editExpenseFromCat(${jsArg(e.id)})">Изм.</button>
     </div>`;
   }).join('');
 }
@@ -3451,7 +3452,7 @@ function renderTemplateChips(){
   wrap.style.display='flex';
   wrap.innerHTML = tmpls.map(t => {
     const color = t.color || getCatColor(t.cat);
-    return `<button onclick="addFromTemplate('${t.id}',this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
+    return `<button onclick="addFromTemplate(${jsArg(t.id)},this)" style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid ${color}33;background:${color}15;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;flex:0 0 calc(33.333% - 4px);box-sizing:border-box;min-width:0;overflow:hidden">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.name)}${_isOneoff(t)?' '+SPEC_BADGE:''}</span><span style="color:var(--muted);font-size:11px;flex-shrink:0"> ${fmtH(t.amount)}</span>
     </button>`;
@@ -3554,7 +3555,7 @@ function renderTemplateSettings(){
         <div style="font-size:14px">${esc(t.name)}</div>
         <div style="font-size:11px;color:var(--muted)">${esc(catName)} · ${fmtH(t.amount)}</div>
       </div>
-      <button class="btn small icon-btn" onclick="openTemplateModal('${t.id}')"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <button class="btn small icon-btn" onclick="openTemplateModal(${jsArg(t.id)})"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a1.5 1.5 0 012.1 2.1L5.5 13.1 2 14l.9-3.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="9.5" y1="4.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     </div>`;
   }).join('');
 }
@@ -3755,7 +3756,7 @@ function renderIncome(){
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
-      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
+      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome(${jsArg(inc.id)},event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
   });
@@ -3812,7 +3813,7 @@ function renderIncomeSearch(query){
         ${tagBadge}
       </div>
       <span style="font-size:15px;font-weight:600;flex-shrink:0">+${fmtH(inc.amount)}</span>
-      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome('${inc.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
+      <button style="padding:4px 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0" onclick="editIncome(${jsArg(inc.id)},event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     list.appendChild(row);
   });
@@ -3964,7 +3965,7 @@ function _ssListHtml(rows, key){
   const more = rows.length - SS_SHOW;
   const html = rows.map((r, i) => i >= SS_SHOW ? r.replace('class="ss-row"', 'class="ss-row ss-more"') : r).join('');
   return `<div class="ss-list">${html}</div>`
-    + `<div class="ss-toggle" data-n="${more}" onclick="_ssToggle('${key}', this)">${_ssOpen(key) ? 'свернуть' : 'ещё ' + more}</div>`;
+    + `<div class="ss-toggle" data-n="${more}" onclick="_ssToggle(${jsArg(key)}, this)">${_ssOpen(key) ? 'свернуть' : 'ещё ' + more}</div>`;
 }
 
 function _savingsBreakdownHtml(periodIncs, totalExp, ssKey){
@@ -4806,7 +4807,7 @@ function renderExpenseSearch(){
         ${e.comment?`<div class="entry-note">${esc(e.comment)}</div>`:''}
       </div>
       <div class="entry-amount">${fmtH(e.amount)}</div>
-      <button class="entry-del" onclick="editExpense('${e.id}',event)"><svg class="ico"><use href="#i-edit"/></svg></button>
+      <button class="entry-del" onclick="editExpense(${jsArg(e.id)},event)"><svg class="ico"><use href="#i-edit"/></svg></button>
     `;
     _makeSwipeable(row, ()=>deleteExpenseById(e.id));
     list.appendChild(row);
@@ -5803,7 +5804,7 @@ function _renderSplitView(c){
     const overdue = !p.paid && p.date < td;
     const col = p.paid ? 'var(--muted)' : overdue ? 'var(--red)' : 'var(--text)';
     return `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border)">
-      <input type="checkbox" ${p.paid?'checked':''} onchange="toggleSplitPaid('${c.id}',${i})" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto;cursor:pointer">
+      <input type="checkbox" ${p.paid?'checked':''} onchange="toggleSplitPaid(${jsArg(c.id)},${i})" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto;cursor:pointer">
       <span style="flex:1;font-size:13px;color:${col};${p.paid?'text-decoration:line-through':''}">${_fmtDateRu(p.date)}${overdue?' · просрочен':''}</span>
       <span style="font-size:13px;font-weight:600;color:${col}">${fmtH(p.amount)}</span>
     </div>`;
@@ -6258,7 +6259,7 @@ function renderAssets(){
       if(g){
         const dl = _graceDaysLeft(g);
         const col = dl <= 3 ? 'var(--red)' : dl <= 7 ? 'var(--amber)' : 'var(--muted)';
-        graceLine = `<div style="font-size:11px;color:${col};margin-top:2px" onclick="event.stopPropagation();openGraceModal('${g.id}')">грейс до ${_fmtDateRu(g.graceEnd)} · ${fmtH(g.payoffAmount)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
+        graceLine = `<div style="font-size:11px;color:${col};margin-top:2px" onclick="event.stopPropagation();openGraceModal(${jsArg(g.id)})">грейс до ${_fmtDateRu(g.graceEnd)} · ${fmtH(g.payoffAmount)}${dl<0?' · ПРОСРОЧЕН':''}</div>`;
       }
     }
     const pend = hasData ? _bankPending(name, data.date) : 0;
@@ -6673,7 +6674,7 @@ function _depYieldHtml(y, mode, o){
   const table = (head, body, foot) => `<div style="overflow-x:auto"><table class="dy-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:0.5px solid var(--border)">${head}</tr></thead>
       <tbody>${body}</tbody>${foot ? `<tfoot><tr style="border-top:1px solid var(--border);font-weight:700">${foot}</tr></tfoot>` : ''}</table></div>`;
-  const rowAttr = (cls, d) => `class="${cls}" onclick="openDepositModal('${esc(d.id)}')" style="border-top:0.5px solid var(--border);cursor:pointer"`;
+  const rowAttr = (cls, d) => `class="${cls}" onclick="openDepositModal(${jsArg(d.id)})" style="border-top:0.5px solid var(--border);cursor:pointer"`;
   const section = t => `<tr><td colspan="4" class="sub-h" style="padding:12px 0 4px;display:table-cell">${t}</td></tr>`;
 
   if(mode === 'rec'){
@@ -6775,7 +6776,7 @@ function renderDepYield(){
     const invested = d.amount + _depContribsSum(d, d.closedAt);
     const cd = _depCapDays(d, d.closedAt, d.openDate, d.closedAt);
     const rate = cd > 0 ? (d.closedInterest||0)/(cd/365)*100 : null;
-    return `<div onclick="openDepositModal('${esc(d.id)}')" style="${idx>0?'border-top:1px solid var(--border);':''}padding:10px 0;cursor:pointer">
+    return `<div onclick="openDepositModal(${jsArg(d.id)})" style="${idx>0?'border-top:1px solid var(--border);':''}padding:10px 0;cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         <span style="font-size:14px;font-weight:600">${esc(d.name)}</span>
         <span style="font-size:12px;color:var(--muted)">${_depRatePct(rate)} год.</span>
@@ -7018,7 +7019,7 @@ function renderInvestments(){
         : `<div style="font-size:11px;color:var(--muted);margin-top:2px">снимок ${_fmtDateRu(lastSnap)}</div>`;
     }
     return `<div class="chart-card" style="margin:0 0 10px;padding:14px 16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="openInvestModal('${esc(v.id)}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="openInvestModal(${jsArg(v.id)})">
         <div style="min-width:0">
           <div style="font-weight:600">${esc(v.name)}</div>
           ${snapLine}
@@ -7030,9 +7031,9 @@ function renderInvestments(){
       </div>
       <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}${(()=>{ const r = _invXirr([v], td); return r === null ? '' : ` <span class="inv-rate" style="color:var(--muted)" title="Денежно-взвешенная годовая доходность (XIRR)">· ${_fmtRate(r)} годовых</span>`; })()}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot('${esc(v.id)}')"><svg class="ico"><use href="#i-refresh"/></svg> Обновить</button>
-        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',1)">+ Пополнить</button>
-        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution('${esc(v.id)}',-1)">− Вывести</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvSnapshot(${jsArg(v.id)})"><svg class="ico"><use href="#i-refresh"/></svg> Обновить</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution(${jsArg(v.id)},1)">+ Пополнить</button>
+        <button class="btn" style="flex:1;padding:8px 0;font-size:12px" onclick="openInvContribution(${jsArg(v.id)},-1)">− Вывести</button>
       </div>
     </div>`;
   }).join('');
@@ -7120,7 +7121,7 @@ function _renderInvSnapsList(v){
   grp.style.display = snaps.length ? '' : 'none';
   list.innerHTML = snaps.slice().reverse().map(ds=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(ds)}</span>
-    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot('${esc(v.id)}','${ds}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot(${jsArg(v.id)},${jsArg(ds)})" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -7143,7 +7144,7 @@ function _renderInvContribsList(v){
   grp.style.display = cs.length ? '' : 'none';
   list.innerHTML = cs.slice().reverse().map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
-    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution('${esc(v.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
+    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution(${jsArg(v.id)},${jsArg(c.id)})" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -7264,7 +7265,7 @@ function renderDeposits(){
     const closed = daysLeft <= 0;
     // эффективная годовая при ежемесячной капитализации: (1+r/12)^12 − 1
     const eff = d.capitalization!=='end' ? Math.round((Math.pow(1+(d.rate||0)/100/12,12)-1)*1000)/10 : null;
-    return `<div class="dep-row" onclick="openDepositModal('${esc(d.id)}')">
+    return `<div class="dep-row" onclick="openDepositModal(${jsArg(d.id)})">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <span style="font-size:14px;font-weight:600">${esc(d.name)}</span>
         <span style="font-size:12px;color:var(--muted)">${d.rate}%${eff!==null?' · эфф. '+eff+'%':' год.'}</span>
@@ -7278,8 +7279,8 @@ function renderDeposits(){
         ? ICO.check+' Срок вышел '+_fmtDateRu(d.endDate)
         : 'до '+_fmtDateRu(d.endDate)+' · осталось '+daysLeft+' дн · '+(d.capitalization==='end'?'% в конце':'капитализация')}</div>
       ${closed
-        ? `<button class="btn small" style="margin-top:8px" onclick="event.stopPropagation();openCloseDeposit('${esc(d.id)}')">Перенести в банк</button>`
-        : `<div class="dep-actions"><button type="button" onclick="event.stopPropagation();openDepContribution('${esc(d.id)}')">Пополнить</button><button type="button" onclick="event.stopPropagation();_depToCalc('${esc(d.id)}')">В калькулятор</button></div>`}
+        ? `<button class="btn small" style="margin-top:8px" onclick="event.stopPropagation();openCloseDeposit(${jsArg(d.id)})">Перенести в банк</button>`
+        : `<div class="dep-actions"><button type="button" onclick="event.stopPropagation();openDepContribution(${jsArg(d.id)})">Пополнить</button><button type="button" onclick="event.stopPropagation();_depToCalc(${jsArg(d.id)})">В калькулятор</button></div>`}
     </div>`;
   }).join('');
   // дефолт даты прогноза — самое позднее закрытие
@@ -7500,7 +7501,7 @@ function _renderDepContribsList(d){
   grp.style.display = '';
   list.innerHTML = cs.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
-    <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution('${esc(d.id)}','${esc(c.id)}')" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
+    <span style="display:flex;align-items:center;gap:10px">${fmtH(c.amount)}<span onclick="deleteDepContribution(${jsArg(d.id)},${jsArg(c.id)})" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
   </div>`).join('');
 }
 
@@ -7524,9 +7525,9 @@ function _renderDepAccrualsList(d){
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0">
       <span style="color:var(--muted);flex-shrink:0">${_fmtDateRu(r.date)}</span>
       <span style="display:flex;align-items:center;gap:6px">
-        <input type="text" inputmode="decimal" value="${val}" onchange="setDepAccrual('${esc(d.id)}','${r.date}',this.value)"
+        <input type="text" inputmode="decimal" value="${val}" onchange="setDepAccrual(${jsArg(d.id)},${jsArg(r.date)},this.value)"
           style="width:90px;text-align:right;padding:4px 6px;font-size:13px;border:1px solid ${r.override?'var(--accent)':'var(--border)'};border-radius:6px;background:var(--card);color:var(--text)">
-        ${r.override?`<span onclick="setDepAccrual('${esc(d.id)}','${r.date}','')" title="Вернуть расчётное" style="cursor:pointer;color:var(--muted);padding:0 2px"><svg class="ico"><use href="#i-refresh"/></svg></span>`:'<span style="width:16px"></span>'}
+        ${r.override?`<span onclick="setDepAccrual(${jsArg(d.id)},${jsArg(r.date)},'')" title="Вернуть расчётное" style="cursor:pointer;color:var(--muted);padding:0 2px"><svg class="ico"><use href="#i-refresh"/></svg></span>`:'<span style="width:16px"></span>'}
       </span>
     </div>`;
   }).join('');
@@ -8218,7 +8219,7 @@ function renderCatManager(){
       grpEl.innerHTML = '<div class="sub-h" style="padding:12px 0 6px">Группы</div>'
         + groups.map(g =>
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:0.5px solid var(--border)">'
-            + '<input type="color" value="'+g.color+'" onchange="setGroupColor(\''+g.color+'\',this.value)"'
+            + '<input type="color" value="'+esc(g.color)+'" onchange="setGroupColor('+jsArg(g.color)+',this.value)"'
             + ' style="width:22px;height:22px;border:none;padding:0;border-radius:50%;cursor:pointer;flex-shrink:0;background:none"/>'
             + '<div style="display:flex;flex-wrap:wrap;gap:5px;flex:1">'            + g.names.map(n => '<span style="font-size:12px;padding:3px 10px;border-radius:20px;background:'+g.color+'22;color:'+g.color+';border:1px solid '+g.color+'44;white-space:nowrap">'+esc(n)+'</span>').join('')            + '</div>'            + '</div>'
           ).join('');
@@ -9124,15 +9125,23 @@ async function _saveFile(content, name, type){
   return 'downloaded';
 }
 
-// Применить восстановленные данные: сохранить device-local поля,
+// Применить полный снимок: сохранить device-local поля,
 // при makeAuthoritative — перештамповать updatedAt, чтобы синк не откатил восстановление
 function _applyRestoredData(d, makeAuthoritative){
   const curUrl   = localStorage.getItem('syncUrl')   || sessionStorage.getItem('syncUrl')   || readSyncUrlFromCookie()   || DB.syncUrl   || '';
   const curToken = localStorage.getItem('syncToken') || sessionStorage.getItem('syncToken') || readSyncTokenFromCookie() || DB.syncToken || '';
   const curNotifs = DB.notifsEnabled, curThresh = DB.notifThreshold;
   const curTheme = DB.theme, curPrivacy = DB.privacyMode;
-  Object.assign(DB, d);
-  if(d.catOblig === undefined) delete DB.catOblig; // бэкап до v1.79.0 — пусть миграция разметит его данные
+  ['expenses','incomes','assets','templates','deposits','investments','credits',
+    'categories','catIds','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(k => {
+    DB[k] = Array.isArray(d[k]) ? d[k] : [];
+  });
+  ['catColors','incomeTagColors','limits','specPlan','listsMeta'].forEach(k => {
+    DB[k] = d[k] && typeof d[k] === 'object' && !Array.isArray(d[k]) ? d[k] : {};
+  });
+  if(d.catOblig && typeof d.catOblig === 'object' && !Array.isArray(d.catOblig)) DB.catOblig = d.catOblig;
+  else delete DB.catOblig; // бэкап до v1.79.0 — пусть миграция разметит его данные
+  DB.oneoffThreshold = d.oneoffThreshold === undefined ? 6000 : d.oneoffThreshold;
   DB.syncUrl = curUrl;     if(curUrl)   saveSyncUrlEverywhere(curUrl);
   DB.syncToken = curToken; if(curToken) saveSyncTokenEverywhere(curToken);
   DB.notifsEnabled = curNotifs; DB.notifThreshold = curThresh;
@@ -9142,10 +9151,12 @@ function _applyRestoredData(d, makeAuthoritative){
     ['expenses','incomes','assets','templates','deposits','investments','credits'].forEach(k => {
       (DB[k]||[]).forEach(it => { if(it) it.updatedAt = now; });
     });
-    ['categories','banks','creditBanks','incomeTags','incomeTagOrder'].forEach(l => touchList(l));
-    DB._lastSyncedLimits = {}; // все limits считаются локально изменёнными → переживут merge
+    ['categories','banks','creditBanks','incomeTags','incomeTagOrder','catOblig','oneoffThreshold'].forEach(l => touchList(l));
+    DB._lastSyncedLimits = {};
+    DB._lastSyncedSpecPlan = {};
   }
   _ensureCatIds(); // бэкап может быть старого формата без catId
+  if(makeAuthoritative && !DB.catOblig) DB.catOblig = {};
   saveDB();
   renderSettings();
   renderTemplateChips();
@@ -10174,7 +10185,7 @@ function _renderBackupList(items){
         <div style="font-weight:500">${_fmtDateRu(b.date)}${b.legacy ? ' <span style="font-size:11px;color:var(--muted)">старая копия</span>' : ''}</div>
         <div style="font-size:11px;color:var(--muted)">${_fmtKB(b.size || 0)}</div>
       </div>
-      <button type="button" class="btn small" onclick="restoreDriveBackup('${esc(b.id)}','${esc(b.date)}')">Восстановить</button>
+      <button type="button" class="btn small" onclick="restoreDriveBackup(${jsArg(b.id)},${jsArg(b.date)})">Восстановить</button>
     </div>`).join('');
 }
 async function restoreDriveBackup(id, date){
@@ -10615,7 +10626,7 @@ function renderReport(){
         <div class="s-lbl" style="margin-bottom:2px">Финансовая подушка</div>
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">${last.v} мес <span style="font-size:11px;font-weight:400;color:var(--muted)">хватит активов при ⌀ расходе последних 6 мес без разовых</span></div>
         <div style="display:flex;align-items:flex-end;gap:3px;height:48px">
-          ${pts.map((p,i)=>`<div class="rb-bar" onclick="toast('${p.lbl}: ${p.v} мес')" title="${p.lbl}: ${p.v} мес" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div></div>`).join('')}
+          ${pts.map((p,i)=>`<div class="rb-bar" onclick="toast(${jsArg(p.lbl + ': ' + p.v + ' мес')})" title="${esc(p.lbl)}: ${p.v} мес" style="flex:1;min-width:0;display:flex;align-items:flex-end;height:100%;cursor:pointer"><div style="width:100%;height:${Math.max(4, Math.round(p.v/maxV*100))}%;border-radius:2px;background:var(--blue);${i===pts.length-1?'':'opacity:.4'}"></div></div>`).join('')}
         </div>
         <div style="display:flex;gap:3px;margin-top:3px">
           ${pts.map(p=>`<div style="flex:1;min-width:0;text-align:center;font-size:9px;color:var(--hint);overflow:hidden">${p.lbl}</div>`).join('')}
@@ -10790,7 +10801,7 @@ function _renderCalcStartChips(){
   if(!parts.length){ box.style.display='none'; return; }
   box.style.display = 'flex';
   box.innerHTML = parts.map(p=>
-    `<button class="cu-btn${_calcStartOn && _calcStartOn.has(p.key) ? ' active' : ''}" style="flex:0 1 auto" onclick="_calcChipToggle('${p.key}')">${p.label} <span class="prv">${fmtShort(p.val)}</span></button>`
+    `<button class="cu-btn${_calcStartOn && _calcStartOn.has(p.key) ? ' active' : ''}" style="flex:0 1 auto" onclick="_calcChipToggle(${jsArg(p.key)})">${p.label} <span class="prv">${fmtShort(p.val)}</span></button>`
   ).join('');
 }
 
@@ -11381,13 +11392,17 @@ function mergePullData(d){
   if(listsChanged) changed = true;
 
   // Limits: 3-way через _lastSyncedLimits — удалённое берём только для месяцев,
-  // которые локально НЕ менялись с последнего синка (иначе своя правка гибнет)
+  // которые локально НЕ менялись с последнего синка (иначе своя правка гибнет).
+  // Union ключей переносит и удаление месяца из удалённого снимка.
   if(d.limits){
     const base = DB._lastSyncedLimits || {};
-    Object.keys(d.limits).forEach(k => {
+    const keys = new Set([...Object.keys(DB.limits), ...Object.keys(d.limits)]);
+    keys.forEach(k => {
       const localChanged = _canonJSON(DB.limits[k] || null) !== _canonJSON(base[k] || null);
-      if(!localChanged && _canonJSON(DB.limits[k] || null) !== _canonJSON(d.limits[k] || null)){
-        DB.limits[k] = d.limits[k];
+      const hasRemote = Object.prototype.hasOwnProperty.call(d.limits, k);
+      if(!localChanged && _canonJSON(DB.limits[k] || null) !== _canonJSON(hasRemote ? d.limits[k] : null)){
+        if(hasRemote) DB.limits[k] = d.limits[k];
+        else delete DB.limits[k];
         changed = true;
       }
     });
@@ -11398,10 +11413,13 @@ function mergePullData(d){
   if(d.specPlan){
     if(!DB.specPlan) DB.specPlan = {};
     const baseS = DB._lastSyncedSpecPlan || {};
-    Object.keys(d.specPlan).forEach(k => {
+    const keys = new Set([...Object.keys(DB.specPlan), ...Object.keys(d.specPlan)]);
+    keys.forEach(k => {
       const localChanged = _canonJSON(DB.specPlan[k] || null) !== _canonJSON(baseS[k] || null);
-      if(!localChanged && _canonJSON(DB.specPlan[k] || null) !== _canonJSON(d.specPlan[k] || null)){
-        DB.specPlan[k] = d.specPlan[k];
+      const hasRemote = Object.prototype.hasOwnProperty.call(d.specPlan, k);
+      if(!localChanged && _canonJSON(DB.specPlan[k] || null) !== _canonJSON(hasRemote ? d.specPlan[k] : null)){
+        if(hasRemote) DB.specPlan[k] = d.specPlan[k];
+        else delete DB.specPlan[k];
         changed = true;
       }
     });

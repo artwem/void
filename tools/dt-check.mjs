@@ -778,6 +778,34 @@ suite(390, 'иконки приложения', () => {
   });
 });
 
+suite(390, 'изоляция кешей service worker', () => {
+  check('activate удаляет только старые кеши app-*', async p => {
+    const deleted = await p.evaluate(async () => {
+      const source = await fetch('./sw.js').then(r => r.text());
+      const handlers = {};
+      const self = {
+        addEventListener: (name, fn) => { handlers[name] = fn; },
+        skipWaiting: () => Promise.resolve(),
+        clients: { claim: () => Promise.resolve() },
+      };
+      const removed = [];
+      const cacheNames = ['app-old', 'foreign-app'];
+      const caches = {
+        keys: async () => [...cacheNames, self.__cacheName],
+        delete: async name => { removed.push(name); return true; },
+      };
+      new Function('self', 'caches', 'location', 'fetch', source + '\n;self.__cacheName=CACHE;')(
+        self, caches, { origin: location.origin }, window.fetch,
+      );
+      let pending;
+      handlers.activate({ waitUntil: promise => { pending = promise; } });
+      await pending;
+      return removed;
+    });
+    eq(deleted.join(','), 'app-old', 'текущий и чужой кеши не удаляются');
+  });
+});
+
 // Массовая подстановка средних в редакторе лимитов однажды стёрла настроенный
 // август целиком: «подставить все» заполняло 17 полей без вопроса, «Сохранить»
 // записывало их без пути назад, а средние выглядят правдоподобно — заметны
@@ -3186,6 +3214,155 @@ suite(390, 'идеи v1.83.0', () => {
     });
     eq(got.yoy, 0, 'дельт нет — данных за прошлый год в фикстуре нет');
     eq(got.hdr, false, 'заголовок без «vs»');
+  });
+});
+
+suite(390, 'полное восстановление резервной копии', () => {
+  check('старая неполная копия заменяет коллекции, но не настройки устройства', async p => {
+    const got = await p.evaluate(() => {
+      DB.deposits = [{ id: 'dep-current' }];
+      DB.investments = [{ id: 'inv-current' }];
+      DB.credits = [{ id: 'credit-current' }];
+      DB.templates = [{ id: 'tmpl-current' }];
+      DB.notifsEnabled = true; DB.notifThreshold = 77;
+      DB.theme = 'dark'; DB.privacyMode = true;
+      saveSyncUrlEverywhere('http://sync.test/restore');
+      saveSyncTokenEverywhere('review-token');
+      _applyRestoredData({
+        categories: ['Копия'], catIds: ['solo'], expenses: [], incomes: [], assets: [],
+        banks: [], creditBanks: [], limits: {},
+      }, true);
+      return {
+        collections: [DB.deposits.length, DB.investments.length, DB.credits.length, DB.templates.length],
+        url: DB.syncUrl, token: DB.syncToken,
+        notifs: DB.notifsEnabled, threshold: DB.notifThreshold,
+        theme: DB.theme, privacy: DB.privacyMode,
+      };
+    });
+    eq(got.collections.join(','), '0,0,0,0', 'отсутствующие в копии коллекции становятся пустыми');
+    eq(got.url, 'http://sync.test/restore', 'URL синка сохранён');
+    eq(got.token, 'review-token', 'токен сохранён');
+    eq(got.notifs && got.threshold === 77 && got.theme === 'dark' && got.privacy, true, 'device-local настройки сохранены');
+  });
+
+  check('авторитетная копия не откатывается старым merge настроек', async p => {
+    const got = await p.evaluate(() => {
+      const copy = {
+        categories: ['Копия'], catIds: ['solo'], expenses: [], incomes: [], assets: [],
+        banks: [], creditBanks: [], limits: {},
+        specPlan: { '2026-01': { solo: 50 } },
+        catOblig: { solo: true }, oneoffThreshold: 1234,
+        listsMeta: { catOblig: 500, oneoffThreshold: 500 },
+      };
+      DB._lastSyncedSpecPlan = JSON.parse(JSON.stringify(copy.specPlan));
+      _applyRestoredData(copy, true);
+      mergePullData({
+        specPlan: { '2026-01': { solo: 999 } },
+        catOblig: { remote: true }, oneoffThreshold: 9999,
+        listsMeta: { catOblig: 600, oneoffThreshold: 600 },
+      });
+      return { spec: DB.specPlan, oblig: DB.catOblig, threshold: DB.oneoffThreshold };
+    });
+    eq(got.spec['2026-01'].solo, 50, 'бронь из копии сохранена');
+    eq(got.oblig.solo, true, 'разметка обязательных из копии сохранена');
+    eq(got.threshold, 1234, 'порог из копии сохранён');
+  });
+
+  check('копия без новых настроек отправляет явные значения по умолчанию', async p => {
+    const got = await p.evaluate(() => {
+      _applyRestoredData({
+        categories: ['Копия'], catIds: ['solo'], expenses: [], incomes: [], assets: [],
+        banks: [], creditBanks: [], limits: {},
+      }, true);
+      const payload = buildPayload();
+      return {
+        hasOblig: Object.prototype.hasOwnProperty.call(payload, 'catOblig'),
+        oblig: payload.catOblig,
+        threshold: payload.oneoffThreshold,
+      };
+    });
+    eq(got.hasOblig, true, 'пустая разметка попадает в payload');
+    eq(got.oblig && Object.keys(got.oblig).length, 0, 'разметка явно пустая');
+    eq(got.threshold, 6000, 'порог по умолчанию попадает в payload');
+  });
+
+  check('merge переносит удалённые ключи и бережёт локальные правки', async p => {
+    const got = await p.evaluate(() => {
+      DB.limits = { '2026-01': { a: 100 }, '2026-02': { a: 200 } };
+      DB._lastSyncedLimits = JSON.parse(JSON.stringify(DB.limits));
+      mergePullData({ limits: { '2026-01': { a: 100 } } });
+      const deleted = !Object.prototype.hasOwnProperty.call(DB.limits, '2026-02');
+
+      DB.specPlan = { '2026-01': { a: 100 }, '2026-02': { a: 300 } };
+      DB._lastSyncedSpecPlan = { '2026-01': { a: 100 }, '2026-02': { a: 200 } };
+      mergePullData({ specPlan: { '2026-01': { a: 100 } } });
+      return { deleted, local: DB.specPlan['2026-02'] };
+    });
+    eq(got.deleted, true, 'неизменённый локальный ключ удалён вслед за снимком');
+    eq(got.local && got.local.a, 300, 'несинхронизированная локальная правка сохранена');
+  });
+
+  check('порядок ключей не создаёт ложное изменение при merge', async p => {
+    const changed = await p.evaluate(() => {
+      DB.limits = { '2026-01': { a: 100, b: 200 } };
+      DB._lastSyncedLimits = { '2026-01': { a: 100, b: 200 } };
+      return mergePullData({ limits: { '2026-01': { b: 200, a: 100 } } });
+    });
+    eq(changed, false, 'каноническое сравнение игнорирует порядок ключей');
+  });
+});
+
+suite(390, 'безопасность динамических аргументов', () => {
+  check('ID расхода не становится кодом и открывает именно эту запись', async p => {
+    const got = await p.evaluate(() => {
+      const id = "x');window.__auditXss=1;//";
+      DB.expenses.push({ id, date: today(), cat: 0, catId: DB.catIds[0], amount: 777.25, comment: 'review-xss', updatedAt: Date.now() });
+      showPage('stats', document.getElementById('nav-stats'));
+      const inp = document.getElementById('exp-search');
+      inp.value = 'review-xss';
+      renderExpenseSearch();
+      document.querySelector('#exp-search-result .entry-del').click();
+      const out = {
+        executed: window.__auditXss === 1,
+        open: document.getElementById('modal-expense').classList.contains('open'),
+        amount: document.getElementById('exp-amount').value,
+      };
+      closeModal('modal-expense');
+      delete window.__auditXss;
+      return out;
+    });
+    eq(got.executed, false, 'ID не выполняется как JavaScript');
+    eq(got.open, true, 'модалка редактирования открыта');
+    eq(got.amount, '777,25', 'открыта запись с полным исходным ID');
+  });
+
+  check('ID Drive-копии доходит до восстановления без выполнения кода', async p => {
+    const got = await p.evaluate(() => {
+      const id = "x');window.__auditXss=1;//";
+      let received = null;
+      const real = window.restoreDriveBackup;
+      window.restoreDriveBackup = value => { received = value; };
+      _renderBackupList([{ id, name: 'nto_data.bak.2026-10-14.json', date: '2026-10-14', size: 100 }]);
+      document.querySelector('#backups-list button').click();
+      window.restoreDriveBackup = real;
+      const out = { received, executed: window.__auditXss === 1 };
+      delete window.__auditXss;
+      return out;
+    });
+    eq(got.executed, false, 'ID копии не выполняется');
+    eq(got.received, "x');window.__auditXss=1;//", 'восстановление получает полный ID');
+  });
+
+  check('jsArg сохраняет сложную строку одним JS-литералом', async p => {
+    const got = await p.evaluate(() => {
+      const value = "\\'<>&\"";
+      const encoded = jsArg(value);
+      const decoder = document.createElement('textarea');
+      decoder.innerHTML = encoded;
+      const decoded = decoder.value;
+      return { roundTrip: Function('return ' + decoded)(), value };
+    });
+    eq(got.roundTrip, got.value, 'JS и HTML-кодирование сохраняют строку');
   });
 });
 

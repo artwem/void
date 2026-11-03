@@ -3,6 +3,7 @@
 // FIXTURE: на ней вклады, инвестиции, кредиты и шаблоны были пустыми, и
 // половина интерфейса на скриншотах просто не существовала.
 import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { withPage } from './harness.mjs';
 
 const WIDTHS = [390, 1000, 1280, 1440, 1600];
@@ -22,7 +23,7 @@ await withPage(WIDTHS, async (page, { width }) => {
     await page.evaluate(n => window.showPage(n, document.getElementById('nav-' + n) || undefined), name);
     await new Promise(r => setTimeout(r, 350)); // дать Chart.js дорисоваться
     await page.screenshot({
-      path: new URL(`${String(width).padStart(4, '0')}-${name}.png`, OUT).pathname.slice(1),
+      path: fileURLToPath(new URL(`${String(width).padStart(4, '0')}-${name}.png`, OUT)),
       fullPage: true,
     });
   }
@@ -41,7 +42,7 @@ await withPage([390, 1280, 1600], async (page, { width }) => {
     await page.evaluate(i => window.openModal(i), id);
     await new Promise(r => setTimeout(r, 120));
     await page.screenshot({
-      path: new URL(`m-${String(width).padStart(4, '0')}-${id}.png`, OUT).pathname.slice(1),
+      path: fileURLToPath(new URL(`m-${String(width).padStart(4, '0')}-${id}.png`, OUT)),
     });
     await page.evaluate(i => window.closeModal(i), id);
   }
