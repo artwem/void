@@ -7163,9 +7163,10 @@ function openInvSnapshot(id){
   const v = (DB.investments||[]).find(x=>x.id===id && !x._deleted);
   if(!v) return;
   _invSnapId = id;
-  document.getElementById('inv-snap-info').textContent = v.name+': впиши текущую стоимость из приложения брокера.';
+  document.getElementById('inv-snap-info').textContent = v.name+': подставлена последняя стоимость — поправьте под текущую из приложения брокера.';
   document.getElementById('inv-snap-date').value = today();
-  setMoneyInput('inv-snap-value','');
+  // Последний снимок + пополнения/выводы после него — оценка «сейчас», удобно править
+  setMoneyInput('inv-snap-value', invValueAt(v, today()));
   openModal('modal-inv-snap');
 }
 
