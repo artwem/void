@@ -1128,6 +1128,7 @@ if ('serviceWorker' in navigator) {
     <h2>Закрыть вклад</h2>
     <p id="close-dep-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp"><label class="flbl">Дата закрытия</label><input type="date" id="close-dep-date" class="finp" onchange="_closeDepRecalc()"></div>
+    <div class="fgrp"><label class="flbl">Зачислить тело вклада в банк</label><select id="close-dep-bank" class="finp"></select></div>
     <div class="fgrp"><label class="flbl">Проценты, ₽</label>
       <div style="display:flex;gap:8px">
         <input type="text" id="close-dep-interest" class="finp" style="flex:1;min-width:0" inputmode="decimal" oninput="formatMoneyInput(this);this.dataset.manual='1';_closeDepTagVis()">
@@ -1427,7 +1428,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -7319,12 +7320,14 @@ function renderDepositForecast(){
       return n?`<div style="font-size:11px;color:var(--muted);margin-top:8px">${n} вкл. с выплатой % в конце ещё не закроются к этой дате — учтено только тело</div>`:'';})()}`;
 }
 
-// ── Закрыть истёкший вклад: стоимость → в банк, вклад — soft-delete ──
+// ── Закрыть вклад: тело → в банк, проценты → в доходы, вклад — в архив ──
 let _closingDepositId = null;
 
 function openCloseDeposit(id){
   const d = (DB.deposits||[]).find(x=>x.id===id && !x._deleted);
   if(!d) return;
+  const banks = DB.banks||[];
+  if(!banks.length){ toast('Нет банков — добавьте в настройках'); return; }
   _closingDepositId = id;
   const td = today();
   // дата закрытия: истёкший — его endDate (в т.ч. внесённый задним числом), иначе сегодня
@@ -7334,8 +7337,9 @@ function openCloseDeposit(id){
   delete document.getElementById('close-dep-interest').dataset.manual;
   document.getElementById('close-dep-to-income').checked = true;
   document.getElementById('close-dep-info').textContent = d.endDate > td
-    ? d.name+': досрочное закрытие. Впиши проценты, которые банк реально выплатил, или 0, если они сгорели. Снимок в банк не создаётся.'
-    : d.name+': вклад переедет в «Закрытые вклады» и останется в расчёте доходности. Снимок в банк не создаётся.';
+    ? d.name+': досрочное закрытие. Впиши проценты, которые банк реально выплатил, или 0, если они сгорели. Тело с пополнениями добавится в выбранный банк.'
+    : d.name+': вклад переедет в «Закрытые вклады» и останется в расчёте доходности. Тело с пополнениями добавится в выбранный банк.';
+  document.getElementById('close-dep-bank').innerHTML = banks.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
   // тег для записи дохода: по умолчанию — тег с «процент» в названии
   const tags = DB.incomeTags||[];
   const def = tags.find(t=>/процент/i.test(t)) || '';
@@ -7376,9 +7380,12 @@ function confirmCloseDeposit(){
   if(!d) return;
   const date = document.getElementById('close-dep-date').value;
   if(!date || date < d.openDate || date > today()){ toast('Проверьте дату закрытия'); return; }
+  const bank = document.getElementById('close-dep-bank').value;
+  if(!bank){ toast('Выберите банк'); return; }
+  const principal = d.amount + _depContribsSum(d, date);
   const interest = Math.max(0, parseMoney(document.getElementById('close-dep-interest').value) || 0);
-  // проценты — отдельной записью в доходы датой закрытия (если не сняли галку); снимок в банк не создаётся
   const toIncome = interest > 0 && document.getElementById('close-dep-to-income').checked;
+  _bankAdjust(bank, date, principal);
   if(toIncome){
     if(!DB.incomes) DB.incomes = [];
     const tag = document.getElementById('close-dep-tag').value || '';
@@ -7393,7 +7400,7 @@ function confirmCloseDeposit(){
   _closingDepositId = null;
   renderDeposits();
   if(typeof renderAssets==='function') renderAssets();
-  toast(toIncome?'✓ проценты '+fmt(interest)+' → в доходы':'✓ вклад закрыт');
+  toast('✓ '+fmt(principal)+' → '+bank+(toIncome?'; проценты '+fmt(interest)+' → в доходы':''));
 }
 
 // ── Корректировка баланса банка записью на дату (перевод банк↔вклад) ──

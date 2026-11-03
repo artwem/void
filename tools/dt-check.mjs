@@ -2096,6 +2096,30 @@ suite(390, 'доходность вкладов и архив закрытых',
     eq(r.added, 0, 'доход не записан');
   });
 
+  check('закрытие в дату снимка: тело с пополнениями уходит в выбранный банк', async p => {
+    const r = await p.evaluate(() => {
+      DB.banks = ['Сбербанк', 'Т-Банк'];
+      DB.assets = [{ id: 'ya', date: '2025-07-01', bankName: 'Т-Банк', amount: 50000, updatedAt: 1 }];
+      DB.deposits = [{ id: 'y8', name: 'С пополнением', amount: 100000, rate: 12,
+        openDate: '2025-01-01', endDate: '2025-07-01', capitalization: 'end',
+        contributions: [{ id: 'yc', date: '2025-03-01', amount: 20000 }], updatedAt: 1 }];
+      openCloseDeposit('y8');
+      const banks = Array.from(document.getElementById('close-dep-bank').options).map(o => o.value);
+      document.getElementById('close-dep-bank').value = 'Т-Банк';
+      document.getElementById('close-dep-to-income').checked = false;
+      confirmCloseDeposit();
+      const rec = DB.assets.find(a => a.bankName === 'Т-Банк' && a.date === '2025-07-01' && !a._deleted);
+      const series = _buildAssetSeries(['2025-07-01']);
+      return { banks, amount: rec && rec.amount, records: DB.assets.filter(a => !a._deleted).length,
+        bankSeries: series.bankSeries[0], depSeries: series.depSeries[0] };
+    });
+    eq(r.banks.join('|'), 'Сбербанк|Т-Банк', 'в модалке спрашивают банк');
+    eq(r.amount, 170000, '50 000 в снимке + 100 000 тела + 20 000 пополнения');
+    eq(r.records, 1, 'снимок на эту дату изменён, а не продублирован');
+    eq(r.bankSeries, 170000, 'тело не пропало из ряда банков');
+    eq(r.depSeries, 0, 'закрытый вклад не считается второй раз');
+  });
+
   check('досрочное закрытие: кнопка на открытом вкладе, проценты сгорели', async p => {
     const r = await p.evaluate(() => {
       DB.deposits = [{ id: 'y7', name: 'Досрочный', amount: 100000, rate: 12, openDate: '2025-01-01', endDate: '2099-01-01', capitalization: 'monthly', updatedAt: 1 }];
