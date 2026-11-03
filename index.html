@@ -9250,27 +9250,12 @@ function checkBudgetNotifications(){
 function checkAssetNotification(){
   if(!DB.notifsEnabled || Notification.permission !== 'granted') return;
   const day = new Date().getDate();
-  if(day === 1 || day === 16){
-    const key = 'notif_assets_' + today();
-    if(!localStorage.getItem(key)){
-      localStorage.setItem(key, '1');
-      new Notification('Обновите активы', {
-        body: 'Сегодня ' + day + '-е — самое время обновить остатки по счетам',
-        icon: './apple-touch-icon.png'
-      });
-      return;
-    }
-  }
-  // Снимок старше 14 дней — напоминание раз в 3 дня
-  const lastSnap = (DB.assets||[]).filter(a=>!a._deleted).reduce((m,a)=> a.date>m ? a.date : m, '');
-  if(!lastSnap) return;
-  const ageDays = Math.floor((new Date(today()+'T12:00:00') - new Date(lastSnap+'T12:00:00'))/86400000);
-  if(ageDays <= 14) return;
-  const stamp = localStorage.getItem('notif_stale_snap');
-  if(stamp && (Date.now() - parseInt(stamp)) < 3*86400000) return;
-  localStorage.setItem('notif_stale_snap', String(Date.now()));
-  new Notification('Снимок счетов устарел', {
-    body: 'Последний снимок ' + ageDays + ' дн. назад (' + lastSnap + ') — внесите остатки, чтобы сверка была точной',
+  if(day !== 1 && day !== 16) return;
+  const key = 'notif_assets_' + today();
+  if(localStorage.getItem(key)) return;
+  localStorage.setItem(key, '1');
+  new Notification('Обновите активы', {
+    body: 'Сегодня ' + day + '-е — самое время обновить остатки по счетам',
     icon: './apple-touch-icon.png'
   });
 }

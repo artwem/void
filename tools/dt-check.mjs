@@ -2703,6 +2703,44 @@ suite(390, 'на графиках демо все деления оси разл
   });
 }, { demo: true });
 
+suite(390, 'напоминания о снимках только 1 и 16 числа', () => {
+  check('устаревший снимок не вызывает уведомлений в другие дни, повтор в тот же день подавляется', async p => {
+    const got = await p.evaluate(() => {
+      const RealDate = window.Date, RealNotification = window.Notification;
+      const oldEnabled = DB.notifsEnabled, oldAssets = DB.assets;
+      const sent = [];
+      DB.notifsEnabled = true;
+      DB.assets = [{ id: 'old-snap', date: '2026-01-01', bankName: 'Сбербанк', amount: 1000 }];
+      window.Notification = function(title, options){ sent.push({ title, body: options.body }); };
+      window.Notification.permission = 'granted';
+      const at = day => {
+        const iso = '2026-11-' + String(day).padStart(2, '0');
+        window.Date = class extends RealDate {
+          constructor(...args){ super(...(args.length ? args : [iso + 'T12:00:00'])); }
+          static now(){ return new RealDate(iso + 'T12:00:00').getTime(); }
+        };
+        checkAssetNotification();
+      };
+      try {
+        at(2);
+        at(1); at(1);
+        at(16);
+        at(17);
+        return sent;
+      } finally {
+        window.Date = RealDate;
+        window.Notification = RealNotification;
+        DB.notifsEnabled = oldEnabled;
+        DB.assets = oldAssets;
+      }
+    });
+    eq(got.length, 2, 'ровно два уведомления за пять запусков');
+    eq(got.every(n => n.title === 'Обновите активы'), true, 'только календарные напоминания');
+    eq(got[0].body.includes('1-е'), true, 'первое напоминание 1 числа');
+    eq(got[1].body.includes('16-е'), true, 'второе напоминание 16 числа');
+  });
+});
+
 // Аудит v1.82.0: сироты catId, полная очистка, снимки на месте, синк с таймаутом
 // и хэшем, локальные настройки без пуша, своё подтверждение, чипы-кнопки,
 // отложенная перезагрузка SW. Проверка очистки — последней: после неё база пуста.
