@@ -2104,20 +2104,48 @@ suite(390, 'доходность вкладов и архив закрытых',
         openDate: '2025-01-01', endDate: '2025-07-01', capitalization: 'end',
         contributions: [{ id: 'yc', date: '2025-03-01', amount: 20000 }], updatedAt: 1 }];
       openCloseDeposit('y8');
+      const shown = getComputedStyle(document.getElementById('close-dep-bank-grp')).display !== 'none';
       const banks = Array.from(document.getElementById('close-dep-bank').options).map(o => o.value);
       document.getElementById('close-dep-bank').value = 'Т-Банк';
       document.getElementById('close-dep-to-income').checked = false;
       confirmCloseDeposit();
       const rec = DB.assets.find(a => a.bankName === 'Т-Банк' && a.date === '2025-07-01' && !a._deleted);
       const series = _buildAssetSeries(['2025-07-01']);
-      return { banks, amount: rec && rec.amount, records: DB.assets.filter(a => !a._deleted).length,
+      return { shown, banks, amount: rec && rec.amount, records: DB.assets.filter(a => !a._deleted).length,
         bankSeries: series.bankSeries[0], depSeries: series.depSeries[0] };
     });
+    eq(r.shown, true, 'при совпадении дат выбор банка показан');
     eq(r.banks.join('|'), 'Сбербанк|Т-Банк', 'в модалке спрашивают банк');
     eq(r.amount, 170000, '50 000 в снимке + 100 000 тела + 20 000 пополнения');
     eq(r.records, 1, 'снимок на эту дату изменён, а не продублирован');
     eq(r.bankSeries, 170000, 'тело не пропало из ряда банков');
     eq(r.depSeries, 0, 'закрытый вклад не считается второй раз');
+  });
+
+  check('закрытие без снимка на эту дату не спрашивает банк и не создаёт запись', async p => {
+    const r = await p.evaluate(() => {
+      DB.banks = ['Сбербанк'];
+      DB.assets = [{ id: 'yb', date: '2025-06-30', bankName: 'Сбербанк', amount: 50000, updatedAt: 1 }];
+      DB.deposits = [{ id: 'y9', name: 'Без снимка', amount: 100000, rate: 12,
+        openDate: '2025-01-01', endDate: '2025-07-01', capitalization: 'end', updatedAt: 1 }];
+      openCloseDeposit('y9');
+      const grp = document.getElementById('close-dep-bank-grp');
+      const initiallyHidden = grp.style.display === 'none';
+      document.getElementById('close-dep-date').value = '2025-06-30';
+      _closeDepRecalc();
+      const shownOnMatch = grp.style.display !== 'none';
+      document.getElementById('close-dep-date').value = '2025-07-01';
+      _closeDepRecalc();
+      const hiddenAgain = grp.style.display === 'none';
+      confirmCloseDeposit();
+      return { initiallyHidden, shownOnMatch, hiddenAgain, amount: DB.assets[0].amount,
+        records: DB.assets.length, closed: DB.deposits[0]._deleted === true };
+    });
+    eq(r.initiallyHidden && r.hiddenAgain, true, 'без совпадения дат выбор банка скрыт');
+    eq(r.shownOnMatch, true, 'смена даты на дату снимка показывает выбор');
+    eq(r.amount, 50000, 'банковский снимок не изменился');
+    eq(r.records, 1, 'новая запись банка не создана');
+    eq(r.closed, true, 'вклад закрыт без перевода');
   });
 
   check('досрочное закрытие: кнопка на открытом вкладе, проценты сгорели', async p => {
