@@ -209,9 +209,10 @@ if ('serviceWorker' in navigator) {
           <button type="button" id="dcm-full" onclick="setDayCompareMode('full')" class="p6">Месяц</button>
           <button type="button" id="dcm-today" onclick="setDayCompareMode('today')" class="p6">Сегодня</button>
         </div>
-        <div id="day-special-mode" data-special="1" class="seg" title="Обязательные и разовые траты: показывать или только повседневные">
-          <button type="button" id="dsm-on" onclick="setDayInclSpecial(true)" class="p6">Все</button>
-          <button type="button" id="dsm-off" onclick="setDayInclSpecial(false)" class="p6">Повседн.</button>
+        <div id="day-special-mode" data-mode="all" class="seg" title="Состав трат на графике: все, только повседневные или без разовых">
+          <button type="button" id="dsm-all" onclick="setDayExpenseMode('all')" class="p6">Все</button>
+          <button type="button" id="dsm-daily" onclick="setDayExpenseMode('daily')" class="p6">Повседн.</button>
+          <button type="button" id="dsm-nooneoff" onclick="setDayExpenseMode('noOneoff')" class="p6">Без разовых</button>
         </div>
         <div id="day-avg-mode" class="seg" title="Глубина средней линии, месяцев">
           <button type="button" id="dam-3" onclick="setDayAvgMonths(3)" class="p5">3</button>
@@ -1428,7 +1429,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.87.4</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4241,13 +4242,23 @@ let _expViewMode = uiGet('expViewMode', 'cats');
 // Особые расходы влияют только на график «День за днём» (там — переключатель).
 // В остальной аналитике учитываются как обычные расходы — _statsExps не фильтрует.
 function _statsExps(arr){ return arr; }
-let dayInclSpecial = uiGet('dayInclSpecial', '1') !== '0';
-function setDayInclSpecial(v){
-  dayInclSpecial = v;
-  uiSet('dayInclSpecial', v?'1':'0');
+function _initialDayExpenseMode(){
+  const mode = uiGet('dayExpenseMode', null);
+  if(mode === null) return uiGet('dayInclSpecial', '1') === '0' ? 'daily' : 'all';
+  return ['all', 'daily', 'noOneoff'].includes(mode) ? mode : 'all';
+}
+let dayExpenseMode = _initialDayExpenseMode();
+function setDayExpenseMode(mode){
+  if(!['all', 'daily', 'noOneoff'].includes(mode)) mode = 'all';
+  dayExpenseMode = mode;
+  uiSet('dayExpenseMode', mode);
   renderStats();
 }
-function _dayExps(arr){ return dayInclSpecial ? arr : arr.filter(e=>!_isSpec(e)); }
+function _dayExps(arr){
+  if(dayExpenseMode === 'daily') return arr.filter(e=>!_isSpec(e));
+  if(dayExpenseMode === 'noOneoff') return arr.filter(e=>!_isOneoff(e));
+  return arr;
+}
 function setDayAvgMonths(n){ uiSet('dayAvgMonths', n); renderStats(); }
 // «Месяц / Сегодня» на «Дне за днём»: до v1.73.0 режим жил в data-атрибуте
 // самого переключателя и обнулялся вместе с разметкой при каждой перезагрузке.
@@ -4431,6 +4442,28 @@ function renderSavingsCharts(){
       }
     }
     const cc = _chartColors();
+    const savingsRateOverflowLabels = {
+      id:'savingsRateOverflowLabels',
+      afterDatasetsDraw(chart){
+        const {ctx, chartArea} = chart;
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = '600 10px system-ui,-apple-system,sans-serif';
+        ctx.textAlign = 'left';
+        chart.data.datasets[0].data.forEach((v,i)=>{
+          if(typeof v !== 'number' || !isFinite(v) || (v >= -100 && v <= 100)) return;
+          const bar = meta.data[i];
+          if(!bar) return;
+          const text = v+'% '+(v<0?'↓':'↑');
+          const w = ctx.measureText(text).width;
+          const x = Math.max(chartArea.left, Math.min(chartArea.right-w, bar.x-w/2));
+          ctx.fillStyle = v<0 ? cc.red : cc.green;
+          ctx.textBaseline = v<0 ? 'bottom' : 'top';
+          ctx.fillText(text, x, v<0 ? chartArea.bottom-3 : chartArea.top+3);
+        });
+        ctx.restore();
+      }
+    };
     if(charts.savingsRate) charts.savingsRate.destroy();
     charts.savingsRate = new Chart(rateEl,{
       type:'bar',
@@ -4439,10 +4472,11 @@ function renderSavingsCharts(){
         datasets:[{
           // без учёта трат — столбца нет вовсе (null), а не серый ноль «нет дохода»
           data: savingsRates.map((v,i)=>v===null ? (lastN[i].tracked ? 0 : null) : v),
-          backgroundColor: savingsRates.map(v=>v===null?cc.mutedDim:v>=0?cc.green:cc.red),
+          backgroundColor: savingsRates.map((v,i)=>v===null?cc.mutedDim:i===savingsRates.length-1?_hatchPattern(v>=0?cc.green:cc.red):v>=0?cc.green:cc.red),
           borderRadius:4, borderSkipped:false
         }]
       },
+      plugins:[savingsRateOverflowLabels],
       options:{
         responsive:true, maintainAspectRatio:false,
         plugins:{
@@ -4451,7 +4485,7 @@ function renderSavingsCharts(){
         },
         scales:{
           x:{grid:{display:false}, ticks:{font:{size:10},color:cc.muted}},
-          y:{grid:{color:cc.gridLine}, ticks:{callback:v=>v+'%',font:{size:9},color:cc.muted}}
+          y:{min:-100, max:100, grid:{color:cc.gridLine}, ticks:{callback:v=>v+'%',font:{size:9},color:cc.muted}}
         }
       }
     });
@@ -4625,11 +4659,11 @@ function _monthForecast(y, m){
   const exps = getMonthExpenses(y, m);
   const todayStr = monthKey(y, m) + '-' + String(cD).padStart(2, '0');
   let fact = 0, regular = 0, futPlanned = 0;
-  // futCum/futCumReg — кумулятивные добавки будущих трат по дням месяца, чтобы
-  // линия на графике шагала ровно там же, где их учитывает total. Reg-вариант —
-  // без особых: им пользуется график при выключенном тумблере «Особые».
+  // Кумулятивные добавки будущих трат: все, только повседневные и без разовых.
+  // Они меняют только рисуемую линию; futPlanned и total остаются полными.
   const futCum = Array.from({length: daysInMonth}, () => 0);
   const futCumReg = Array.from({length: daysInMonth}, () => 0);
+  const futCumNoOneoff = Array.from({length: daysInMonth}, () => 0);
   exps.forEach(e => {
     if(!e.date) return;
     if(e.date > todayStr){
@@ -4638,16 +4672,18 @@ function _monthForecast(y, m){
       futPlanned += e.amount;
       futCum[d-1] += e.amount;
       if(!_isSpec(e)) futCumReg[d-1] += e.amount;
+      if(!_isOneoff(e)) futCumNoOneoff[d-1] += e.amount;
       return;
     }
     fact += e.amount;
     if(!_isSpec(e)) regular += e.amount;
   });
   if(fact + futPlanned <= 0) return null;
-  let accF = 0, accR = 0;
+  let accF = 0, accR = 0, accN = 0;
   for(let i = 0; i < daysInMonth; i++){
     accF += futCum[i]; futCum[i] = accF;
     accR += futCumReg[i]; futCumReg[i] = accR;
+    accN += futCumNoOneoff[i]; futCumNoOneoff[i] = accN;
   }
 
   // Глубина истории 6 месяцев (было 3, с v1.50.0): и оценка суммы особых, и их
@@ -4686,7 +4722,7 @@ function _monthForecast(y, m){
   const specRemain = specLine[daysInMonth - 1] || 0;
   return {
     cD, daysInMonth, fact, pace, specRemain, specLine, forecast,
-    futPlanned, futLine: futCum, futLineReg: futCumReg,
+    futPlanned, futLine: futCum, futLineReg: futCumReg, futLineNoOneoff: futCumNoOneoff,
     total: Math.round(fact + futPlanned + pace * (daysInMonth - cD) + specRemain)
   };
 }
@@ -5150,11 +5186,8 @@ function renderStats(){
     const histMonthCount = histCumByDay[0] ? histCumByDay[0].length : 0;
 
     // Прогноз до конца месяца — считает _monthForecast (общий с бюджетом).
-    // Здесь только рисование: якорь линии — selCum (та же точка, где кончается
-    // видимая факт-линия), а не полный факт, иначе при выключенном тумблере
-    // «Особые» пунктир скачком отрывался бы от конца сплошной. Само число
-    // projTotal — всегда полное (fc.total), с особыми и с уже оплаченными
-    // особыми, которые тумблер прячет: это реальные деньги, а не то, что нарисовано.
+    // Режим меняет только рисуемую линию. Якорь — selCum (точка, где кончается
+    // видимая факт-линия), а печатаемый projTotal — всегда полный fc.total.
     // Только текущий месяц + режим «весь месяц».
     let projLine = null, projTotal = null;
     if (isCurrentMonth && showFull && cD < daysInSel) {
@@ -5162,17 +5195,11 @@ function renderStats(){
       // ветке (showFull), поэтому specLine из хелпера ложится один в один.
       const fc = _monthForecast(selY, selM);
       if (fc) {
-        // Линия на графике следует тумблеру: выключен «особые» — рисуем чистый
-        // темп без скачков (как и факт-линия рядом с ней не показывает особые),
-        // и якорь — selCum (та же точка, где кончается видимая факт-линия).
-        // Итоговая сумма ниже графика (projTotal) — ВСЕГДА полная, с особыми и с
-        // уже оплаченными особыми, скрытыми тумблером: это реальные деньги, а не
-        // то, что нарисовано.
-        const lineSpecial = dayInclSpecial ? fc.specLine : null;
-        // Траты, внесённые вперёд (дата > сегодня), рисуем ступенькой на их дате —
-        // так линия совпадает с total, который их учитывает. Тумблер «Особые»
-        // выключен → берём вариант без особых, как и selCum рядом.
-        const lineFuture = dayInclSpecial ? fc.futLine : fc.futLineReg;
+        // Резерв обязательных скрывается только в повседневном режиме.
+        const lineSpecial = dayExpenseMode === 'daily' ? null : fc.specLine;
+        // Будущие траты рисуются ступенькой на их дате в составе выбранного режима.
+        const lineFuture = dayExpenseMode === 'all' ? fc.futLine
+          : dayExpenseMode === 'daily' ? fc.futLineReg : fc.futLineNoOneoff;
 
         projLine = Array.from({length: displayDays}, (_, i) => {
           if (i < cD - 1) return null;
@@ -5198,10 +5225,11 @@ function renderStats(){
       isCurrentMonth && i === cD - 1 ? String(i + 1) + '✦' : String(i + 1)
     );
 
-    document.getElementById('day-special-mode').dataset.special = dayInclSpecial ? '1' : '0';
+    document.getElementById('day-special-mode').dataset.mode = dayExpenseMode;
     _segActive([
       ['dcm-full', showFull], ['dcm-today', !showFull],
-      ['dsm-on', dayInclSpecial], ['dsm-off', !dayInclSpecial],
+      ['dsm-all', dayExpenseMode === 'all'], ['dsm-daily', dayExpenseMode === 'daily'],
+      ['dsm-nooneoff', dayExpenseMode === 'noOneoff'],
       ...[3,6,12].map(n=>['dam-'+n, avgMonths===n])
     ]);
     _segCustom('dam-c', avgMonths, [3,6,12], '');

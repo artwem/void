@@ -318,6 +318,141 @@ suite(390, 'ось «День за днём» на мобиле не измен�
   });
 });
 
+suite(390, '«День за днём» — состав трат', () => {
+  check('три режима фильтруют текущий месяц и подсвечивают свою кнопку', async p => {
+    const got = await p.evaluate(() => {
+      const saved = { exps: DB.expenses, mode: localStorage.getItem('dayExpenseMode') };
+      const n = new Date(), y = n.getFullYear(), m = n.getMonth(), date = today();
+      DB.expenses = [
+        { id: 'dm1', date, cat: 0, catId: 'cat0001', amount: 1000 },
+        { id: 'dm2', date, cat: 0, catId: 'cat0001', amount: 2000, oneoff: true },
+        { id: 'dm3', date, cat: 3, catId: 'cat0004', amount: 400 },
+        { id: 'dm4', date, cat: 3, catId: 'cat0004', amount: 300, oneoff: true },
+      ];
+      const out = [];
+      try {
+        window.showPage('stats', document.getElementById('nav-stats'));
+        for (const mode of ['all', 'noOneoff', 'daily']) {
+          setDayExpenseMode(mode);
+          const ds = charts.dayCompare.data.datasets.find(d => d.label === SHORT_MONTHS[m]);
+          out.push({ mode,
+            filtered: _dayExps(getMonthExpenses(y, m)).reduce((s, e) => s + e.amount, 0),
+            point: ds.data[ds.data.length - 1], stored: uiGet('dayExpenseMode'),
+            pressed: ['dsm-all', 'dsm-daily', 'dsm-nooneoff'].map(id => document.getElementById(id).getAttribute('aria-pressed')) });
+        }
+      } finally {
+        DB.expenses = saved.exps;
+        if (saved.mode === null) localStorage.removeItem('dayExpenseMode');
+        else localStorage.setItem('dayExpenseMode', saved.mode);
+      }
+      return out;
+    });
+    const expected = { all: 3700, noOneoff: 1400, daily: 400 };
+    for (const r of got) {
+      eq(r.filtered, expected[r.mode], `фильтр ${r.mode}`);
+      eq(r.point, expected[r.mode], `последняя точка текущего месяца, ${r.mode}`);
+      eq(r.stored, r.mode, `сохранённый режим ${r.mode}`);
+      const active = { all: 0, daily: 1, noOneoff: 2 }[r.mode];
+      r.pressed.forEach((v, i) => eq(v, i === active ? 'true' : 'false', `aria-pressed ${r.mode}, кнопка ${i}`));
+    }
+  });
+
+  check('прошлый месяц и среднее за 3 месяца используют тот же фильтр', async p => {
+    const got = await p.evaluate(() => {
+      const saved = DB.expenses;
+      const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+      const py = m ? y : y - 1, pm = m ? m - 1 : 11;
+      const mk = (yy, mm) => monthKey(yy, mm) + '-01';
+      const rows = date => [
+        { id: 'a' + date, date, cat: 0, catId: 'cat0001', amount: 1000 },
+        { id: 'b' + date, date, cat: 0, catId: 'cat0001', amount: 2000, oneoff: true },
+        { id: 'c' + date, date, cat: 3, catId: 'cat0004', amount: 400 },
+        { id: 'd' + date, date, cat: 3, catId: 'cat0004', amount: 300, oneoff: true },
+      ];
+      DB.expenses = [...rows(mk(y, m)), ...rows(mk(py, pm))];
+      const out = [];
+      try {
+        window.showPage('stats', document.getElementById('nav-stats'));
+        setDayCompareMode('full'); setDayAvgMonths(3);
+        for (const mode of ['all', 'noOneoff', 'daily']) {
+          setDayExpenseMode(mode);
+          const prev = charts.dayCompare.data.datasets.find(d => d.label === SHORT_MONTHS[pm]).data;
+          const avg = charts.dayCompare.data.datasets.find(d => d.label === 'Среднее 3м').data;
+          const last = arr => [...arr].reverse().find(v => v !== null);
+          out.push({ mode, prev: last(prev), avg: last(avg) });
+        }
+      } finally { DB.expenses = saved; }
+      return out;
+    });
+    const expected = { all: 3700, noOneoff: 1400, daily: 400 };
+    for (const r of got) {
+      eq(r.prev, expected[r.mode], `последняя видимая точка прошлого месяца, ${r.mode}`);
+      eq(r.avg, expected[r.mode], `последняя видимая точка среднего, ${r.mode}`);
+    }
+  });
+
+  check('локальный режим мигрирует из dayInclSpecial и нормализуется', async p => {
+    const got = await p.evaluate(() => {
+      const saved = { mode: localStorage.getItem('dayExpenseMode'), old: localStorage.getItem('dayInclSpecial') };
+      const out = [];
+      try {
+        localStorage.setItem('dayExpenseMode', 'noOneoff');
+        out.push(_initialDayExpenseMode());
+        localStorage.removeItem('dayExpenseMode');
+        localStorage.setItem('dayInclSpecial', '0'); out.push(_initialDayExpenseMode());
+        localStorage.setItem('dayInclSpecial', '1'); out.push(_initialDayExpenseMode());
+        localStorage.setItem('dayExpenseMode', 'unknown'); out.push(_initialDayExpenseMode());
+      } finally {
+        for (const [key, val] of [['dayExpenseMode', saved.mode], ['dayInclSpecial', saved.old]]) {
+          if (val === null) localStorage.removeItem(key); else localStorage.setItem(key, val);
+        }
+      }
+      return out;
+    });
+    eq(got.join(','), 'noOneoff,daily,all,all', 'миграция и fallback локального режима');
+  });
+
+  check('без разовых: отдельный ряд будущих трат, резерв и полный итог сохранены', async p => {
+    const got = await p.evaluate(() => {
+      const n = new Date(), y = n.getFullYear(), m = n.getMonth(), cD = n.getDate();
+      const days = new Date(y, m + 1, 0).getDate();
+      if (cD >= days) return null;
+      const saved = { exps: DB.expenses, oblig: DB.catOblig };
+      const tomorrow = monthKey(y, m) + '-' + String(cD + 1).padStart(2, '0');
+      DB.expenses = [
+        { id: 'f0', date: today(), cat: 3, catId: 'cat0004', amount: 50 },
+        { id: 'f1', date: tomorrow, cat: 0, catId: 'cat0001', amount: 100 },
+        { id: 'f2', date: tomorrow, cat: 3, catId: 'cat0004', amount: 400 },
+        { id: 'f3', date: tomorrow, cat: 3, catId: 'cat0004', amount: 200, oneoff: true },
+      ];
+      DB.catOblig = { ...DB.catOblig, cat0006: true };
+      for (const k of [1, 2]) {
+        const d = new Date(y, m - k, 1);
+        DB.expenses.push({ id: 'fh' + k, date: monthKey(d.getFullYear(), d.getMonth()) + '-01',
+          cat: 5, catId: 'cat0006', amount: 1000 });
+      }
+      try {
+        window.showPage('stats', document.getElementById('nav-stats'));
+        setDayCompareMode('full'); setDayExpenseMode('all');
+        const before = _monthForecast(y, m).total;
+        setDayExpenseMode('noOneoff');
+        const fc = _monthForecast(y, m);
+        const proj = charts.dayCompare.data.datasets.find(d => d.label === 'Прогноз').data;
+        return { before, after: fc.total, reserve: fc.specRemain,
+          all: fc.futLine[days - 1], regular: fc.futLineReg[days - 1], noOneoff: fc.futLineNoOneoff[days - 1],
+          drawn: proj[days - 1], expected: Math.round(550 + fc.pace * (days - cD) + fc.specLine[days - 1]) };
+      } finally { DB.expenses = saved.exps; DB.catOblig = saved.oblig; }
+    });
+    if (got === null) return;
+    eq(got.all, 700, 'futLine');
+    eq(got.regular, 400, 'futLineReg');
+    eq(got.noOneoff, 500, 'futLineNoOneoff');
+    eq(got.drawn, got.expected, 'прогноз без разовых включает 500 и резерв обязательных');
+    eq(got.reserve > 0, true, 'контрольный резерв обязательных ненулевой');
+    eq(got.after, got.before, 'fc.total до и после переключения режима');
+  });
+});
+
 suite(1000, 'оболочка 1000', () => {
   check('сайдбар схлопнут в рельс 64 px', async p => {
     near((await rect(p, 'nav.nav')).width, 64, 'ширина рельса');
@@ -1740,6 +1875,105 @@ suite(390, 'средние и период графиков', () => {
     eq(bs.join('|'), '0|50000', 'средние доход и расход: ' + txt);
   });
 
+  check('норма накопления: шкала −100…100%, точный выброс и штриховка текущего', async p => {
+    const r = await p.evaluate(() => {
+      const saved = { expenses: DB.expenses, incomes: DB.incomes, period: savingsPeriodMode };
+      const now = new Date();
+      const mk = offset => {
+        const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        return monthKey(d.getFullYear(), d.getMonth());
+      };
+      const exp = (offset, amount) => ({ id: 'sr-e' + offset, date: mk(offset) + '-01', cat: 0, catId: 'cat0001', amount });
+      const inc = (offset, amount) => ({ id: 'sr-i' + offset, date: mk(offset) + '-01', source: 'X', amount, tag: '' });
+      try {
+        DB.expenses = [exp(-2, 42000), exp(-1, 75000), exp(0, 74100)];
+        DB.incomes = [inc(-2, 100000), inc(-1, 100000), inc(0, 10000)];
+        window.showPage('assets', document.getElementById('nav-assets'));
+        setSavingsPeriod(6);
+        const c = charts.savingsRate, ds = c.data.datasets[0], last = ds.data.length - 1;
+        const plugin = (c.config.plugins || []).find(p => p.id === 'savingsRateOverflowLabels');
+        const labels = [];
+        if (plugin) {
+          const original = c.ctx.fillText;
+          c.ctx.fillText = function(text, x, y, ...rest) {
+            labels.push({ text: String(text), x, y });
+            return original.call(this, text, x, y, ...rest);
+          };
+          try { plugin.afterDatasetsDraw(c); } finally { c.ctx.fillText = original; }
+        }
+        return {
+          min: c.options.scales.y.min, max: c.options.scales.y.max,
+          data: ds.data, raw: ds.data[last],
+          tooltip: c.options.plugins.tooltip.callbacks.label({ dataIndex: last, raw: ds.data[last] }),
+          avg: document.getElementById('savings-rate-avg').textContent,
+          hatch: ds.backgroundColor[last] instanceof CanvasPattern,
+          doneSolid: typeof ds.backgroundColor[last - 1] === 'string',
+          labels,
+        };
+      } finally {
+        DB.expenses = saved.expenses; DB.incomes = saved.incomes;
+        setSavingsPeriod(saved.period);
+      }
+    });
+    eq(r.data.join(','), ',,,58,25,-641', 'исходные нормы не обрезаны');
+    eq(r.raw, -641, 'текущий выброс остался в dataset');
+    eq(r.tooltip, '-641%', 'tooltip показывает точное значение');
+    eq(r.avg, '42%', 'среднее 58% и 25%, текущий −641% не в счёт');
+    eq([r.min, r.max, r.hatch].join(','), '-100,100,true', 'границы шкалы и штриховка текущего');
+    eq(r.doneSolid, true, 'завершённые столбцы остаются сплошными');
+    eq(r.labels.length, 1, 'подпись только у выброса, не у 58% и 25%');
+    eq(r.labels[0].text, '-641% ↓', 'точная подпись и стрелка вниз');
+  });
+
+  check('норма накопления: null без подписи, отсутствие дохода — «Нет данных»', async p => {
+    const r = await p.evaluate(() => {
+      const saved = { expenses: DB.expenses, incomes: DB.incomes, period: savingsPeriodMode };
+      const now = new Date();
+      const mk = offset => {
+        const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        return monthKey(d.getFullYear(), d.getMonth());
+      };
+      const exp = (offset, amount) => ({ id: 'srn-e' + offset, date: mk(offset) + '-01', cat: 0, catId: 'cat0001', amount });
+      try {
+        DB.expenses = [exp(-1, 25000), exp(0, 74100)];
+        DB.incomes = [
+          { id: 'srn-old', date: mk(-2) + '-01', source: 'X', amount: 100000, tag: '' },
+          { id: 'srn-now', date: mk(0) + '-01', source: 'X', amount: 10000, tag: '' },
+        ];
+        window.showPage('assets', document.getElementById('nav-assets'));
+        setSavingsPeriod(6);
+        const c = charts.savingsRate, ds = c.data.datasets[0], last = ds.data.length - 1;
+        const plugin = (c.config.plugins || []).find(p => p.id === 'savingsRateOverflowLabels');
+        const labels = [];
+        if (plugin) {
+          const original = c.ctx.fillText;
+          c.ctx.fillText = function(text, x, y, ...rest) {
+            labels.push({ text: String(text), x, y });
+            return original.call(this, text, x, y, ...rest);
+          };
+          try { plugin.afterDatasetsDraw(c); } finally { c.ctx.fillText = original; }
+        }
+        const nullX = c.getDatasetMeta(0).data[3].x;
+        return {
+          min: c.options.scales.y.min, max: c.options.scales.y.max,
+          untracked: ds.data[3], noIncome: ds.data[4],
+          noIncomeTooltip: c.options.plugins.tooltip.callbacks.label({ dataIndex: 4, raw: ds.data[4] }),
+          nullLabels: labels.filter(l => Math.abs(l.x - nullX) < 1).length,
+          labels,
+        };
+      } finally {
+        DB.expenses = saved.expenses; DB.incomes = saved.incomes;
+        setSavingsPeriod(saved.period);
+      }
+    });
+    eq(r.untracked, null, 'месяц без учёта трат остаётся null');
+    eq(r.noIncome, 0, 'месяц без дохода остаётся нулевым столбцом');
+    eq(r.noIncomeTooltip, 'Нет данных', 'подсказка месяца без дохода');
+    eq([r.min, r.max].join(','), '-100,100', 'границы шкалы сохранены');
+    eq(r.nullLabels, 0, 'у null нет подписи выброса');
+    eq(r.labels.length, 1, 'у нулевого столбца без дохода тоже нет подписи');
+  });
+
   check('«всё» берёт весь доступный период, а не фиксированное число', async p => {
     eq(await p.evaluate(() => _dataMonthsSpan()), 2, 'месяцев в данных фикстуры');
     await p.evaluate(() => { DB.expenses.push({id:'old1', date:'2025-01-10', cat:0, catId:'cat0001', amount:100, updatedAt:1}); saveDB(); });
@@ -2650,13 +2884,13 @@ suite(390, 'чипы графиков переживают перезапуск'
   check('«Аналитика» пишет выбор в localStorage, а не в sessionStorage', async p => {
     await p.evaluate(() => window.showPage('stats', document.getElementById('nav-stats')));
     await p.evaluate(() => {
-      setStatsPeriod('all'); setDayAvgMonths(12); setDayInclSpecial(false);
+      setStatsPeriod('all'); setDayAvgMonths(12); setDayExpenseMode('noOneoff');
       setDayCompareMode('full'); setPieViewMode('groups'); setExpSearchPeriod(3);
     });
-    const got = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayInclSpecial',
+    const got = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayExpenseMode',
       'dayCompareMode','pieViewMode','expSearchPeriod'].map(k => k + '=' + localStorage.getItem(k)).join(','));
-    eq(got, 'statsPeriod=all,dayAvgMonths=12,dayInclSpecial=0,dayCompareMode=full,pieViewMode=groups,expSearchPeriod=3', 'все ключи device-local');
-    const leaked = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayInclSpecial','pieViewMode','expSearchPeriod']
+    eq(got, 'statsPeriod=all,dayAvgMonths=12,dayExpenseMode=noOneoff,dayCompareMode=full,pieViewMode=groups,expSearchPeriod=3', 'все ключи device-local');
+    const leaked = await p.evaluate(() => ['statsPeriod','dayAvgMonths','dayExpenseMode','pieViewMode','expSearchPeriod']
       .filter(k => sessionStorage.getItem(k) !== null));
     eq(leaked.length, 0, 'в sessionStorage не осталось ничего: ' + leaked.join(','));
   });
@@ -2667,7 +2901,7 @@ suite(390, 'чипы графиков переживают перезапуск'
     eq(await p.evaluate(() => uiGet('statsPeriod', '6')), 'all', 'период аналитики прочитан');
     eq(await p.evaluate(() => uiGet('dayCompareMode', 'today')), 'full', 'режим «Месяц/Сегодня» прочитан');
     eq(await p.evaluate(() => uiGet('нетТакогоКлюча', 'умолчание')), 'умолчание', 'дефолт для отсутствующего ключа');
-    await p.evaluate(() => { setStatsPeriod(6); setDayInclSpecial(true); setDayCompareMode('today'); setPieViewMode('cats'); });
+    await p.evaluate(() => { setStatsPeriod(6); setDayExpenseMode('all'); setDayCompareMode('today'); setPieViewMode('cats'); });
   });
 
   check('«Показать нулевые счета» запоминается', async p => {
