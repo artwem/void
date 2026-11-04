@@ -144,35 +144,35 @@ export async function withPage(widths, fn, opts = {}) {
       payload = await probe.evaluate(() => JSON.stringify(buildDemoDB(new Date())));
       await probe.close();
     }
+    const page = await browser.newPage();
+    // Закрепляем prefers-reduced-motion: без этого значение берётся из настроек
+    // ОС машины, где идёт прогон. У приложения есть собственное правило
+    // доступности (@media(prefers-reduced-motion:reduce) гасит все анимации),
+    // поэтому проверки анимаций зеленели или краснели в зависимости от того,
+    // включена ли на компьютере «уменьшенная анимация» — то есть были
+    // недетерминированы. Тестируем поведение по умолчанию.
+    await page.emulateMediaFeatures([
+      { name: 'prefers-reduced-motion', value: 'no-preference' },
+    ]);
+    await page.evaluateOnNewDocument(fx => {
+      // Полная очистка: origin у страниц общий, и UI-состояние вкладок
+      // (uiGet/uiSet — периоды графиков, режимы разбивки, чипы частей
+      // накоплений) с v1.73.0 живёт в localStorage. Без clear() выбор одной
+      // сюиты протекал бы в следующую и порядок объявления снова стал бы
+      // значим — ровно то, от чего уходили, давая каждой сюите свою страницу.
+      localStorage.clear();
+      localStorage.setItem('budgetDB_v2', fx);
+      // SW перезагружает страницу по controllerchange — в тестах это помеха.
+      // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.
+      Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined });
+    }, payload);
     for (const [index, width] of widths.entries()) {
-      const page = await browser.newPage();
       await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
-      // Закрепляем prefers-reduced-motion: без этого значение берётся из настроек
-      // ОС машины, где идёт прогон. У приложения есть собственное правило
-      // доступности (@media(prefers-reduced-motion:reduce) гасит все анимации),
-      // поэтому проверки анимаций зеленели или краснели в зависимости от того,
-      // включена ли на компьютере «уменьшенная анимация» — то есть были
-      // недетерминированы. Тестируем поведение по умолчанию.
-      await page.emulateMediaFeatures([
-        { name: 'prefers-reduced-motion', value: 'no-preference' },
-      ]);
-      await page.evaluateOnNewDocument(fx => {
-        // Полная очистка: origin у страниц общий, и UI-состояние вкладок
-        // (uiGet/uiSet — периоды графиков, режимы разбивки, чипы частей
-        // накоплений) с v1.73.0 живёт в localStorage. Без clear() выбор одной
-        // сюиты протекал бы в следующую и порядок объявления снова стал бы
-        // значим — ровно то, от чего уходили, давая каждой сюите свою страницу.
-        localStorage.clear();
-        localStorage.setItem('budgetDB_v2', fx);
-        // SW перезагружает страницу по controllerchange — в тестах это помеха.
-        // Скрываем API целиком: регистрация в index.html за проверкой `in navigator`.
-        Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined });
-      }, payload);
-      await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
+      await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
       await page.evaluate(() => document.fonts.ready);
       await fn(page, { width, index });
-      await page.close();
     }
+    await page.close();
   } finally {
     await browser.close();
     srv.close();

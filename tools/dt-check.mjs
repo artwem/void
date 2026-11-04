@@ -3296,7 +3296,8 @@ suite(390, 'идеи v1.83.0', () => {
 
   check('deep-link ?add=&cat=&comment= открывает заполненную модалку и чистит URL', async p => {
     const base = p.url().split('?')[0];
-    await p.goto(base + '?add=350&cat=' + encodeURIComponent('Еда вне дома') + '&comment=' + encodeURIComponent('кофе'), { waitUntil: 'networkidle0' });
+    await p.goto(base + '?add=350&cat=' + encodeURIComponent('Еда вне дома') + '&comment=' + encodeURIComponent('кофе'), { waitUntil: 'domcontentloaded' });
+    await p.waitForFunction(() => document.getElementById('exp-cat').value === '2');
     const got = await p.evaluate(() => ({
       open: document.getElementById('modal-expense').classList.contains('open'),
       amount: document.getElementById('exp-amount').value.replace(/\s/g, ''),
@@ -3311,7 +3312,7 @@ suite(390, 'идеи v1.83.0', () => {
     eq(got.comment, 'кофе', 'комментарий');
     eq(got.search, '', 'query-строка убрана');
     eq(got.saved, 0, 'без подтверждения ничего не сохранено');
-    await p.goto(base + '?tab=assets', { waitUntil: 'networkidle0' });
+    await p.goto(base + '?tab=assets', { waitUntil: 'domcontentloaded' });
     const tab = await p.evaluate(() => ({ active: document.getElementById('nav-assets').classList.contains('active'), modal: !!document.querySelector('.overlay.open'), search: location.search }));
     eq(tab.active, true, '?tab=assets открывает «Накопления»');
     eq(tab.modal, false, 'без add модалки нет');
