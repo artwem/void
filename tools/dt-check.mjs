@@ -137,12 +137,18 @@ suite(1280, 'оболочка 1280', () => {
   check('подписи вкладок видны', async p => {
     eq(await isVisible(p, '#nav-day .nav-lbl'), true, 'видимость подписи');
   });
-  check('страница начинается сразу после сайдбара', async p => {
-    // Вкладку задаём явно: у неактивной .page display:none и нулевая геометрия,
-    // так что проверка молча зазеленела бы от чужого showPage в соседнем чеке.
-    await p.evaluate(() => window.showPage('day', document.getElementById('nav-day')));
-    const r = await rect(p, '#page-day');
-    near(r.x, 208, 'левый край страницы');
+  check('рабочие вкладки центрированы и расширены до 1040 px', async p => {
+    for (const tab of ['day', 'budget', 'income']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      const r = await rect(p, '#page-' + tab);
+      near(r.x, 224, `левый край «${tab}»`);
+      near(r.width, 1040, `ширина «${tab}»`);
+    }
+  });
+  check('FAB следует за правым краем центрированного контента', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const r = await rect(p, '#fab');
+    near(r.x + r.width, 1248, 'правая граница FAB');
   });
   check('FAB виден — колонки с «+ Расход» больше нет', async p => {
     // Плавающую кнопку прятали, пока добавление жило в контекстной колонке.
@@ -161,6 +167,52 @@ suite(1280, 'оболочка 1280', () => {
     const anim = await p.evaluate(() =>
       getComputedStyle(document.getElementById('nav-income'), '::before').animationName);
     eq(anim, 'none', 'animation-name у ::before активной вкладки');
+  });
+});
+
+suite(1000, 'рабочие вкладки на узком десктопе', () => {
+  check('контент занимает всю область после сайдбара', async p => {
+    for (const tab of ['day', 'budget', 'income']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      const r = await rect(p, '#page-' + tab);
+      near(r.x, 64, `левый край «${tab}»`);
+      near(r.width, 936, `ширина «${tab}»`);
+    }
+  });
+  check('FAB остаётся в 16 px от правого края контента', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const r = await rect(p, '#fab');
+    near(r.x + r.width, 984, 'правая граница FAB');
+  });
+});
+
+suite(1600, 'рабочие вкладки на широком десктопе', () => {
+  check('колонка 1040 px центрирована в рабочей области', async p => {
+    for (const tab of ['day', 'budget', 'income']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      const r = await rect(p, '#page-' + tab);
+      near(r.x, 384, `левый край «${tab}»`);
+      near(r.width, 1040, `ширина «${tab}»`);
+    }
+  });
+  check('FAB остаётся в 16 px от правого края контента', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const r = await rect(p, '#fab');
+    near(r.x + r.width, 1408, 'правая граница FAB');
+  });
+});
+
+suite(390, 'рабочие вкладки на мобиле не изменились', () => {
+  check('страницы занимают ширину viewport без горизонтального переполнения', async p => {
+    await p.addStyleTag({ content: '.page{animation:none!important}' });
+    for (const tab of ['day', 'budget', 'income']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      const r = await rect(p, '#page-' + tab);
+      near(r.x, 0, `левый край «${tab}»`);
+      near(r.width, 390, `ширина «${tab}»`);
+      eq(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
+        `горизонтальное переполнение «${tab}»`);
+    }
   });
 });
 
@@ -534,6 +586,13 @@ suite(1600, 'инспектор 1600', () => {
     const ins = await rect(p, '#modal-expense .sheet');
     if (page.x + page.width > ins.x + 1)
       throw new Error(`страница заходит под инспектор: ${page.x + page.width} > ${ins.x}`);
+  });
+  check('FAB не накрывает инспектор и остаётся у края контента', async p => {
+    await p.evaluate(() => window.showPage('budget', document.getElementById('nav-budget')));
+    const page = await rect(p, '#page-budget');
+    const fab = await rect(p, '#fab');
+    near(page.width, 1012, 'ширина контента рядом с инспектором');
+    near(fab.x + fab.width, page.x + page.width - 16, 'правая граница FAB');
   });
   check('Escape закрывает', async p => {
     await p.keyboard.press('Escape');
@@ -4314,7 +4373,7 @@ suite(390, 'средние без разовых v1.87.0', () => {
 });
 
 suite(1600, 'дизайн v1.85.0 — десктоп', () => {
-  check('вкладки ввода — колонка до 760 px, аналитика во всю ширину', async p => {
+  check('рабочие вкладки — до 1040 px, настройки — 760 px, аналитика во всю ширину', async p => {
     const got = await p.evaluate(() => {
       const w = id => { showPage(id, document.getElementById('nav-' + id)); return Math.round(document.getElementById('page-' + id).getBoundingClientRect().width); };
       const r = { day: w('day'), budget: w('budget'), income: w('income'), settings: w('settings'), stats: w('stats'), assets: w('assets') };
@@ -4324,9 +4383,10 @@ suite(1600, 'дизайн v1.85.0 — десктоп', () => {
       r.fabRight = Math.round(fab.right); r.pageRight = Math.round(page.right);
       return r;
     });
-    for (const k of ['day', 'budget', 'income', 'settings']) eq(got[k] <= 760, true, `#page-${k}: ${got[k]}px`);
+    for (const k of ['day', 'budget', 'income']) eq(got[k], 1040, `#page-${k}`);
+    eq(got.settings, 760, 'ширина настроек');
     eq(got.stats > 1000 && got.assets > 1000, true, `аналитика ${got.stats}, активы ${got.assets}`);
-    eq(got.fabRight <= got.pageRight && got.fabRight >= got.pageRight - 80, true, `FAB у края колонки: ${got.fabRight} при крае ${got.pageRight}`);
+    eq(got.fabRight, got.pageRight - 16, `FAB у края колонки: ${got.fabRight} при крае ${got.pageRight}`);
   });
 });
 

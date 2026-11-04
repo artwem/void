@@ -555,13 +555,13 @@ body.privacy-mode .prv *{color:transparent!important}
   /* СТРАНИЦЫ */
   .page{grid-area:main; min-width:0}
   .page.slide-l,.page.slide-r{animation:fadeIn .18s ease}
-  /* Вкладки ввода — колонка до 760 px, прижата к сайдбару (v1.85.0). На 1600 px
-     строка траты растягивалась во всю ширину: название слева, сумма в полутора
-     тысячах пикселей справа, полоска прогресса 1300 px. Аналитика, Активы и
-     Отчёт остаются в две колонки — там ширина работает на графики. */
-  #page-day,#page-budget,#page-income,#page-settings{max-width:760px}
-  /* FAB — у правого края колонки, а не экрана */
-  .fab{right:auto; left:calc(64px + 760px - 66px)}
+  /* Рабочие вкладки — колонка до 1040 px по центру области после сайдбара.
+     На узком десктопе она занимает всю доступную ширину, на широком не
+     растягивает строки и формы. Настройки сохраняют прежнюю колонку 760 px. */
+  #page-day,#page-budget,#page-income{width:100%;max-width:1040px;margin-inline:auto}
+  #page-settings{max-width:760px}
+  /* FAB — в 16 px от правого края колонки с учётом сайдбара 64 px. */
+  .fab{left:auto;right:max(16px,calc((100vw - 1104px)/2 + 16px))}
 
   /* ОВЕРЛЕИ: три десктопных амплуа вместо нижней шторки.
      Содержимое модалок не меняется — только позиционирование. */
@@ -658,7 +658,7 @@ body.privacy-mode .prv *{color:transparent!important}
   .nav-lbl{display:inline}
   /* Сайдбар шире — левый край затемнения едет вместе с ним */
   .overlay[data-dt="insp"]{left:208px}
-  .fab{left:calc(208px + 760px - 66px)}
+  .fab{right:max(16px,calc((100vw - 1248px)/2 + 16px))}
 }
 
 @media (min-width:1440px){
@@ -666,6 +666,8 @@ body.privacy-mode .prv *{color:transparent!important}
      Работает потому, что .overlay — прямой потомок body, то есть
      полноценный грид-элемент. */
   body.insp-open{grid-template-columns:208px minmax(0,1fr) 380px}
+  /* Справа от контента теперь ещё инспектор 380 px: FAB не должен уходить на него. */
+  body.insp-open .fab{right:max(396px,calc((100vw - 1628px)/2 + 396px))}
   body.insp-open .overlay[data-dt="insp"].open{
     position:static; display:block; background:none;
     grid-column:3; grid-row:1;
