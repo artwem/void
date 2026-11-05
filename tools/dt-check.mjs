@@ -257,6 +257,23 @@ suite(1600, 'раскладка «Аналитики»', () => {
   });
 });
 
+suite(1000, 'графики на узком десктопе', () => {
+  check('холсты не выходят за правую границу карточек', async p => {
+    await p.addStyleTag({ content: '.page{animation:none!important}' });
+    for (const tab of ['stats', 'assets']) {
+      await p.evaluate(t => window.showPage(t, document.getElementById('nav-' + t)), tab);
+      await new Promise(r => setTimeout(r, 250));
+      const overflow = await p.evaluate(() => [...document.querySelectorAll('.page.active .chart-box canvas')]
+        .map(el => {
+          const canvas = el.getBoundingClientRect();
+          const card = el.closest('.chart-card').getBoundingClientRect();
+          return { id: el.id, px: Math.round(canvas.right - card.right) };
+        }).filter(x => x.px > 1));
+      eq(overflow.length, 0, `${tab}: ${JSON.stringify(overflow)}`);
+    }
+  });
+}, { demo: true });
+
 // Годовой отчёт получил собственный вход в сайдбаре (v1.55.0). Дублирующие
 // входы — кнопка в карточке «Аналитики» и «‹» в шапке отчёта — на десктопе
 // прячутся классом .dt-hide, на мобиле остаются единственным способом попасть

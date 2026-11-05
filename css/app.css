@@ -607,11 +607,10 @@ body.privacy-mode .prv *{color:transparent!important}
   /* Поиск с v1.86.0 — обычная полуширинная карточка: так сетка складывается в
      пары дни недели|подушка, поиск|структура, группы|теги, и «Доходы по
      тегам» не висят одни на полуширине внизу. */
-  /* Высота холста на десктопе — от ширины (v1.86.0): фиксированные 260–300 px
-     на карточке в 800–960 px давали ленту с почти плоской линией. 2.4:1 с
-     потолком 360. overflow:hidden обязателен — без него aspect-ratio-бокс не
-     ужимается ниже содержимого, и после сужения окна холст не уменьшается. */
-  #page-stats .chart-box,#page-assets .chart-box,#page-calc .chart-box{height:auto;aspect-ratio:2.4;min-height:200px;max-height:360px;overflow:hidden}
+  /* Высота холста на десктопе — от ширины (v1.86.0): 2.4:1, 200–360 px.
+     width:100% не даёт min/max-height через aspect-ratio навязать боксу ширину
+     480–864 px: на узких колонках из-за этого холст выходил за карточку. */
+  #page-stats .chart-box,#page-assets .chart-box,#page-calc .chart-box{width:100%;height:auto;aspect-ratio:2.4;min-height:200px;max-height:360px;overflow:hidden}
 
   /* АКТИВЫ: слева то, что правят, справа то, на что смотрят.
      В разметке первыми идут #assets-charts (v1.86.2 — вернули как было:
