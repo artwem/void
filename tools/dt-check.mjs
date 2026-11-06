@@ -2942,6 +2942,189 @@ suite(390, 'перевод в инвестсчёт ждёт снимка бан�
   });
 }, { demo: true });
 
+suite(390, 'вывод инвестиций и исправление сумм', () => {
+  const reset = (p, direct = false) => p.evaluate(direct => {
+    const td = today();
+    DB.banks = ['Тестовый банк'];
+    DB.assets = [{id:'inv-bank',bankName:DB.banks[0],date:direct?td:'2020-01-01',amount:5000,updatedAt:1}];
+    DB.deposits = [];
+    DB.investments = [{id:'inv-test',name:'Тестовый счёт',snapshots:{[td]:1000.55},
+      contributions:[{id:'inv-initial',date:'2020-01-01',amount:800.25,updatedAt:1}],updatedAt:1}];
+    showPage('investments');
+  }, direct);
+  const withdraw = (p, amount) => p.evaluate(amount => {
+    openInvContribution('inv-test', -1);
+    setMoneyInput('inv-contrib-amount', amount);
+    document.getElementById('inv-contrib-bank').value = DB.banks[0];
+    saveInvContribution();
+    return {value:invValueAt(DB.investments[0],today()), bank:_bankPending(DB.banks[0],'2020-01-01',today())};
+  }, amount);
+
+  check('частичный вывод после снимка сегодня уменьшает остаток до копеек', async p => {
+    await reset(p);
+    const r = await withdraw(p, 250.25);
+    near(r.value,750.30,'остаток после частичного вывода',0.001);
+    near(r.bank,250.25,'перевод ждёт снимка банка',0.001);
+  });
+  check('полный вывод обнуляет счёт и зачисляет точную сумму в банк один раз', async p => {
+    await reset(p,true);
+    const r = await p.evaluate(() => {
+      openInvContribution('inv-test',-1); setInvWithdrawMode('all');
+      document.getElementById('inv-contrib-bank').value = DB.banks[0];
+      saveInvContribution();
+      const v = DB.investments[0];
+      return {value:invValueAt(v,today()), bank:DB.assets[0].amount, flows:v.contributions.length,
+        profit:invValueAt(v,today())-invInvested(v,today()),deleted:!!v._deleted};
+    });
+    eq(r.value,0,'остаток'); near(r.bank,6000.55,'банк',0.001);
+    eq(r.flows,2,'история сохранена'); eq(r.deleted,false,'счёт сохранён');
+    near(r.profit,200.30,'полученная прибыль сохранена',0.001);
+  });
+  check('новый снимок поглощает прежний вывод, следующий вывод учитывается сразу', async p => {
+    await reset(p); await withdraw(p,250.25);
+    await p.evaluate(() => { openInvSnapshot('inv-test'); setMoneyInput('inv-snap-value',760.30); saveInvSnapshot(); });
+    const r = await withdraw(p,50);
+    near(r.value,710.30,'без повторного вычитания первого вывода',0.001);
+  });
+  check('ноль стоимости сохраняется, пустое поле не обнуляет счёт', async p => {
+    await reset(p);
+    const r = await p.evaluate(() => {
+      openInvSnapshot('inv-test'); setMoneyInput('inv-snap-value',''); saveInvSnapshot();
+      const afterEmpty = invValueAt(DB.investments[0],today());
+      setMoneyInput('inv-snap-value',0); saveInvSnapshot();
+      return {afterEmpty,afterZero:invValueAt(DB.investments[0],today())};
+    });
+    near(r.afterEmpty,1000.55,'пустая стоимость отклонена',0.001); eq(r.afterZero,0,'нулевая стоимость');
+  });
+  check('исправление и удаление вывода меняют остаток и банк на разницу', async p => {
+    await reset(p,true); await withdraw(p,250.25);
+    const r = await p.evaluate(() => {
+      const v = DB.investments[0], c = v.contributions.find(c=>c.amount<0);
+      openInvestModal(v.id);
+      const edit = document.querySelector('#inv-contribs-list button[aria-label="Изменить сумму"]');
+      edit.click(); setMoneyInput('inv-contrib-amount',100.10); saveInvContribution();
+      const edited = {value:invValueAt(v,today()),bank:DB.assets[0].amount,amount:c.amount};
+      deleteInvContribution(v.id,c.id);
+      return {edited,value:invValueAt(v,today()),bank:DB.assets[0].amount};
+    });
+    near(r.edited.value,900.45,'исправленный остаток',0.001);
+    near(r.edited.bank,5100.10,'банк исправлен на разницу',0.001);
+    near(r.edited.amount,-100.10,'сумма операции',0.001);
+    near(r.value,1000.55,'удаление возвращает остаток',0.001); eq(r.bank,5000,'банк после удаления');
+  });
+  check('редактирование снимка сохраняет последующий вывод', async p => {
+    await reset(p); await withdraw(p,250.25);
+    const r = await p.evaluate(() => {
+      openInvestModal('inv-test');
+      document.querySelector('#inv-snaps-list button[aria-label="Изменить стоимость"]').click();
+      setMoneyInput('inv-snap-value',1100.55); saveInvSnapshot();
+      return invValueAt(DB.investments[0],today());
+    });
+    near(r,850.30,'новая стоимость минус последующий вывод',0.001);
+  });
+  check('legacy-снимок включает старые операции той же даты, новые пополнения видны', async p => {
+    await reset(p);
+    const r = await p.evaluate(() => {
+      const v = DB.investments[0];
+      v.contributions.push({id:'old-same-day',date:today(),amount:200,updatedAt:1});
+      const legacy = invValueAt(v,today());
+      openInvContribution(v.id,1); setMoneyInput('inv-contrib-amount',10.25); saveInvContribution();
+      return {legacy,now:invValueAt(v,today())};
+    });
+    near(r.legacy,1000.55,'старый снимок без изменений',0.001);
+    near(r.now,1010.80,'новое пополнение учтено',0.001);
+  });
+  check('вывод больше остатка отклоняется без изменения банка и истории', async p => {
+    await reset(p,true); await withdraw(p,1001);
+    const r = await p.evaluate(() => ({count:DB.investments[0].contributions.length,bank:DB.assets[0].amount}));
+    eq(r.count,1,'история не изменена'); eq(r.bank,5000,'банк не изменён');
+  });
+  check('правка отложенного перевода и его удаление не создают снимки банка', async p => {
+    await reset(p); await withdraw(p,250.25);
+    const r = await p.evaluate(() => {
+      const v=DB.investments[0], c=v.contributions.find(c=>c.amount<0);
+      openInvContribution(v.id,-1,c.id); setMoneyInput('inv-contrib-amount',125.10); saveInvContribution();
+      const pending=_bankPending(DB.banks[0],'2020-01-01',today());
+      deleteInvContribution(v.id,c.id);
+      return {pending,after:_bankPending(DB.banks[0],'2020-01-01',today()),records:DB.assets.length};
+    });
+    near(r.pending,125.10,'ожидающая сумма исправлена',0.001); eq(r.after,0,'перевод отменён'); eq(r.records,1,'новых снимков нет');
+  });
+  check('редактирование пополнения меняет банк, последующий абсолютный снимок сохраняется', async p => {
+    await reset(p,true);
+    const r=await p.evaluate(() => {
+      const v=DB.investments[0];
+      openInvContribution(v.id,1); setMoneyInput('inv-contrib-amount',100.10);
+      document.getElementById('inv-contrib-bank').value=DB.banks[0]; saveInvContribution();
+      const c=v.contributions.find(c=>c.id!=='inv-initial');
+      openInvContribution(v.id,1,c.id); setMoneyInput('inv-contrib-amount',200.20); saveInvContribution();
+      const before=invValueAt(v,today());
+      openInvSnapshot(v.id); setMoneyInput('inv-snap-value',1300.75); saveInvSnapshot();
+      openInvContribution(v.id,1,c.id); setMoneyInput('inv-contrib-amount',150.15); saveInvContribution();
+      return {before,after:invValueAt(v,today()),bank:DB.assets[0].amount};
+    });
+    near(r.before,1200.75,'новое пополнение исправлено',0.001);
+    near(r.after,1300.75,'абсолютная стоимость не изменена правкой прежнего потока',0.001);
+    near(r.bank,4849.85,'банк учитывает только исправленную сумму',0.001);
+  });
+  check('состав снимка сохраняется в payload и после сериализации', async p => {
+    await reset(p); await withdraw(p,250.25);
+    const r=await p.evaluate(() => {
+      DB.investments=JSON.parse(JSON.stringify(buildPayload().investments));
+      return invValueAt(DB.investments[0],today());
+    });
+    near(r,750.30,'остаток после восстановления payload',0.001);
+  });
+  check('полный вывод пересчитывается при смене даты', async p => {
+    await reset(p);
+    const r=await p.evaluate(() => {
+      const v=DB.investments[0]; v.snapshots['2020-01-01']=800.25;
+      openInvContribution(v.id,-1); setInvWithdrawMode('all');
+      const current=parseMoney(document.getElementById('inv-contrib-amount').value);
+      const date=document.getElementById('inv-contrib-date'); date.value='2020-01-01'; date.dispatchEvent(new Event('change'));
+      const historical=parseMoney(document.getElementById('inv-contrib-amount').value);
+      saveInvContribution();
+      return {current,historical,then:invValueAt(v,'2020-01-01'),now:invValueAt(v,today())};
+    });
+    near(r.current,1000.55,'сумма сегодня',0.001); near(r.historical,800.25,'сумма выбранной даты',0.001);
+    eq(r.then,0,'остаток в дату вывода'); near(r.now,1000.55,'более поздний снимок авторитетен',0.001);
+  });
+  check('правка или удаление пополнения не допускает минус после последующего вывода', async p => {
+    await reset(p);
+    const r=await p.evaluate(() => {
+      const v=DB.investments[0]; v.snapshots={'2020-01-01':1000};
+      v.contributions=[{id:'initial',date:'2020-01-01',amount:1000},
+        {id:'topup',date:'2020-01-02',amount:500},{id:'out',date:'2020-01-03',amount:-1500}];
+      openInvContribution(v.id,1,'topup'); setMoneyInput('inv-contrib-amount',100); saveInvContribution();
+      const edited=v.contributions.find(c=>c.id==='topup').amount;
+      deleteInvContribution(v.id,'topup');
+      return {edited,deleted:!!v.contributions.find(c=>c.id==='topup')._deleted,value:invValueAt(v,today())};
+    });
+    eq(r.edited,500,'уменьшение пополнения отклонено'); eq(r.deleted,false,'удаление отклонено'); eq(r.value,0,'остаток не ушёл в минус');
+  });
+  check('исправление снимка и вывод задним числом не допускают последующий минус', async p => {
+    await reset(p);
+    const r=await p.evaluate(() => {
+      const v=DB.investments[0]; v.snapshots={'2020-01-01':1000};
+      v.contributions=[{id:'initial',date:'2020-01-01',amount:1000},{id:'out',date:'2020-01-03',amount:-1000}];
+      openInvSnapshot(v.id,'2020-01-01'); setMoneyInput('inv-snap-value',500); saveInvSnapshot();
+      const snapshot=v.snapshots['2020-01-01'];
+      closeModal('modal-inv-snap'); openInvContribution(v.id,-1);
+      document.getElementById('inv-contrib-date').value='2020-01-02'; setMoneyInput('inv-contrib-amount',100); saveInvContribution();
+      return {snapshot,flows:v.contributions.length,value:invValueAt(v,today())};
+    });
+    eq(r.snapshot,1000,'исправление снимка отклонено'); eq(r.flows,2,'новый вывод отклонён'); eq(r.value,0,'остаток сохранён');
+  });
+  check('запятая и точка без цифр не считаются нулевой стоимостью', async p => {
+    await reset(p);
+    const r=await p.evaluate(() => {
+      openInvSnapshot('inv-test');
+      return [',','.'].map(raw=>{document.getElementById('inv-snap-value').value=raw;saveInvSnapshot();return invValueAt(DB.investments[0],today());});
+    });
+    r.forEach(value=>near(value,1000.55,'ввод без цифр отклонён',0.001));
+  });
+});
+
 suite(390, 'без вкладов и инвестиций чипов графика нет', () => {
   check('переключатель скрыт, линия = банки', async p => {
     await p.evaluate(() => { localStorage.removeItem('assetsChartParts'); window.showPage('assets', document.getElementById('nav-assets')); });

@@ -1097,11 +1097,16 @@ if ('serviceWorker' in navigator) {
     <p id="inv-contrib-info" style="font-size:13px;color:var(--muted);margin:4px 0 12px"></p>
     <div class="fgrp">
       <label class="flbl">Дата</label>
-      <input type="date" id="inv-contrib-date" class="finp">
+      <input type="date" id="inv-contrib-date" class="finp" onchange="updateInvWithdrawal()">
+    </div>
+    <div class="seg seg-12" id="inv-withdraw-mode" style="display:none;margin-bottom:12px">
+      <button type="button" id="inv-withdraw-part" aria-pressed="true" onclick="setInvWithdrawMode('part')">Часть суммы</button>
+      <button type="button" id="inv-withdraw-all" aria-pressed="false" onclick="setInvWithdrawMode('all')">Вывести всё</button>
     </div>
     <div class="fgrp">
       <label class="flbl">Сумма, ₽</label>
       <input type="text" id="inv-contrib-amount" class="finp" inputmode="decimal" placeholder="50 000" oninput="formatMoneyInput(this)">
+      <div id="inv-withdraw-available" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div class="fgrp">
       <label class="flbl" id="inv-contrib-bank-lbl">Списать из банка</label>
@@ -1429,7 +1434,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6819,17 +6824,41 @@ function renderDepYield(){
 }
 
 // ── Инвестиции: снимки стоимости + пополнения/выводы ────────────────
-// Стоимость на дату = последний снимок ≤ даты + пополнения ПОСЛЕ него.
-// Пополнение видно сразу без нового снимка; следующий снимок перебазирует.
+// Снимок включает существовавшие при сохранении операции своей даты.
+// Новые операции того же дня учитываются сразу. Legacy-снимки без состава
+// по-прежнему включают все операции своей даты; не угадываем их порядок.
 function _invSnapDates(inv){ return Object.keys(inv.snapshots||{}).sort(); }
+
+function _invFreezeSnapshot(inv, date){
+  if(!Object.prototype.hasOwnProperty.call(inv.snapshots||{}, date)) return;
+  if(!inv.snapshotContribs) inv.snapshotContribs = {};
+  if(!Object.prototype.hasOwnProperty.call(inv.snapshotContribs, date))
+    inv.snapshotContribs[date] = (inv.contributions||[]).filter(c=>!c._deleted && c.date===date).map(c=>c.id);
+}
+
+function _invDraft(inv){
+  return {...inv, snapshots:{...inv.snapshots}, snapshotContribs:{...inv.snapshotContribs},
+    contributions:(inv.contributions||[]).map(c=>({...c}))};
+}
+
+// Проверяем и более поздние операции: правка старого пополнения не должна
+// превращать уже сделанный вывод в перерасход. Старый минус можно исправлять.
+function _invWouldOverdraw(before, after){
+  const dates = new Set([..._invSnapDates(before), ..._invSnapDates(after),
+    ...(before.contributions||[]).map(c=>c.date), ...(after.contributions||[]).map(c=>c.date)]);
+  const td = today();
+  return [...dates].some(date=>date<=td && invValueAt(after,date)<Math.min(0,invValueAt(before,date)));
+}
 
 function invValueAt(inv, dateStr){
   const past = _invSnapDates(inv).filter(ds=>ds<=dateStr);
   if(!past.length) return 0;               // до первого снимка счёта нет
   const base = past[past.length-1];
-  const later = (inv.contributions||[]).filter(c=>c.date>base && c.date<=dateStr)
+  const included = inv.snapshotContribs && inv.snapshotContribs[base];
+  const later = (inv.contributions||[]).filter(c=>!c._deleted && c.date<=dateStr &&
+    (c.date>base || (c.date===base && Array.isArray(included) && !included.includes(c.id))))
     .reduce((s,c)=>s+c.amount,0);
-  return Math.round((inv.snapshots[base]||0) + later);
+  return parseMoney((inv.snapshots[base]||0) + later);
 }
 
 // Переводы банк↔инвестсчёт, ещё не попавшие в снимок банка (v1.80.6).
@@ -6843,7 +6872,7 @@ function _bankPending(bankName, after, upto){
   (DB.investments||[]).forEach(v=>{
     if(v._deleted) return;
     (v.contributions||[]).forEach(c=>{
-      if(c.bank === bankName && c.date > after && (!upto || c.date <= upto)) s -= c.amount;
+      if(!c._deleted && c.bank === bankName && c.date > after && (!upto || c.date <= upto)) s -= c.amount;
     });
   });
   return s;
@@ -6861,7 +6890,7 @@ function _invBankTransfer(bankName, date, delta){
 // Вложено = Σ пополнений − выводы (amount<0) на дату
 function invInvested(inv, dateStr){
   const cut = dateStr || today();
-  return (inv.contributions||[]).filter(c=>c.date<=cut).reduce((s,c)=>s+c.amount,0);
+  return parseMoney((inv.contributions||[]).filter(c=>!c._deleted && c.date<=cut).reduce((s,c)=>s+c.amount,0));
 }
 
 // Денежно-взвешенная годовая доходность (XIRR) по потокам {date, amount}:
@@ -6893,7 +6922,7 @@ function _invXirr(invs, dateStr){
   const flows = [];
   let value = 0;
   invs.forEach(v => {
-    (v.contributions||[]).forEach(c => { if(c.date <= cut && c.amount) flows.push({date: c.date, amount: -c.amount}); });
+    (v.contributions||[]).forEach(c => { if(!c._deleted && c.date <= cut && c.amount) flows.push({date: c.date, amount: -c.amount}); });
     value += invValueAt(v, cut);
   });
   if(!flows.length) return null;
@@ -7114,6 +7143,7 @@ function saveInvestment(){
       contributions: [{id: uid(), date, amount: invested, bank: srcBank || undefined, updatedAt: Date.now()}],
       updatedAt: Date.now()
     });
+    _invFreezeSnapshot(DB.investments[DB.investments.length-1], date);
     if(srcBank) _invBankTransfer(srcBank, date, -invested);
   }
   saveDB();
@@ -7149,7 +7179,7 @@ function _renderInvSnapsList(v){
   grp.style.display = snaps.length ? '' : 'none';
   list.innerHTML = snaps.slice().reverse().map(ds=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(ds)}</span>
-    <span style="display:flex;align-items:center;gap:10px">${fmtH(v.snapshots[ds])}<span onclick="deleteInvSnapshot(${jsArg(v.id)},${jsArg(ds)})" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
+    <span style="display:flex;align-items:center;gap:10px"><button type="button" class="btn small" aria-label="Изменить стоимость" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap" onclick="openInvSnapshot(${jsArg(v.id)},${jsArg(ds)})">${fmtH(v.snapshots[ds])} <svg class="ico"><use href="#i-edit"/></svg></button><button type="button" class="btn small icon-btn" aria-label="Удалить снимок" onclick="deleteInvSnapshot(${jsArg(v.id)},${jsArg(ds)})" style="color:var(--red)"><svg class="ico"><use href="#i-close"/></svg></button></span>
   </div>`).join('');
 }
 
@@ -7157,46 +7187,66 @@ function deleteInvSnapshot(invId, date){
   const v = (DB.investments||[]).find(x=>x.id===invId);
   if(!v || !v.snapshots) return;
   if(_invSnapDates(v).length <= 1){ toast('Нельзя удалить последний снимок'); return; }
+  const draft = _invDraft(v);
+  delete draft.snapshots[date];
+  if(_invWouldOverdraw(v,draft)){ toast('Без снимка остаток станет отрицательным — проверьте операции'); return; }
   delete v.snapshots[date];
+  if(v.snapshotContribs) delete v.snapshotContribs[date];
   v.updatedAt = Date.now();
   saveDB();
   _renderInvSnapsList(v);
   renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
   toast('Снимок удалён');
 }
 
 function _renderInvContribsList(v){
   const grp = document.getElementById('inv-contribs-grp');
   const list = document.getElementById('inv-contribs-list');
-  const cs = (v.contributions||[]);
+  const cs = (v.contributions||[]).filter(c=>!c._deleted);
   grp.style.display = cs.length ? '' : 'none';
   list.innerHTML = cs.slice().reverse().map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
     <span style="color:var(--muted)">${_fmtDateRu(c.date)}</span>
-    <span style="display:flex;align-items:center;gap:10px"><span style="color:${c.amount<0?'var(--red)':'var(--text)'}">${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><span onclick="deleteInvContribution(${jsArg(v.id)},${jsArg(c.id)})" style="cursor:pointer;color:var(--red);padding:0 4px"><svg class="ico"><use href="#i-close"/></svg></span></span>
+    <span style="display:flex;align-items:center;gap:10px"><button type="button" class="btn small" aria-label="Изменить сумму" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:${c.amount<0?'var(--red)':'var(--text)'}" onclick="openInvContribution(${jsArg(v.id)},${c.amount<0?-1:1},${jsArg(c.id)})"><span>${c.amount<0?'−':'+'} ${fmtH(Math.abs(c.amount))}</span><svg class="ico"><use href="#i-edit"/></svg></button><button type="button" class="btn small icon-btn" aria-label="Удалить операцию" onclick="deleteInvContribution(${jsArg(v.id)},${jsArg(c.id)})" style="color:var(--red)"><svg class="ico"><use href="#i-close"/></svg></button></span>
   </div>`).join('');
 }
 
 function deleteInvContribution(invId, cid){
   const v = (DB.investments||[]).find(x=>x.id===invId);
   if(!v || !v.contributions) return;
-  v.contributions = v.contributions.filter(c=>c.id!==cid);
+  const c = v.contributions.find(c=>c.id===cid && !c._deleted);
+  if(!c) return;
+  const draft = _invDraft(v);
+  _invFreezeSnapshot(draft,c.date);
+  draft.contributions.find(x=>x.id===cid)._deleted = true;
+  if(_invWouldOverdraw(v,draft)){ toast('Без операции остаток станет отрицательным — проверьте выводы'); return; }
+  _invFreezeSnapshot(v, c.date);
+  if(c.bank) _invBankTransfer(c.bank, c.date, c.amount);
+  c._deleted = true; c.amount = 0; c.updatedAt = Date.now();
   v.updatedAt = Date.now();
   saveDB();
   _renderInvContribsList(v);
   renderInvestments();
+  if(typeof renderAssets==='function') renderAssets();
   toast('Запись удалена');
 }
 
-let _invSnapId = null;
+let _invSnapId = null, _invSnapEditDate = null;
 
-function openInvSnapshot(id){
+function openInvSnapshot(id, date){
   const v = (DB.investments||[]).find(x=>x.id===id && !x._deleted);
   if(!v) return;
   _invSnapId = id;
+  _invSnapEditDate = date || null;
   document.getElementById('inv-snap-info').textContent = v.name+': подставлена последняя стоимость — поправьте под текущую из приложения брокера.';
-  document.getElementById('inv-snap-date').value = today();
+  document.getElementById('inv-snap-date').value = date || today();
+  document.getElementById('inv-snap-date').readOnly = !!date;
   // Последний снимок + пополнения/выводы после него — оценка «сейчас», удобно править
-  setMoneyInput('inv-snap-value', invValueAt(v, today()));
+  setMoneyInput('inv-snap-value', date ? v.snapshots[date] : invValueAt(v, today()));
+  if(date){
+    document.getElementById('inv-snap-info').textContent = v.name+': исправление стоимости снимка. Последующие операции сохранятся.';
+    closeModal('modal-investment');
+  }
   openModal('modal-inv-snap');
 }
 
@@ -7207,19 +7257,49 @@ function saveInvSnapshot(){
   const value = parseMoney(document.getElementById('inv-snap-value').value);
   if(!date){ toast('Укажите дату'); return; }
   if(date > today()){ toast('Дата в будущем'); return; }
-  if(!value || value<0){ toast('Введите стоимость'); return; }
-  if(!v.snapshots) v.snapshots = {};
-  v.snapshots[date] = value;
+  if(!/\d/.test(document.getElementById('inv-snap-value').value) || !Number.isFinite(value) || value<0){ toast('Введите стоимость'); return; }
+  const draft = _invDraft(v);
+  _invFreezeSnapshot(draft, date);
+  draft.snapshots[date] = value;
+  if(!_invSnapEditDate){
+    draft.snapshotContribs[date] = (v.contributions||[]).filter(c=>!c._deleted && c.date===date).map(c=>c.id);
+  }
+  if(_invWouldOverdraw(v,draft)){ toast('После снимка остаток станет отрицательным — проверьте выводы'); return; }
+  v.snapshots = draft.snapshots;
+  v.snapshotContribs = draft.snapshotContribs;
   v.updatedAt = Date.now();
   saveDB();
   closeModal('modal-inv-snap');
   _invSnapId = null;
   renderInvestments();
   if(typeof renderAssets==='function') renderAssets();
+  if(_invSnapEditDate) openInvestModal(v.id);
+  _invSnapEditDate = null;
   toast('✓ Стоимость обновлена');
 }
 
-let _invContribId = null, _invContribDir = 1;
+let _invContribId = null, _invContribDir = 1, _invEditContribId = null, _invWithdrawMode = 'part';
+
+function setInvWithdrawMode(mode){
+  _invWithdrawMode = mode==='all' ? 'all' : 'part';
+  _segActive([['inv-withdraw-part', _invWithdrawMode==='part'], ['inv-withdraw-all', _invWithdrawMode==='all']]);
+  updateInvWithdrawal();
+}
+
+function _invWithdrawalAvailable(v, date){
+  const c = (v.contributions||[]).find(c=>c.id===_invEditContribId && !c._deleted);
+  return Math.max(0, parseMoney(invValueAt(v, date) + (c && c.amount<0 ? -c.amount : 0)));
+}
+
+function updateInvWithdrawal(){
+  const v = (DB.investments||[]).find(x=>x.id===_invContribId && !x._deleted);
+  const inp = document.getElementById('inv-contrib-amount');
+  const withdrawing = _invContribDir < 0;
+  inp.readOnly = withdrawing && _invWithdrawMode==='all';
+  const available = v ? _invWithdrawalAvailable(v, document.getElementById('inv-contrib-date').value) : 0;
+  document.getElementById('inv-withdraw-available').innerHTML = withdrawing ? 'Доступно: '+fmtH(available) : '';
+  if(inp.readOnly) setMoneyInput('inv-contrib-amount', available);
+}
 
 function _fillInvBankSelect(dir){
   const sel = document.getElementById('inv-contrib-bank');
@@ -7227,10 +7307,13 @@ function _fillInvBankSelect(dir){
     (DB.banks||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
 }
 
-function openInvContribution(id, dir){
+function openInvContribution(id, dir, cid){
   const v = (DB.investments||[]).find(x=>x.id===id && !x._deleted);
   if(!v) return;
   _invContribId = id; _invContribDir = dir;
+  const c = cid ? (v.contributions||[]).find(c=>c.id===cid && !c._deleted) : null;
+  if(cid && !c) return;
+  _invEditContribId = c ? cid : null;
   document.getElementById('inv-contrib-title').textContent = dir>0 ? 'Пополнить счёт' : 'Вывести со счёта';
   document.getElementById('inv-contrib-info').textContent = v.name;
   document.getElementById('inv-contrib-bank-lbl').textContent = dir>0 ? 'Списать из банка' : 'Зачислить в банк';
@@ -7241,6 +7324,20 @@ function openInvContribution(id, dir){
   document.getElementById('inv-contrib-date').value = today();
   setMoneyInput('inv-contrib-amount','');
   _fillInvBankSelect(dir);
+  document.getElementById('inv-contrib-date').readOnly = !!c;
+  document.getElementById('inv-contrib-bank').disabled = !!c;
+  document.getElementById('inv-withdraw-mode').style.display = dir<0 && !c ? '' : 'none';
+  if(c){
+    document.getElementById('inv-contrib-title').textContent = c.amount<0 ? 'Изменить вывод' : 'Изменить пополнение';
+    document.getElementById('inv-contrib-save').textContent = 'Сохранить';
+    document.getElementById('inv-contrib-date').value = c.date;
+    if(c.bank && ![...document.getElementById('inv-contrib-bank').options].some(o=>o.value===c.bank))
+      document.getElementById('inv-contrib-bank').add(new Option(c.bank,c.bank));
+    document.getElementById('inv-contrib-bank').value = c.bank || '';
+    setMoneyInput('inv-contrib-amount',Math.abs(c.amount));
+    closeModal('modal-investment');
+  }
+  setInvWithdrawMode('part');
   openModal('modal-inv-contrib');
 }
 
@@ -7248,22 +7345,38 @@ function saveInvContribution(){
   const v = (DB.investments||[]).find(x=>x.id===_invContribId && !x._deleted);
   if(!v) return;
   const date = document.getElementById('inv-contrib-date').value;
-  const amount = parseMoney(document.getElementById('inv-contrib-amount').value);
+  const old = _invEditContribId ? (v.contributions||[]).find(c=>c.id===_invEditContribId && !c._deleted) : null;
+  if(_invEditContribId && !old) return;
+  if(old && date!==old.date){ toast('Дата операции не меняется'); return; }
+  const available = _invWithdrawalAvailable(v, date);
+  const amount = _invContribDir<0 && _invWithdrawMode==='all' ? available : parseMoney(document.getElementById('inv-contrib-amount').value);
   if(!date){ toast('Укажите дату'); return; }
   if(date > today()){ toast('Дата в будущем'); return; }
-  if(!amount || amount<=0){ toast('Введите сумму'); return; }
+  if(!Number.isFinite(amount) || amount<=0){ toast('Введите сумму'); return; }
+  if(_invContribDir<0 && amount>available){ toast('Сумма больше остатка счёта'); return; }
   const signed = _invContribDir > 0 ? amount : -amount;
+  const cid = old ? old.id : uid();
+  const draft = _invDraft(v);
+  _invFreezeSnapshot(draft,date);
+  if(old) draft.contributions.find(c=>c.id===cid).amount = signed;
+  else draft.contributions.push({id:cid, date, amount:signed});
+  if(_invWouldOverdraw(v,draft)){ toast('После операции остаток станет отрицательным — проверьте выводы'); return; }
   if(!v.contributions) v.contributions = [];
-  const bank = document.getElementById('inv-contrib-bank').value;
-  v.contributions.push({id:uid(), date, amount: signed, bank: bank || undefined, updatedAt: Date.now()});
+  const bank = old ? old.bank : document.getElementById('inv-contrib-bank').value;
+  _invFreezeSnapshot(v, date);
+  const prevAmount = old ? old.amount : 0;
+  if(old){ old.amount = signed; old.updatedAt = Date.now(); }
+  else v.contributions.push({id:cid, date, amount: signed, bank: bank || undefined, updatedAt: Date.now()});
   v.contributions.sort((a,b)=>a.date.localeCompare(b.date));
   v.updatedAt = Date.now();
-  if(bank) _invBankTransfer(bank, date, -signed);
+  if(bank) _invBankTransfer(bank, date, prevAmount-signed);
   saveDB();
   closeModal('modal-inv-contrib');
   _invContribId = null;
   renderInvestments();
   if(typeof renderAssets==='function') renderAssets();
+  if(old) openInvestModal(v.id);
+  _invEditContribId = null;
   toast('✓ '+(signed>0?'Пополнение ':'Вывод ')+fmt(amount)+(bank?' · '+bank:''));
 }
 
@@ -9012,7 +9125,7 @@ function renderDataAudit(){
       if(dd) depEvents.push({date:dd, txt:'закрыт «'+d.name+'»'});
     });
     (DB.investments||[]).forEach(v=>{
-      (v.contributions||[]).forEach(c=>depEvents.push({date:c.date, txt:(c.amount<0?'выведено из «':'пополнен «')+v.name+'» '+(c.amount<0?'−':'+')+fmtShort(Math.abs(c.amount))+'₽'}));
+      (v.contributions||[]).filter(c=>!c._deleted).forEach(c=>depEvents.push({date:c.date, txt:(c.amount<0?'выведено из «':'пополнен «')+v.name+'» '+(c.amount<0?'−':'+')+fmtShort(Math.abs(c.amount))+'₽'}));
       _invSnapDates(v).forEach(ds=>depEvents.push({date:ds, txt:'снимок «'+v.name+'» '+fmtShort(v.snapshots[ds])+'₽'}));
     });
     let cum = 0, rowsH = '';
