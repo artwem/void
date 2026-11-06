@@ -3125,6 +3125,90 @@ suite(390, 'вывод инвестиций и исправление сумм',
   });
 });
 
+for(const width of [390,1600]) suite(width, 'архив инвестсчетов', () => {
+  const seed = p => p.evaluate(() => {
+    uiSet('showArchivedInvs','0');
+    DB.banks=['Тестовый банк']; DB.deposits=[];
+    DB.assets=[{id:'bank-old',bankName:DB.banks[0],date:'2020-01-01',amount:5000},
+      {id:'bank-now',bankName:DB.banks[0],date:today(),amount:5000}];
+    DB.investments=[
+      {id:'gain',name:'Закрытый <прибыль>',snapshots:{'2020-01-01':1000,'2020-02-01':1200},
+        contributions:[{id:'g-in',date:'2020-01-01',amount:1000},{id:'g-out',date:'2020-02-02',amount:-1200}]},
+      {id:'loss',name:'Закрытый убыток',snapshots:{'2020-01-01':1000,'2020-02-01':800},
+        contributions:[{id:'l-in',date:'2020-01-01',amount:1000},{id:'l-out',date:'2020-02-02',amount:-800},
+          {id:'deleted',date:'2020-02-01',amount:999,_deleted:true},{id:'future',date:'2099-01-01',amount:999}]},
+      {id:'active',name:'Рабочий',snapshots:{'2020-01-01':1000,[today()]:500},
+        contributions:[{id:'a-in',date:'2020-01-01',amount:1000},{id:'a-out',date:'2020-02-02',amount:-800}]}
+    ];
+    showPage('investments');
+  });
+  const money = (p,sel) => p.$eval(sel,el=>Number(el.textContent.replace(/[^\d,.-]/g,'').replace(',','.')));
+  check('старые нулевые счета убраны из текущих, архив по умолчанию свёрнут',async p=>{
+    await seed(p);
+    eq(await p.$$eval('#investments-list .chart-card',els=>els.length),1,'текущая карточка одна');
+    eq(await p.$eval('#investments-list',el=>el.textContent.includes('Закрытый')),false,'архивных названий в текущих нет');
+    eq(await isVisible(p,'#investments-archive-list'),false,'архив свёрнут');
+    eq(await p.$eval('#investments-archive-toggle',el=>el.getAttribute('aria-expanded')),'false','aria-expanded');
+    eq(await money(p,'#investments-total-now'),500,'текущая стоимость');
+  });
+  check('архив показывает внесено, выведено и прибыль или убыток без годовых',async p=>{
+    await p.click('#investments-archive-toggle');
+    eq(await isVisible(p,'#investments-archive-list'),true,'архив раскрыт');
+    eq(await p.evaluate(()=>uiGet('showArchivedInvs')),'1','выбор сохранён на устройстве');
+    eq(await money(p,'[data-inv-id="gain"] .inv-cash-in'),1000,'внесено');
+    eq(await money(p,'[data-inv-id="gain"] .inv-cash-out'),1200,'выведено');
+    eq(await money(p,'[data-inv-id="gain"] .inv-cash-result'),200,'прибыль');
+    eq(await money(p,'[data-inv-id="loss"] .inv-cash-result'),-200,'убыток, удалённые/будущие потоки исключены');
+    eq(await p.$eval('#investments-archive-list',el=>/годовых|вложено/.test(el.textContent)),false,'нет годовых и отрицательного вложено');
+    eq(await p.$eval('[data-inv-id="gain"]',el=>el.textContent.includes('Закрытый <прибыль>')),true,'название экранировано');
+    eq(await p.$eval('[data-inv-id="gain"]',el=>el.querySelector('прибыль')===null),true,'название не стало HTML');
+    eq(await money(p,'[data-inv-id="active"] .inv-cash-in'),1000,'активный счёт тоже показывает все внесённые деньги');
+  });
+  check('архив не меняет историю, ожидающие переводы и живые записи',async p=>{
+    const r=await p.evaluate(()=>{
+      const v=DB.investments.find(v=>v.id==='gain'); v.contributions[1].bank=DB.banks[0];
+      DB.assets=DB.assets.filter(a=>a.id!=='bank-now');
+      const before=JSON.stringify(_buildAssetSeries(['2020-01-01','2020-02-01','2020-02-02']));
+      toggleArchivedInvs();toggleArchivedInvs();
+      const after=JSON.stringify(_buildAssetSeries(['2020-01-01','2020-02-01','2020-02-02']));
+      return {same:before===after,values:_buildAssetSeries(['2020-01-01','2020-02-01','2020-02-02']).invSeries,
+        pending:_bankPending(DB.banks[0],'2020-01-01',today()),deleted:!!v._deleted,count:DB.investments.length};
+    });
+    eq(r.same,true,'история не меняется'); eq(r.values.join(','),'3000,3000,200','исторические стоимости сохранены');
+    eq(r.pending,1200,'ожидающее зачисление сохраняется'); eq(r.deleted,false,'архив не является удалением');eq(r.count,3,'записи сохранены');
+  });
+  check('текущие активы и счётчик исключают архив, история доступна из карточки',async p=>{
+    await p.evaluate(()=>showPage('assets',document.getElementById('nav-assets')));
+    eq(await p.$eval('#assets-list',el=>el.textContent.includes('Закрытый')),false,'архивных строк в текущих активах нет');
+    eq(await p.$eval('#invest-btn-count',el=>el.textContent.trim()),'· 1','счётчик только текущих');
+    await p.evaluate(()=>{showPage('investments');document.querySelector('[data-inv-id="gain"] .inv-archive-open').click();});
+    eq(await isVisible(p,'#modal-investment'),true,'история открывается');
+    eq(await p.$$eval('#inv-contribs-list button[aria-label="Изменить сумму"]',els=>els.length),2,'старые операции редактируются');
+    await p.evaluate(()=>closeModal('modal-investment'));
+  });
+  check('пополнение архива возвращает счёт в текущие, отрицательный остаток не скрывается',async p=>{
+    await p.evaluate(()=>{openInvContribution('gain',1);setMoneyInput('inv-contrib-amount',50.25);saveInvContribution();
+      DB.investments.push({id:'negative',name:'Ошибка остатка',snapshots:{[today()]:-100},contributions:[]});
+      renderInvestments();renderAssets();});
+    eq(await p.$$eval('#investments-list .chart-card',els=>els.length),3,'вернувшийся, рабочий и отрицательный счёт');
+    eq(await p.$$eval('#investments-archive-list .chart-card',els=>els.length),1,'в архиве остался только убыток');
+    eq(await money(p,'#investments-list [data-inv-id="gain"] .inv-current-value'),50.25,'точный остаток после пополнения');
+    eq(await p.$eval('#investments-list',el=>el.textContent.includes('Ошибка остатка')),true,'ошибка остатка видна');
+  });
+  check('без текущих счетов годовая ставка скрыта, архив доступен, приватность сохранена',async p=>{
+    await seed(p);
+    await p.evaluate(()=>{DB.investments=DB.investments.filter(v=>v.id!=='active');setPrivacyMode(true);renderInvestments();});
+    eq(await isVisible(p,'#investments-rate'),false,'нет ставки по закрытым счетам');
+    await p.click('#investments-archive-toggle');
+    eq(await p.$$eval('#investments-archive-list .prv',els=>els.length>=6),true,'суммы используют приватные span');
+    const r=await p.evaluate(()=>{
+      const list=document.getElementById('investments-archive-list');
+      return {overflow:list.scrollWidth>list.clientWidth+1,hidden:[...list.querySelectorAll('.prv')].every(el=>getComputedStyle(el).color==='rgba(0, 0, 0, 0)')};
+    });
+    eq(r.overflow,false,'архив помещается по ширине');eq(r.hidden,true,'приватность скрывает суммы');
+  });
+});
+
 suite(390, 'без вкладов и инвестиций чипов графика нет', () => {
   check('переключатель скрыт, линия = банки', async p => {
     await p.evaluate(() => { localStorage.removeItem('assetsChartParts'); window.showPage('assets', document.getElementById('nav-assets')); });

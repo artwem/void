@@ -547,6 +547,10 @@ if ('serviceWorker' in navigator) {
   <div id="investments-rate" style="padding:0 16px 4px;font-size:12px;color:var(--muted);display:none" title="Денежно-взвешенная годовая доходность (XIRR) по всем пополнениям и выводам"></div>
   <div class="sec-hdr"><span class="sec-title">Счета</span><span class="sec-action" onclick="openInvestModal()">+ Добавить</span></div>
   <div id="investments-list" style="padding:0 16px 8px"></div>
+  <div id="investments-archive" style="display:none">
+    <div class="sec-hdr"><span class="sec-title" id="investments-archive-title">Архив счетов</span><button type="button" class="sec-action" id="investments-archive-toggle" aria-expanded="false" aria-controls="investments-archive-list" onclick="toggleArchivedInvs()" style="background:none;border:0;padding:4px 0">Показать ↓</button></div>
+    <div id="investments-archive-list" style="display:none;padding:0 16px 8px"></div>
+  </div>
   <div class="page-end"></div>
 </div>
 
@@ -1434,7 +1438,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.2</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.3</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -6255,7 +6259,7 @@ function renderAssets(){
   const depCnt = (DB.deposits||[]).filter(d=>!d._deleted).length;
   const depBtn = document.getElementById('deposits-btn-count');
   if(depBtn) depBtn.textContent = depCnt ? ' · '+depCnt : '';
-  const invCnt = (DB.investments||[]).filter(v=>!v._deleted).length;
+  const invCnt = (DB.investments||[]).filter(v=>!v._deleted && !_invIsArchived(v)).length;
   const invBtn = document.getElementById('invest-btn-count');
   if(invBtn) invBtn.textContent = invCnt ? ' · '+invCnt : '';
   const list=document.getElementById('assets-list');
@@ -6342,7 +6346,7 @@ function renderAssets(){
   }
   // Инвестиции — read-only строки с бейджем; клик ведёт на страницу
   {
-    const listInvs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const listInvs = (DB.investments||[]).filter(v=>!v._deleted && !_invIsArchived(v)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const tdInv = today();
     listInvs.forEach(v => {
       const val = invValueAt(v, tdInv);
@@ -7042,13 +7046,64 @@ function avgMonthlySavings(){
 }
 
 // ── Инвестиции: страница ────────────────────────────────────────────
+// Архив — только представление нулевого счёта. Потоки и снимки остаются
+// живыми для истории и ожидающих переводов; пополнение вернёт счёт в текущие.
+function _invIsArchived(inv, dateStr){
+  const cut = dateStr || today();
+  return !inv._deleted && _invSnapDates(inv).some(ds=>ds<=cut) && invValueAt(inv,cut)===0;
+}
+
+function _invCashTotals(inv, dateStr){
+  const cut = dateStr || today();
+  let added = 0, withdrawn = 0;
+  (inv.contributions||[]).forEach(c=>{
+    if(c._deleted || c.date>cut) return;
+    if(c.amount>0) added += c.amount;
+    else if(c.amount<0) withdrawn -= c.amount;
+  });
+  return {added:parseMoney(added), withdrawn:parseMoney(withdrawn),
+    result:parseMoney(invValueAt(inv,cut)+withdrawn-added)};
+}
+
+function toggleArchivedInvs(){
+  uiSet('showArchivedInvs', uiGet('showArchivedInvs','0')==='1' ? '0' : '1');
+  renderInvestments();
+}
+
+function _renderInvArchive(invs, td){
+  const wrap = document.getElementById('investments-archive');
+  const list = document.getElementById('investments-archive-list');
+  const btn = document.getElementById('investments-archive-toggle');
+  const expanded = uiGet('showArchivedInvs','0')==='1';
+  wrap.style.display = invs.length ? '' : 'none';
+  document.getElementById('investments-archive-title').textContent = 'Архив счетов · '+invs.length;
+  btn.textContent = expanded ? 'Скрыть ↑' : 'Показать ↓';
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  list.style.display = expanded ? '' : 'none';
+  list.innerHTML = invs.map(v=>{
+    const t = _invCashTotals(v,td);
+    return `<div class="chart-card" data-inv-id="${esc(v.id)}" style="margin:0 0 10px;padding:14px 16px">
+      <div style="font-weight:600;overflow-wrap:anywhere">${esc(v.name)}</div>
+      <div style="display:flex;justify-content:space-between;gap:12px;margin-top:10px;font-size:13px"><span style="color:var(--muted)">Внесено</span><span class="inv-cash-in">${fmtH(t.added)}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:13px"><span style="color:var(--muted)">Выведено</span><span class="inv-cash-out">${fmtH(t.withdrawn)}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:13px"><span style="color:var(--muted)">${t.result>=0?'Прибыль':'Убыток'}</span><span class="inv-cash-result" style="color:${t.result>=0?'var(--green)':'var(--red)'};font-weight:600">${fmtH(t.result)}</span></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" class="btn inv-archive-open" style="padding:8px 0;font-size:12px" onclick="openInvestModal(${jsArg(v.id)})">История</button>
+        <button type="button" class="btn" style="padding:8px 0;font-size:12px" onclick="openInvContribution(${jsArg(v.id)},1)">+ Пополнить</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderInvestments(){
   const list = document.getElementById('investments-list');
   if(!list) return;
-  const invs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const td = today();
+  const allInvs = (DB.investments||[]).filter(v=>!v._deleted).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const invs = allInvs.filter(v=>!_invIsArchived(v,td));
+  _renderInvArchive(allInvs.filter(v=>_invIsArchived(v,td)),td);
   document.getElementById('investments-total-now').innerHTML = fmtH(invs.reduce((s,v)=>s+invValueAt(v,td),0));
-  // Доходность портфеля — XIRR по всем потокам всех счетов (v1.83.0)
+  // Доходность текущего портфеля — XIRR только по активным счетам.
   const rateEl = document.getElementById('investments-rate');
   const portRate = invs.length ? _invXirr(invs, td) : null;
   if(rateEl){
@@ -7056,13 +7111,14 @@ function renderInvestments(){
     if(portRate !== null) rateEl.innerHTML = `<span class="inv-rate" style="color:${portRate>=0?'var(--green)':'var(--red)'};font-weight:600">${_fmtRate(portRate)}</span> годовых по портфелю`;
   }
   if(!invs.length){
-    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет счетов — нажмите + чтобы добавить</p>';
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:4px 0 8px">Нет текущих счетов — нажмите + чтобы добавить</p>';
     return;
   }
   list.innerHTML = invs.map(v=>{
     const val = invValueAt(v, td);
-    const invested = invInvested(v, td);
-    const profit = val - invested;
+    const cash = _invCashTotals(v,td);
+    const invested = cash.added;
+    const profit = cash.result;
     const pct = invested > 0 ? Math.round(profit/invested*1000)/10 : null;
     const pcol = profit >= 0 ? 'var(--green)' : 'var(--red)';
     const sign = profit >= 0 ? '+' : '−';
@@ -7075,15 +7131,16 @@ function renderInvestments(){
         ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">снимок ${_fmtDateRu(lastSnap)} · обновите стоимость</div>`
         : `<div style="font-size:11px;color:var(--muted);margin-top:2px">снимок ${_fmtDateRu(lastSnap)}</div>`;
     }
-    return `<div class="chart-card" style="margin:0 0 10px;padding:14px 16px">
+    return `<div class="chart-card" data-inv-id="${esc(v.id)}" style="margin:0 0 10px;padding:14px 16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="openInvestModal(${jsArg(v.id)})">
         <div style="min-width:0">
           <div style="font-weight:600">${esc(v.name)}</div>
           ${snapLine}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px">
-          <div style="font-weight:600">${fmtH(val)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">вложено ${fmtH(invested)}</div>
+          <div class="inv-current-value" style="font-weight:600">${fmtH(val)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">внесено <span class="inv-cash-in">${fmtH(invested)}</span></div>
+          ${cash.withdrawn>0 ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">выведено ${fmtH(cash.withdrawn)}</div>` : ''}
         </div>
       </div>
       <div style="font-size:12px;color:${pcol};margin-top:6px">${sign} ${fmtH(Math.abs(profit))}${pct!==null ? ' ('+sign+Math.abs(pct)+'%)' : ''}${(()=>{ const r = _invXirr([v], td); return r === null ? '' : ` <span class="inv-rate" style="color:var(--muted)" title="Денежно-взвешенная годовая доходность (XIRR)">· ${_fmtRate(r)} годовых</span>`; })()}</div>
