@@ -83,14 +83,17 @@ function _telegramAllowed(from, chat) {
 }
 
 function _telegramExpenseFromTemplate(template, db, now) {
+  const catId = (db.catIds || [])[template.cat];
+  const obligatory = !!(catId && db.catOblig && db.catOblig[catId]);
+  const oneoff = !!template.oneoff || (!!template.special && !obligatory);
   return {
     id: Utilities.getUuid(),
     cat: template.cat,
-    catId: template.catId || (db.catIds || [])[template.cat],
+    catId: template.catId || catId,
     amount: template.amount,
     date: Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
     comment: template.comment ? template.name + ': ' + template.comment : template.name,
-    oneoff: template.oneoff || template.special ? true : null,
+    oneoff: oneoff ? true : null,
     updatedAt: now.getTime(),
     source: 'telegram',
   };
@@ -127,8 +130,14 @@ function _telegramAddTemplate(message, template) {
       const created = DriveApp.createFile(FILE_DATA, content, MimeType.PLAIN_TEXT);
       props.setProperty('dataFileId', created.getId());
     }
-    cache.put(key, '1', 600);
-    props.setProperty(key, String(now.getTime()));
+    try {
+      cache.put(key, '1', 600);
+      props.setProperty(key, String(now.getTime()));
+    } catch(err) {
+      try { cache.remove(key); } catch(_) {}
+      try { props.deleteProperty(key); } catch(_) {}
+      throw err;
+    }
   } catch(err) {
     _telegramApi('sendMessage', {
       chat_id: message.chat.id,

@@ -62,7 +62,11 @@ export function loadGs(options = {}) {
   const scriptProperties = {
     getProperty: key => Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null,
     getProperties: () => ({ ...properties }),
-    setProperty(key, value) { properties[key] = String(value); },
+    setProperty(key, value) {
+      const fail = typeof options.failPropertySet === 'function' ? options.failPropertySet(key) : options.failPropertySet;
+      if (fail) throw new Error('Тестовый сбой записи Properties');
+      properties[key] = String(value);
+    },
     deleteProperty(key) { delete properties[key]; },
   };
   const sandbox = {
@@ -111,6 +115,8 @@ export function loadGs(options = {}) {
         },
         put(key, value, expirationInSeconds) {
           calls.cache.push({ method: 'put', key, value: String(value), expirationInSeconds });
+          const fail = typeof options.failCachePut === 'function' ? options.failCachePut(key) : options.failCachePut;
+          if (fail) throw new Error('Тестовый сбой записи Cache');
           cache[key] = String(value);
           cacheExpires[key] = currentTime() + expirationInSeconds * 1000;
         },
@@ -267,6 +273,9 @@ check('legacy special и пустой комментарий соответст�
   eq(legacy.oneoff, true, 'legacy special');
   const regular = context._telegramExpenseFromTemplate({ ...template, special: false }, expenseDb, new Date('2026-11-12T21:30:00Z'));
   eq(regular.oneoff, null, 'обычный расход');
+  const obligatoryDb = { ...expenseDb, catOblig: { c1: true } };
+  const obligatory = context._telegramExpenseFromTemplate(template, obligatoryDb, new Date('2026-11-12T21:30:00Z'));
+  eq(obligatory.oneoff, null, 'legacy special игнорируется в обязательной категории');
 });
 
 check('кнопка шаблона пишет расход и шлёт клавиатуру и отмену отдельно', () => {
@@ -326,6 +335,27 @@ check('ошибка Drive не оставляет done-маркер и допу�
   context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
   eq(state.db.expenses.length, 1, 'повторная доставка записана');
   eq(calls.urlFetch.length, 3, 'после повтора клавиатура и подтверждение');
+});
+
+check('ошибка записи Cache или Properties не оставляет частичный done-маркер', () => {
+  const failures = [
+    { failCachePut: key => key === 'message:42:1' },
+    { failPropertySet: key => key === 'message:42:1' },
+  ];
+  for (const failure of failures) {
+    const { context, state, calls } = loadGs({
+      db: expenseFixture(),
+      now: '2026-11-12T21:30:00Z',
+      ...failure,
+    });
+    const key = 'message:42:1';
+    context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+    eq(state.db.expenses.length, 1, 'Drive-запись уже выполнена');
+    eq(calls.urlFetch.length, 1, 'только сообщение об ошибке маркера');
+    eq(sentPayload(calls).text.includes('повтор'), true, 'просьба повторить позже');
+    eq(state.cache[key], undefined, 'частичный Cache-маркер удалён');
+    eq(state.properties[key], undefined, 'частичный Properties-маркер удалён');
+  }
 });
 
 check('неизвестный текст возвращает подсказку и клавиатуру', () => {
