@@ -18,6 +18,16 @@ const BAK_KEEP = 7;                    // суточных копий храни
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
+    if (body.message || body.callback_query) {
+      const p = e.parameter || {};
+      const props = PropertiesService.getScriptProperties();
+      if (p.telegram !== props.getProperty('TELEGRAM_WEBHOOK_SECRET')) return out({ ok: true });
+      const update = body.message || body.callback_query;
+      const chat = body.message ? update.chat : update.message && update.message.chat;
+      if (!_telegramAllowed(update.from, chat)) return out({ ok: true });
+      if (body.message) _telegramHandleMessage(body.message);
+      return out({ ok: true });
+    }
     if (SECRET && body.token !== SECRET) return out({ error: 'Unauthorized' });
     const action = body.action || '';
     if (action === 'ping') return out({ ok: true });
@@ -29,6 +39,67 @@ function doPost(e) {
   } catch(err) {
     return out({ error: err.message });
   }
+}
+
+function _telegramApi(method, payload) {
+  const token = PropertiesService.getScriptProperties().getProperty('TELEGRAM_BOT_TOKEN');
+  const response = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/' + method, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+  return JSON.parse(response.getContentText());
+}
+
+function _telegramTemplateLabel(template) {
+  const value = Number(template.amount) || 0;
+  const amount = Number.isInteger(value) ? String(value) : value.toFixed(2).replace('.', ',');
+  return template.name + ' — ' + amount + ' ₽';
+}
+
+function _telegramKeyboard(db, page) {
+  const templates = (db.templates || []).filter(function(t) { return !t._deleted; });
+  const pageCount = Math.max(1, Math.ceil(templates.length / 10));
+  page = Math.min(Math.max(Math.floor(Number(page) || 0), 0), pageCount - 1);
+  const rows = [];
+  const visible = templates.slice(page * 10, page * 10 + 10);
+  for (let i = 0; i < visible.length; i += 2) {
+    const row = [{ text: _telegramTemplateLabel(visible[i]) }];
+    if (visible[i + 1]) row.push({ text: _telegramTemplateLabel(visible[i + 1]) });
+    rows.push(row);
+  }
+  const navigation = [];
+  if (page > 0) navigation.push({ text: 'Назад ' + page + '/' + pageCount });
+  if (page < pageCount - 1) navigation.push({ text: 'Ещё ' + (page + 2) + '/' + pageCount });
+  if (navigation.length) rows.push(navigation);
+  return { keyboard: rows, resize_keyboard: true, is_persistent: true, one_time_keyboard: false };
+}
+
+function _telegramAllowed(from, chat) {
+  if (!from || !chat || chat.type !== 'private') return false;
+  const allowed = PropertiesService.getScriptProperties().getProperty('TELEGRAM_ALLOWED_USER_ID');
+  return String(from.id) === String(allowed);
+}
+
+function _telegramHandleMessage(message) {
+  const file = getDataFile();
+  const db = file ? JSON.parse(file.getBlob().getDataAsString()) : { templates: [], expenses: [] };
+  const text = String(message.text || '');
+  const navigation = text.match(/^(Ещё|Назад) (\d+)\/(\d+)$/);
+  const isTemplate = (db.templates || []).some(function(t) {
+    return !t._deleted && _telegramTemplateLabel(t) === text;
+  });
+  let page = 0;
+  let reply = 'Выберите шаблон кнопкой ниже.';
+  if (text === '/start' || navigation) reply = 'Выберите шаблон:';
+  else if (isTemplate) reply = 'Скоро будет доступно';
+  if (navigation) page = Number(navigation[2]) - 1;
+  _telegramApi('sendMessage', {
+    chat_id: message.chat.id,
+    text: reply,
+    reply_markup: _telegramKeyboard(db, page),
+  });
 }
 
 function doGet(e) {
