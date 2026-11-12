@@ -82,18 +82,99 @@ function _telegramAllowed(from, chat) {
   return String(from.id) === String(allowed);
 }
 
+function _telegramExpenseFromTemplate(template, db, now) {
+  return {
+    id: Utilities.getUuid(),
+    cat: template.cat,
+    catId: template.catId || (db.catIds || [])[template.cat],
+    amount: template.amount,
+    date: Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+    comment: template.comment ? template.name + ': ' + template.comment : template.name,
+    oneoff: template.oneoff || template.special ? true : null,
+    updatedAt: now.getTime(),
+    source: 'telegram',
+  };
+}
+
+function _telegramAddTemplate(message, template) {
+  const key = 'message:' + message.chat.id + ':' + message.message_id;
+  const lock = LockService.getScriptLock();
+  const cache = CacheService.getScriptCache();
+  const props = PropertiesService.getScriptProperties();
+  let db;
+  let rec;
+  try {
+    lock.waitLock(10000);
+    const now = new Date();
+    const all = props.getProperties();
+    Object.keys(all).forEach(function(name) {
+      if ((name.indexOf('message:') === 0 || name.indexOf('callback:') === 0) &&
+          now.getTime() - Number(all[name]) >= 24 * 3600 * 1000) {
+        props.deleteProperty(name);
+      }
+    });
+    if (cache.get(key) || props.getProperty(key)) return null;
+    const file = getDataFile();
+    db = file ? JSON.parse(file.getBlob().getDataAsString()) : { templates: [], expenses: [] };
+    if (!db.expenses) db.expenses = [];
+    rec = _telegramExpenseFromTemplate(template, db, now);
+    db.expenses.push(rec);
+    const content = JSON.stringify(db);
+    if (file) {
+      backupIfDue(file);
+      file.setContent(content);
+    } else {
+      const created = DriveApp.createFile(FILE_DATA, content, MimeType.PLAIN_TEXT);
+      props.setProperty('dataFileId', created.getId());
+    }
+    cache.put(key, '1', 600);
+    props.setProperty(key, String(now.getTime()));
+  } catch(err) {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Не удалось сохранить расход. Попробуйте повторить позже.',
+    });
+    return null;
+  } finally {
+    try { lock.releaseLock(); } catch(_) {}
+  }
+  _telegramApi('sendMessage', {
+    chat_id: message.chat.id,
+    text: 'Выберите шаблон:',
+    reply_markup: _telegramKeyboard(db, 0),
+  });
+  _telegramApi('sendMessage', {
+    chat_id: message.chat.id,
+    text: 'Добавлен расход: ' + _telegramTemplateLabel(template),
+    reply_markup: { inline_keyboard: [[{ text: 'Отменить', callback_data: 'undo:' + rec.id }]] },
+  });
+  return rec;
+}
+
 function _telegramHandleMessage(message) {
-  const file = getDataFile();
-  const db = file ? JSON.parse(file.getBlob().getDataAsString()) : { templates: [], expenses: [] };
+  let db;
+  try {
+    const file = getDataFile();
+    db = file ? JSON.parse(file.getBlob().getDataAsString()) : { templates: [], expenses: [] };
+  } catch(err) {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Не удалось прочитать данные. Попробуйте повторить позже.',
+    });
+    return;
+  }
   const text = String(message.text || '');
   const navigation = text.match(/^(Ещё|Назад) (\d+)\/(\d+)$/);
-  const isTemplate = (db.templates || []).some(function(t) {
+  const template = (db.templates || []).find(function(t) {
     return !t._deleted && _telegramTemplateLabel(t) === text;
   });
+  if (template) {
+    _telegramAddTemplate(message, template);
+    return;
+  }
   let page = 0;
   let reply = 'Выберите шаблон кнопкой ниже.';
   if (text === '/start' || navigation) reply = 'Выберите шаблон:';
-  else if (isTemplate) reply = 'Скоро будет доступно';
   if (navigation) page = Number(navigation[2]) - 1;
   _telegramApi('sendMessage', {
     chat_id: message.chat.id,

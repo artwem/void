@@ -16,8 +16,20 @@ export function loadGs(options = {}) {
     ...(options.properties || {}),
   };
   const cache = {};
-  const calls = { drive: [], urlFetch: [] };
+  const cacheExpires = {};
+  const calls = { drive: [], urlFetch: [], cache: [] };
   let nextFileId = 1;
+  let nextUuid = 1;
+  const currentTime = () => options.now === undefined
+    ? Date.now()
+    : new Date(typeof options.now === 'function' ? options.now() : options.now).getTime();
+  class GsDate extends Date {
+    constructor(...args) {
+      if (args.length) super(...args);
+      else super(currentTime());
+    }
+    static now() { return currentTime(); }
+  }
 
   function addFile(name, content) {
     const id = 'file-' + nextFileId++;
@@ -28,7 +40,13 @@ export function loadGs(options = {}) {
       isTrashed() { return this.trashed; },
       setTrashed(value) { this.trashed = !!value; },
       getSize() { return this.content.length; },
-      setContent(value) { this.content = String(value); this.updated = new Date(0); },
+      setContent(value) {
+        calls.drive.push({ method: 'setContent', args: [id, value] });
+        const fail = typeof options.failWrite === 'function' ? options.failWrite() : options.failWrite;
+        if (fail) throw new Error('Тестовый сбой записи Drive');
+        this.content = String(value);
+        this.updated = new Date(currentTime());
+      },
       getLastUpdated() { return this.updated; },
       getBlob() { return { getDataAsString: () => this.content }; },
     };
@@ -43,10 +61,12 @@ export function loadGs(options = {}) {
   }
   const scriptProperties = {
     getProperty: key => Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null,
+    getProperties: () => ({ ...properties }),
     setProperty(key, value) { properties[key] = String(value); },
     deleteProperty(key) { delete properties[key]; },
   };
   const sandbox = {
+    Date: GsDate,
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput(content) {
@@ -82,9 +102,19 @@ export function loadGs(options = {}) {
     PropertiesService: { getScriptProperties: () => scriptProperties },
     CacheService: {
       getScriptCache: () => ({
-        get: key => Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null,
-        put(key, value) { cache[key] = String(value); },
-        remove(key) { delete cache[key]; },
+        get(key) {
+          if (cacheExpires[key] && cacheExpires[key] <= currentTime()) {
+            delete cache[key];
+            delete cacheExpires[key];
+          }
+          return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null;
+        },
+        put(key, value, expirationInSeconds) {
+          calls.cache.push({ method: 'put', key, value: String(value), expirationInSeconds });
+          cache[key] = String(value);
+          cacheExpires[key] = currentTime() + expirationInSeconds * 1000;
+        },
+        remove(key) { delete cache[key]; delete cacheExpires[key]; },
       }),
     },
     LockService: {
@@ -99,6 +129,7 @@ export function loadGs(options = {}) {
     Utilities: {
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       Charset: { UTF_8: 'UTF_8' },
+      getUuid() { return 'uuid-' + nextUuid++; },
       computeDigest(_algorithm, value) {
         return [...createHash('sha256').update(String(value), 'utf8').digest()];
       },
@@ -200,11 +231,101 @@ check('Ещё и Назад меняют только страницу клав�
   eq(state.db.expenses.length, 0, 'расходы не созданы');
 });
 
-check('кнопка шаблона пока не записывает расход', () => {
-  const { context, state, calls } = loadGs({ db });
-  context._telegramHandleMessage(message('Кофе — 350 ₽'));
-  eq(sentPayload(calls).text, 'Скоро будет доступно', 'заглушка записи');
-  eq(state.db.expenses.length, 0, 'расходы не созданы');
+function expenseFixture() {
+  return {
+    categories: ['Еда', 'Такси'],
+    catIds: ['c1', 'c2'],
+    templates: [{ id: 't1', name: 'Кофе', amount: 12.5, cat: 0, catId: 'c1', comment: 'Латте', oneoff: true }],
+    expenses: [],
+  };
+}
+
+check('расход из шаблона сохраняет копейки, категорию и московскую дату', () => {
+  const expenseDb = expenseFixture();
+  const now = new Date('2026-11-12T21:30:00Z');
+  const { context } = loadGs({ db: expenseDb, now });
+  const rec = context._telegramExpenseFromTemplate(expenseDb.templates[0], expenseDb, now);
+  eq(rec.cat, 0, 'позиция категории');
+  eq(rec.catId, 'c1', 'постоянный id категории');
+  eq(rec.amount, 12.5, 'сумма без округления');
+  eq(rec.date, '2026-11-13', 'дата Europe/Moscow');
+  eq(rec.comment, 'Кофе: Латте', 'комментарий');
+  eq(rec.oneoff, true, 'разовый расход');
+  eq(rec.source, 'telegram', 'источник записи');
+  eq(typeof rec.id, 'string', 'строковый id');
+  eq(rec.id, 'uuid-1', 'id из Utilities.getUuid');
+  eq(rec.updatedAt > 0, true, 'время изменения');
+});
+
+check('legacy special и пустой комментарий соответствуют addFromTemplate', () => {
+  const expenseDb = expenseFixture();
+  const template = { ...expenseDb.templates[0], catId: undefined, comment: '', oneoff: null, special: true };
+  const { context } = loadGs({ db: expenseDb, now: '2026-11-12T21:30:00Z' });
+  const legacy = context._telegramExpenseFromTemplate(template, expenseDb, new Date('2026-11-12T21:30:00Z'));
+  eq(legacy.catId, 'c1', 'catId из текущего справочника');
+  eq(legacy.comment, 'Кофе', 'название без двоеточия');
+  eq(legacy.oneoff, true, 'legacy special');
+  const regular = context._telegramExpenseFromTemplate({ ...template, special: false }, expenseDb, new Date('2026-11-12T21:30:00Z'));
+  eq(regular.oneoff, null, 'обычный расход');
+});
+
+check('кнопка шаблона пишет расход и шлёт клавиатуру и отмену отдельно', () => {
+  const { context, state, calls } = loadGs({ db: expenseFixture(), now: '2026-11-12T21:30:00Z' });
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 1, 'расход сохранён на Drive');
+  eq(state.db.expenses[0].source, 'telegram', 'источник сохранённой записи');
+  eq(state.db.expenses[0].date, '2026-11-13', 'дата сохранённой записи');
+  eq(calls.urlFetch.length, 2, 'два отдельных sendMessage');
+  const keyboard = sentPayload(calls, 0);
+  eq(keyboard.reply_markup.is_persistent, true, 'свежая постоянная клавиатура');
+  eq(keyboard.reply_markup.keyboard[0][0].text, 'Кофе — 12,50 ₽', 'актуальный шаблон');
+  const confirmation = sentPayload(calls, 1);
+  eq(confirmation.text.includes('Кофе'), true, 'название в подтверждении');
+  eq(confirmation.text.includes('12,50'), true, 'сумма в подтверждении');
+  eq(confirmation.reply_markup.inline_keyboard[0][0].callback_data, 'undo:' + state.db.expenses[0].id, 'callback отмены');
+  eq(confirmation.reply_markup.keyboard, undefined, 'без смешения типов markup');
+});
+
+check('повтор message_id не дублирует расход, новый message_id создаёт второй', () => {
+  const { context, state, calls } = loadGs({ db: expenseFixture(), now: '2026-11-12T21:30:00Z' });
+  const key = 'message:42:1';
+  state.properties['message:42:old'] = '0';
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 1, 'первая запись');
+  eq(state.cache[key], '1', 'done-маркер Cache');
+  eq(calls.cache.find(call => call.key === key).expirationInSeconds, 600, 'TTL Cache');
+  eq(Number(state.properties[key]), Date.parse('2026-11-12T21:30:00Z'), 'done-маркер Properties');
+  eq(state.properties['message:42:old'], undefined, 'устаревшие ключи очищены');
+  delete state.cache[key];
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 1, 'Properties тоже блокирует повтор');
+  eq(calls.urlFetch.length, 2, 'повтор не шлёт второе подтверждение');
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽', { message_id: 2 }));
+  eq(state.db.expenses.length, 2, 'новое нажатие создаёт второй расход');
+  eq(calls.urlFetch.length, 4, 'два подтверждения для двух нажатий');
+  eq(state.db.expenses[0].id === state.db.expenses[1].id, false, 'разные id расходов');
+});
+
+check('ошибка Drive не оставляет done-маркер и допускает повтор', () => {
+  let failWrite = true;
+  const { context, state, calls } = loadGs({
+    db: expenseFixture(),
+    now: '2026-11-12T21:30:00Z',
+    failWrite: () => failWrite,
+  });
+  const key = 'message:42:1';
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 0, 'запись не сохранена');
+  eq(calls.urlFetch.length, 1, 'только сообщение об ошибке');
+  const failure = sentPayload(calls);
+  eq(failure.text.includes('повтор'), true, 'просьба повторить позже');
+  eq(failure.reply_markup && failure.reply_markup.inline_keyboard, undefined, 'нет кнопки отмены');
+  eq(state.cache[key], undefined, 'нет done-маркера Cache');
+  eq(state.properties[key], undefined, 'нет done-маркера Properties');
+  failWrite = false;
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 1, 'повторная доставка записана');
+  eq(calls.urlFetch.length, 3, 'после повтора клавиатура и подтверждение');
 });
 
 check('неизвестный текст возвращает подсказку и клавиатуру', () => {
