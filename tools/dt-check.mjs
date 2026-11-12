@@ -4674,6 +4674,146 @@ suite(1600, 'дизайн v1.85.0 — десктоп', () => {
   });
 });
 
+suite(390, 'Telegram Mini App — среда', () => {
+  check('platform unknown не включает Telegram', async p => {
+    const got = await p.evaluate(() => ({
+      detected: _tgWebApp() !== null,
+      init: _telegramInit(),
+      vars: document.documentElement.style.getPropertyValue('--tg-content-top'),
+    }));
+    eq(got.detected, false, 'обычный браузер');
+    eq(got.vars, '', 'Telegram inset не установлен');
+  });
+});
+
+suite(390, 'Telegram Mini App — жизненный цикл', () => {
+  check('expand и ready вызываются, init не дублируется', async p => {
+    const got = await p.evaluate(() => {
+      const calls = [];
+      window.Telegram = { WebApp: {
+        platform: 'ios',
+        expand(){ calls.push('expand'); },
+        ready(){ calls.push('ready'); },
+      } };
+      _telegramInit(); _telegramInit(); _telegramReady();
+      return { detected: _tgWebApp() !== null, calls };
+    });
+    eq(got.detected, true, 'Telegram ios');
+    eq(got.calls.join(','), 'expand,ready', 'вызовы SDK');
+  });
+});
+
+suite(390, 'Telegram Mini App — тема', () => {
+  check('auto следует Telegram, явная тема сохраняется, цвета оболочки синхронизируются', async p => {
+    await p.evaluate(() => {
+      const calls = {}, handlers = {};
+      window.Telegram = { WebApp: {
+        platform: 'ios', colorScheme: 'dark', isVersionAtLeast: v => true,
+        expand(){},
+        setHeaderColor(c){ calls.header = c; },
+        setBackgroundColor(c){ calls.background = c; },
+        setBottomBarColor(c){ calls.bottom = c; },
+        onEvent(name, fn){ handlers[name] = fn; calls[name] = (calls[name] || 0) + 1; },
+      } };
+      window._tgThemeTest = { calls, handlers };
+      _telegramInit(); _telegramInit();
+      DB.theme = 'auto'; applyTheme();
+    });
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    let got = await p.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      calls: window._tgThemeTest.calls,
+    }));
+    eq(got.dark, true, 'auto + Telegram dark');
+    eq(got.calls.header, '#141412', 'header = --bg');
+    eq(got.calls.background, '#141412', 'background = --bg');
+    eq(got.calls.bottom, '#1e1e1c', 'bottom = --card');
+    eq(got.calls.themeChanged, 1, 'одна подписка themeChanged');
+
+    await p.evaluate(() => {
+      Telegram.WebApp.colorScheme = 'light';
+      window._tgThemeTest.handlers.themeChanged();
+    });
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    eq(await p.evaluate(() => document.documentElement.classList.contains('light')), true, 'auto + Telegram light');
+
+    await p.evaluate(() => {
+      DB.theme = 'sepia'; applyTheme();
+      Telegram.WebApp.colorScheme = 'dark';
+      window._tgThemeTest.handlers.themeChanged();
+    });
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    got = await p.evaluate(() => ({
+      sepia: document.documentElement.classList.contains('sepia'),
+      calls: window._tgThemeTest.calls,
+    }));
+    eq(got.sepia, true, 'явная sepia не заменяется Telegram dark');
+    eq(got.calls.header, '#f0e6d2', 'header sepia');
+    eq(got.calls.bottom, '#faf3e0', 'bottom sepia');
+  });
+
+  check('цвета нормализуются, старый SDK не вызывает исключение', async p => {
+    const got = await p.evaluate(() => {
+      const r = { rgb: _telegramHex('rgb(26, 95, 168)'), transparent: _telegramHex('transparent') };
+      window.Telegram = { WebApp: {
+        platform: 'ios', isVersionAtLeast: v => false,
+        setHeaderColor(c){ r.header = c; }, setBackgroundColor(c){ r.background = c; },
+      } };
+      try { _telegramSyncChrome('rgb(20, 20, 18)'); r.oldSdk = true; }
+      catch(e){ r.oldSdk = e.message; }
+      return r;
+    });
+    eq(got.rgb, '#1a5fa8', 'rgb в hex');
+    eq(got.transparent, null, 'transparent отклонён');
+    eq(got.oldSdk, true, 'старый SDK');
+  });
+});
+
+suite(390, 'Telegram Mini App — safe area', () => {
+  check('contentSafeAreaInset применяется и обновляется по событиям', async p => {
+    await p.evaluate(() => {
+      const handlers = {}, counts = {};
+      window.Telegram = { WebApp: {
+        platform: 'ios', contentSafeAreaInset: { top: 44, right: 0, bottom: 34, left: 0 },
+        expand(){}, isVersionAtLeast: v => false,
+        onEvent(name, fn){ handlers[name] = fn; counts[name] = (counts[name] || 0) + 1; },
+      } };
+      window._tgInsetTest = { handlers, counts };
+      _telegramInit(); _telegramInit();
+    });
+    const root = await p.evaluate(() => document.documentElement.style.getPropertyValue('--tg-content-top'));
+    eq(root, '44px', 'top inset');
+    eq(await cssOf(p, 'body', 'paddingTop'), '44px', 'начальный верхний отступ');
+    eq(await cssOf(p, '.day-hdr', 'top'), '44px', 'липкая шапка');
+    eq(await cssOf(p, 'nav.nav', 'paddingBottom'), '34px', 'нижняя навигация');
+    eq(await cssOf(p, '.sheet', 'paddingBottom'), '34px', 'sheet');
+
+    await p.evaluate(() => {
+      Telegram.WebApp.contentSafeAreaInset = { top: 0, bottom: 0 };
+      window._tgInsetTest.handlers.safeAreaChanged();
+      window._tgInsetTest.handlers.contentSafeAreaChanged();
+    });
+    eq(await cssOf(p, 'body', 'paddingTop'), '0px', 'верхний inset сброшен');
+    eq(await cssOf(p, 'nav.nav', 'paddingBottom'), '20px', 'прежний минимум навигации');
+    eq(await cssOf(p, '.day-hdr', 'top'), '0px', 'шапка возвращается на место');
+    const counts = await p.evaluate(() => window._tgInsetTest.counts);
+    eq(counts.safeAreaChanged, 1, 'одна подписка safeAreaChanged');
+    eq(counts.contentSafeAreaChanged, 1, 'одна подписка contentSafeAreaChanged');
+  });
+});
+
+suite(390, 'Telegram Mini App — safe area старый SDK', () => {
+  check('отсутствующие inset и onEvent безопасны', async p => {
+    const got = await p.evaluate(() => {
+      window.Telegram = { WebApp: { platform: 'ios', expand(){} } };
+      try { _telegramInit(); _telegramInit(); return { ok: true, top: document.documentElement.style.getPropertyValue('--tg-content-top') }; }
+      catch(e){ return { ok: e.message }; }
+    });
+    eq(got.ok, true, 'старый SDK');
+    eq(got.top, '0px', 'отсутствующий inset нормализован к нулю');
+  });
+});
+
 // ─── РАННЕР ─────────────────────────────────────────────────────────
 const byWidth = new Map();
 for (const s of SUITES) {

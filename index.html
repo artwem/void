@@ -14,6 +14,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://artwem.github.io/void/">
 <meta property="og:image" content="https://artwem.github.io/void/apple-touch-icon.png">
+<script src="vendor/telegram-web-app.js"></script>
 <script>
   // Set base href dynamically so relative paths work on GitHub Pages (/repo-name/)
   // and at root (/) equally
@@ -26,11 +27,11 @@
     document.head.appendChild(base);
   })();
 </script>
-<script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;if(t&&t!=='auto')document.documentElement.classList.add(t);}catch(e){}})();</script>
+<script>(function(){try{var d=JSON.parse(localStorage.getItem('budgetDB_v2')||'{}');var t=d.theme;var tg=window.Telegram&&window.Telegram.WebApp;if(t&&t!=='auto')document.documentElement.classList.add(t);else if(tg&&tg.platform&&tg.platform!=='unknown')document.documentElement.classList.add(tg.colorScheme==='dark'?'dark':'light');}catch(e){}})();</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1a18'/%3E%3Cg transform='translate(14 14) scale(0.72)'%3E%3Ccircle cx='50' cy='50' r='22' fill='%23f7f6f1'/%3E%3Cpath d='M54.0 12.2A38 38 0 1 1 19.3 72.3' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3Cpath d='M14.3 63.0A38 38 0 0 1 43.4 12.6' fill='none' stroke='%23f7f6f1' stroke-width='13'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="css/app.css?v=1.88.1">
+<link rel="stylesheet" href="css/app.css?v=1.89.0">
 <link rel="preload" href="vendor/golos-text.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="vendor/jetbrains-digits.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Вендорено локально (было cdnjs): офлайн CDN не кэшировался SW и блокирующий
@@ -1438,7 +1439,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.88.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.89.0</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -4016,8 +4017,10 @@ function applyTheme(){
   // Migrate retired themes to their nearest surviving equivalent
   if(DB.theme && _THEME_MIGRATE[DB.theme]){ DB.theme = _THEME_MIGRATE[DB.theme]; saveLocal(); }
   const theme = DB.theme || 'auto';
+  const tg = theme === 'auto' ? _tgWebApp() : null;
   document.documentElement.classList.remove(...THEMES, 'hellokitty', 'nord');
   if(theme !== 'auto') document.documentElement.classList.add(theme);
+  else if(tg) document.documentElement.classList.add(tg.colorScheme === 'dark' ? 'dark' : 'light');
   // Sync iOS status-bar / browser chrome to the actual background colour
   requestAnimationFrame(()=>{
     try{
@@ -4025,6 +4028,7 @@ function applyTheme(){
       let m = document.querySelector('meta[name="theme-color"]');
       if(!m){ m=document.createElement('meta'); m.name='theme-color'; document.head.appendChild(m); }
       if(bg) m.content = bg;
+      _telegramSyncChrome(bg);
     }catch(_){}
   });
 }
@@ -11363,10 +11367,75 @@ function setCalcTableView(byMonth){
 function fmtCalc(n){ return fmt(n); }
 
 
+// ═══ telegram.js ═══
+
+let _telegramInitialized = false;
+function _tgWebApp(){
+  const tg = window.Telegram && window.Telegram.WebApp;
+  return tg && tg.platform && tg.platform !== 'unknown' ? tg : null;
+}
+function _telegramInit(){
+  const tg = _tgWebApp();
+  if(!tg || _telegramInitialized) return;
+  _telegramInitialized = true;
+  try { if(typeof tg.expand === 'function') tg.expand(); } catch(_){}
+  _telegramApplyInsets();
+  try {
+    if(typeof tg.onEvent === 'function'){
+      tg.onEvent('themeChanged', () => {
+        applyTheme();
+        if(!DB.theme || DB.theme === 'auto') renderCurrentPage();
+      });
+      tg.onEvent('safeAreaChanged', _telegramApplyInsets);
+      tg.onEvent('contentSafeAreaChanged', _telegramApplyInsets);
+    }
+  } catch(_){}
+}
+function _telegramApplyInsets(){
+  const tg = _tgWebApp();
+  if(!tg) return;
+  const inset = tg.contentSafeAreaInset || {};
+  for(const side of ['top', 'right', 'bottom', 'left']){
+    const value = Number(inset[side]);
+    document.documentElement.style.setProperty('--tg-content-' + side, (Number.isFinite(value) && value > 0 ? value : 0) + 'px');
+  }
+}
+function _telegramHex(color){
+  if(typeof color !== 'string') return null;
+  const value = color.trim().toLowerCase();
+  const short = value.match(/^#([0-9a-f]{3})$/);
+  if(short) return '#' + short[1].split('').map(c => c + c).join('');
+  if(/^#[0-9a-f]{6}$/.test(value)) return value;
+  const rgb = value.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/);
+  if(!rgb) return null;
+  const parts = rgb.slice(1).map(Number);
+  if(parts.some(n => n > 255)) return null;
+  return '#' + parts.map(n => n.toString(16).padStart(2, '0')).join('');
+}
+function _telegramSyncChrome(background){
+  const tg = _tgWebApp();
+  const bg = _telegramHex(background);
+  if(!tg || !bg) return;
+  try { if(typeof tg.setHeaderColor === 'function') tg.setHeaderColor(bg); } catch(_){}
+  try { if(typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor(bg); } catch(_){}
+  try {
+    if(typeof tg.setBottomBarColor === 'function' && typeof tg.isVersionAtLeast === 'function' && tg.isVersionAtLeast('7.10')){
+      const card = _telegramHex(getComputedStyle(document.documentElement).getPropertyValue('--card'));
+      if(card) tg.setBottomBarColor(card);
+    }
+  } catch(_){}
+}
+function _telegramReady(){
+  const tg = _tgWebApp();
+  if(!tg) return;
+  try { if(typeof tg.ready === 'function') tg.ready(); } catch(_){}
+}
+
 // ═══ init.js ═══
 
 // ─── INIT ────────────────────────────────────────────────────────────
 function init(){
+  _telegramInit();
   initOverlays();
   loadDB();
   applyTheme();
@@ -11394,6 +11463,7 @@ function init(){
   let _fitT = null;
   window.addEventListener('resize', () => { clearTimeout(_fitT); _fitT = setTimeout(() => _fitVals(document.querySelector('.page.active')), 120); });
   _handleDeepLink();
+  _telegramReady();
 }
 
 // ─── DEEP LINK: ?add=350&cat=Продукты&comment=кофе[&date=YYYY-MM-DD][&oneoff=1] / ?tab=assets ───

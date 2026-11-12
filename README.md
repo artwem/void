@@ -75,6 +75,20 @@ PWA устанавливается прямо из браузера — App Stor
 
 ---
 
+## Telegram Mini App
+
+Весь V.O.I.D. можно открыть внутри Telegram как личный Main Mini App:
+
+1. Создай бота через [@BotFather](https://t.me/BotFather).
+2. Открой **Bot Settings → Configure Mini App → Enable Mini App**.
+3. Укажи URL `https://artwem.github.io/void/` и открой Mini App через бота.
+
+Telegram WebView использует отдельное хранилище `localStorage`: данные из браузерной PWA там автоматически не появятся. Для общих данных повторно введи тот же Apps Script URL и токен синхронизации в настройках Mini App.
+
+Токен бота для запуска Main Mini App в коде не нужен — не помещай его в проект.
+
+---
+
 ## Синхронизация с Google Drive
 
 Необязательна — приложение полностью работает офлайн. Данные лежат в файле `nto_data.json` на твоём Google Drive, без таблиц.
