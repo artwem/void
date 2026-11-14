@@ -151,6 +151,10 @@ export function loadGs(options = {}) {
       },
     },
     Session: { getScriptTimeZone: () => 'Europe/Moscow' },
+    ScriptApp: {
+      getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/test-exec/exec' }),
+    },
+    Logger: { log: (...args) => calls.urlFetch.push({ log: args.map(String).join(' ') }) },
     MimeType: { PLAIN_TEXT: 'text/plain' },
   };
   const context = vm.createContext(sandbox);
@@ -199,6 +203,29 @@ function sentPayload(calls, index = 0) {
   eq(calls.urlFetch[index].url, 'https://api.telegram.org/bottest-token/sendMessage', 'URL Bot API');
   return JSON.parse(calls.urlFetch[index].options.payload);
 }
+
+check('setup регистрирует webhook на текущем /exec без раскрытия токена', () => {
+  const { context, calls } = loadGs({ db });
+  const result = context.setupTelegramWebhook();
+  eq(result, undefined, 'setup не возвращает ответ Bot API');
+  eq(calls.urlFetch.length, 1, 'один вызов Bot API');
+  eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/setWebhook', 'метод setWebhook');
+  const payload = JSON.parse(calls.urlFetch[0].options.payload);
+  eq(payload.url, 'https://script.google.com/macros/s/test-exec/exec?telegram=test-secret', 'URL webhook');
+  eq(Object.keys(payload).join(','), 'url', 'только URL в payload');
+  eq(calls.urlFetch[0].options.payload.includes('test-token'), false, 'токен не попадает в payload');
+  eq(calls.urlFetch.filter(call => call.log).length, 0, 'setup ничего не печатает');
+});
+
+check('delete отключает webhook без раскрытия токена', () => {
+  const { context, calls } = loadGs({ db });
+  const result = context.deleteTelegramWebhook();
+  eq(result, undefined, 'delete не возвращает ответ Bot API');
+  eq(calls.urlFetch.length, 1, 'один вызов Bot API');
+  eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/deleteWebhook', 'метод deleteWebhook');
+  eq(calls.urlFetch[0].options.payload, '{}', 'пустой payload');
+  eq(calls.urlFetch.filter(call => call.log).length, 0, 'delete ничего не печатает');
+});
 
 check('подписи шаблонов и активная клавиатура', () => {
   const { context } = loadGs({ db });

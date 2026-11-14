@@ -3711,12 +3711,12 @@ suite(390, 'идеи v1.83.0', () => {
       DB.syncUrl = 'http://sync.test/x'; renderSettings();
       const row = () => document.getElementById('sync-script-version').textContent;
       _noteScriptVersion('10.4'); res.old = row();
-      _noteScriptVersion('10.5'); res.cur = row();
+      _noteScriptVersion('11.0'); res.cur = row();
       res.less = [_verLess('10.4', '10.5'), _verLess('10.5', '10.5'), _verLess('10.10', '10.9'), _verLess('<10.5', '10.5')].join(',');
       const realFetch = window.fetch;
       window.fetch = async (u, o) => ({ ok: true, text: async () => JSON.stringify({ ok: true }) });
       await syncRequest('ping'); res.legacy = _remoteScriptVersion + '|' + row();
-      window.fetch = async (u, o) => ({ ok: true, text: async () => JSON.stringify({ ok: true, version: '10.5' }) });
+      window.fetch = async (u, o) => ({ ok: true, text: async () => JSON.stringify({ ok: true, version: '11.0' }) });
       await syncRequest('push', {}); res.signed = _remoteScriptVersion;
       // полный pull — файл данных без подписи: версию не трогает
       window.fetch = async () => ({ ok: true, text: async () => JSON.stringify({ expenses: [] }) });
@@ -3726,13 +3726,13 @@ suite(390, 'идеи v1.83.0', () => {
       DB.syncUrl = ''; renderSettings();
       return res;
     });
-    if (!/v10\.4 · нужен v10\.5, обновите/.test(got.old)) throw new Error('старый скрипт: ' + got.old);
-    if (!/v10\.5 ✓/.test(got.cur)) throw new Error('актуальный скрипт: ' + got.cur);
+    if (!/v10\.4 · нужен v11\.0, обновите/.test(got.old)) throw new Error('старый скрипт: ' + got.old);
+    if (!/v11\.0 ✓/.test(got.cur)) throw new Error('актуальный скрипт: ' + got.cur);
     eq(got.less, 'true,false,false,true', 'сравнение версий');
     if (!/^<10\.5\|старый/.test(got.legacy)) throw new Error('ответ без version → старый: ' + got.legacy);
-    eq(got.signed, '10.5', 'версия из подписанного ответа');
-    eq(got.afterPull, '10.5', 'файл данных версию не сбивает');
-    eq(got.stored, '10.5', 'версия сохранена между запусками');
+    eq(got.signed, '11.0', 'версия из подписанного ответа');
+    eq(got.afterPull, '11.0', 'файл данных версию не сбивает');
+    eq(got.stored, '11.0', 'версия сохранена между запусками');
   });
 
   check('копии на Drive: список, восстановление, force-push', async p => {
@@ -3781,7 +3781,7 @@ suite(390, 'идеи v1.83.0', () => {
       closeModal('modal-backups');
       return document.getElementById('backups-list').textContent;
     });
-    if (!/разверните Apps Script v10\.5/.test(got)) throw new Error('подсказка: ' + got);
+    if (!/разверните Apps Script v11\.0/.test(got)) throw new Error('подсказка: ' + got);
   });
 
   check('в отчёте без прошлого года колонки «vs» нет', async p => {

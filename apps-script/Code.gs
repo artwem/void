@@ -1,4 +1,4 @@
-// ===== BUDGET TRACKER APPS SCRIPT v10.5 — Drive Storage =====
+// ===== BUDGET TRACKER APPS SCRIPT v11.0 — Drive Storage =====
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 // Данные хранятся в файле nto_data.json в Google Drive (не в таблице)
@@ -9,9 +9,9 @@
 
 const FILE_DATA = 'nto_data.json';
 const SECRET = '';
-// Версия скрипта уходит в каждом JSON-ответе (v10.5): приложение сверяет её со
+// Версия скрипта уходит в каждом JSON-ответе (v11.0): приложение сверяет её со
 // своей и в Настройках подсказывает, что скрипт пора переразвернуть.
-const VERSION = '10.5';
+const VERSION = '11.0';
 const BAK_PREFIX = 'nto_data.bak.';   // nto_data.bak.YYYY-MM-DD.json
 const BAK_KEEP = 7;                    // суточных копий храним столько
 
@@ -55,6 +55,16 @@ function _telegramApi(method, payload) {
     throw new Error('Telegram API ' + method + ': ' + (result && result.description || 'ok:false'));
   }
   return result;
+}
+
+function setupTelegramWebhook() {
+  const secret = PropertiesService.getScriptProperties().getProperty('TELEGRAM_WEBHOOK_SECRET');
+  const url = ScriptApp.getService().getUrl() + '?telegram=' + encodeURIComponent(secret);
+  _telegramApi('setWebhook', { url: url });
+}
+
+function deleteTelegramWebhook() {
+  _telegramApi('deleteWebhook', {});
 }
 
 function _telegramTemplateLabel(template) {
