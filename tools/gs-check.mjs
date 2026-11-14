@@ -129,7 +129,13 @@ export function loadGs(options = {}) {
     UrlFetchApp: {
       fetch(url, fetchOptions = {}) {
         calls.urlFetch.push({ url, options: fetchOptions });
-        return { getContentText: () => JSON.stringify({ ok: true, result: {} }) };
+        const method = url.slice(url.lastIndexOf('/') + 1);
+        const fail = typeof options.failTelegram === 'function'
+          ? options.failTelegram(method, JSON.parse(fetchOptions.payload || '{}'))
+          : options.failTelegram;
+        return { getContentText: () => JSON.stringify(fail
+          ? { ok: false, error_code: 500, description: 'Тестовый сбой Telegram ' + method }
+          : { ok: true, result: {} }) };
       },
     },
     Utilities: {
@@ -517,6 +523,124 @@ check('force-restore не подмешивает текущие bot-записи
   eq(state.db.expenses.length, 1, 'force оставляет только входящий payload');
   eq(state.db.expenses[0].id, 'client300', 'текущий bot-расход не восстановлен');
 });
+
+function undoCallback(id, data) {
+  return {
+    id,
+    from: { id: 42 },
+    message: { message_id: 77, chat: { id: 42, type: 'private' }, text: 'Добавлен расход: Кофе — 100 ₽' },
+    data,
+  };
+}
+
+function undoDb() {
+  return { expenses: [
+    { id: 'bot100', amount: 100, updatedAt: 100, source: 'telegram' },
+    { id: 'deleted200', amount: 0, _deleted: true, updatedAt: 200, source: 'telegram' },
+    { id: 'client300', amount: 300, updatedAt: 300 },
+  ] };
+}
+
+const terminalCallbacks = [
+  { name: 'malformed', data: 'not-undo' },
+  { name: 'nonexistent', data: 'undo:missing' },
+  { name: 'client', data: 'undo:client300' },
+  { name: 'deleted', data: 'undo:deleted200' },
+];
+for (const scenario of terminalCallbacks) {
+  check('terminal callback дедуплицируется: ' + scenario.name, () => {
+    const { context, state, calls } = loadGs({ db: undoDb(), now: 1000 });
+    const callback = undoCallback('cb-' + scenario.name, scenario.data);
+    const before = JSON.stringify(state.db);
+    post(context, { callback_query: callback });
+    eq(calls.urlFetch.length, 1, 'первый terminal callback получил ответ');
+    eq(state.cache['callback:cb-' + scenario.name], '1', 'terminal marker Cache');
+    eq(Number(state.properties['callback:cb-' + scenario.name]), 1000, 'terminal marker Properties');
+    post(context, { callback_query: callback });
+    eq(calls.urlFetch.length, 1, 'повтор terminal callback не имеет побочных эффектов');
+    eq(JSON.stringify(state.db), before, 'terminal callback не меняет DB');
+  });
+}
+
+const undoWriteFailures = [
+  { name: 'Cache', option: 'failCachePut' },
+  { name: 'Properties', option: 'failPropertySet' },
+  { name: 'Drive', option: 'failWrite' },
+];
+for (const failure of undoWriteFailures) {
+  check('сбой ' + failure.name + ' не оставляет частичную отмену и допускает retry', () => {
+    let fail = true;
+    const { context, state, calls } = loadGs({
+      db: undoDb(),
+      now: 1000,
+      [failure.option]: failure.option === 'failPropertySet'
+        ? key => fail && key === 'callback:cb-retry'
+        : () => fail,
+    });
+    const callback = undoCallback('cb-retry', 'undo:bot100');
+    const before = JSON.stringify(state.db);
+    post(context, { callback_query: callback });
+    eq(JSON.stringify(state.db), before, 'DB не изменена после сбоя ' + failure.name);
+    eq(state.cache['callback:cb-retry'], undefined, 'частичный Cache-маркер удалён');
+    eq(state.properties['callback:cb-retry'], undefined, 'частичный Properties-маркер удалён');
+    eq(calls.urlFetch.length, 1, 'только честный ответ об ошибке');
+    eq(JSON.parse(calls.urlFetch[0].options.payload).text.includes('повтор'), true, 'ответ предлагает retry');
+
+    fail = false;
+    post(context, { callback_query: callback });
+    const rec = state.db.expenses.find(e => e.id === 'bot100');
+    eq(rec._deleted, true, 'retry сохраняет tombstone');
+    eq(rec.amount, 0, 'retry обнуляет сумму');
+    eq(state.cache['callback:cb-retry'], '1', 'retry сохраняет marker');
+    eq(calls.urlFetch.length, 3, 'retry отвечает и обновляет подтверждение');
+    eq(calls.urlFetch[2].url.endsWith('/editMessageText'), true, 'retry убирает кнопку через editMessageText');
+  });
+}
+
+check('равный updatedAt не воскрешает текущий bot tombstone', () => {
+  const { context, state } = loadGs({ db: { expenses: [
+    { id: 'del200', amount: 0, _deleted: true, updatedAt: 200, source: 'telegram' },
+  ] } });
+  context.saveData(JSON.stringify({ expenses: [
+    { id: 'del200', amount: 200, updatedAt: 200, source: 'telegram' },
+  ] }), false);
+  eq(state.db.expenses[0]._deleted, true, 'при tie остаётся текущий tombstone');
+  eq(state.db.expenses[0].amount, 0, 'сумма tombstone не восстановлена');
+});
+
+check('undo в ту же миллисекунду увеличивает updatedAt', () => {
+  const fixture = undoDb();
+  fixture.expenses[0].updatedAt = 1000;
+  const { context, state } = loadGs({ db: fixture, now: 1000 });
+  post(context, { callback_query: undoCallback('cb-same-ms', 'undo:bot100') });
+  eq(state.db.expenses[0].updatedAt, 1001, 'updatedAt строго больше прежнего значения');
+  eq(state.db.expenses[0]._deleted, true, 'tombstone сохранён');
+});
+
+for (const method of ['answerCallbackQuery', 'editMessageText']) {
+  check('сбой Telegram ' + method + ' сохраняет tombstone и idempotency, но возвращает ошибку', () => {
+    const { context, state, calls } = loadGs({
+      db: undoDb(),
+      now: 1000,
+      failTelegram: called => called === method,
+    });
+    const callback = undoCallback('cb-api-' + method, 'undo:bot100');
+    const response = JSON.parse(post(context, { callback_query: callback }).getData());
+    eq(typeof response.error, 'string', 'webhook не сообщает успех при сбое ' + method);
+    eq(response.error.includes(method), true, 'ошибка называет failed Bot API method');
+    const rec = state.db.expenses.find(e => e.id === 'bot100');
+    eq(rec._deleted, true, 'durable tombstone сохранён');
+    eq(rec.amount, 0, 'durable сумма сохранена');
+    eq(state.cache['callback:cb-api-' + method], '1', 'idempotency marker сохранён');
+    eq(Number(state.properties['callback:cb-api-' + method]), 1000, 'Properties marker сохранён');
+    const after = JSON.stringify(state.db);
+    const callCount = calls.urlFetch.length;
+    const retry = JSON.parse(post(context, { callback_query: callback }).getData());
+    eq(retry.ok, true, 'повтор обработан как уже завершённый');
+    eq(calls.urlFetch.length, callCount, 'повтор не вызывает Telegram после post-commit сбоя');
+    eq(JSON.stringify(state.db), after, 'повтор не меняет durable tombstone');
+  });
+}
 
 check('прежний action ping продолжает работать', () => {
   const { context } = loadGs({ db });

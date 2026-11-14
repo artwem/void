@@ -50,7 +50,11 @@ function _telegramApi(method, payload) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
-  return JSON.parse(response.getContentText());
+  const result = JSON.parse(response.getContentText());
+  if (!result || result.ok !== true) {
+    throw new Error('Telegram API ' + method + ': ' + (result && result.description || 'ok:false'));
+  }
+  return result;
 }
 
 function _telegramTemplateLabel(template) {
@@ -164,15 +168,6 @@ function _telegramAddTemplate(message, template) {
 function _telegramUndo(callbackQuery) {
   const message = callbackQuery.message || {};
   if (!_telegramAllowed(callbackQuery.from, message.chat)) return;
-  const data = String(callbackQuery.data || '');
-  if (data.indexOf('undo:') !== 0 || !data.slice(5)) {
-    _telegramApi('answerCallbackQuery', {
-      callback_query_id: callbackQuery.id,
-      text: 'Некорректная отмена расхода.',
-    });
-    return;
-  }
-  const id = data.slice(5);
   const key = 'callback:' + callbackQuery.id;
   const lock = LockService.getScriptLock();
   const cache = CacheService.getScriptCache();
@@ -189,30 +184,33 @@ function _telegramUndo(callbackQuery) {
       }
     });
     if (cache.get(key) || props.getProperty(key)) return;
-    const file = getDataFile();
-    const db = file ? JSON.parse(file.getBlob().getDataAsString()) : { expenses: [] };
-    const rec = (db.expenses || []).find(function(e) { return e.id === id; });
-    if (!rec || rec.source !== 'telegram') {
-      outcome = 'invalid';
-    } else if (rec._deleted) {
-      outcome = 'deleted';
+    const data = String(callbackQuery.data || '');
+    let file;
+    let db;
+    let rec;
+    if (data.indexOf('undo:') !== 0 || !data.slice(5)) {
+      outcome = 'malformed';
     } else {
+      const id = data.slice(5);
+      file = getDataFile();
+      db = file ? JSON.parse(file.getBlob().getDataAsString()) : { expenses: [] };
+      rec = (db.expenses || []).find(function(e) { return e.id === id; });
+      if (!rec || rec.source !== 'telegram') outcome = 'invalid';
+      else if (rec._deleted) outcome = 'deleted';
+      else outcome = 'ok';
+    }
+    cache.put(key, '1', 600);
+    props.setProperty(key, String(now.getTime()));
+    if (outcome === 'ok') {
       rec._deleted = true;
       rec.amount = 0;
-      rec.updatedAt = now.getTime();
+      rec.updatedAt = Math.max(now.getTime(), (Number(rec.updatedAt) || 0) + 1);
       backupIfDue(file);
       file.setContent(JSON.stringify(db));
-      try {
-        cache.put(key, '1', 600);
-        props.setProperty(key, String(now.getTime()));
-      } catch(err) {
-        try { cache.remove(key); } catch(_) {}
-        try { props.deleteProperty(key); } catch(_) {}
-        throw err;
-      }
-      outcome = 'ok';
     }
   } catch(err) {
+    try { cache.remove(key); } catch(_) {}
+    try { props.deleteProperty(key); } catch(_) {}
     outcome = 'error';
   } finally {
     try { lock.releaseLock(); } catch(_) {}
@@ -232,7 +230,8 @@ function _telegramUndo(callbackQuery) {
     _telegramApi('answerCallbackQuery', {
       callback_query_id: callbackQuery.id,
       text: outcome === 'error' ? 'Не удалось отменить расход. Попробуйте повторить позже.' :
-        outcome === 'deleted' ? 'Этот расход уже отменён.' : 'Можно отменить только расход, добавленный ботом.',
+        outcome === 'deleted' ? 'Этот расход уже отменён.' :
+        outcome === 'malformed' ? 'Некорректная отмена расхода.' : 'Можно отменить только расход, добавленный ботом.',
     });
   }
 }
@@ -313,7 +312,7 @@ function _mergeTelegramExpenses(currentDb, incomingDb) {
     if (index === undefined) {
       byId[current.id] = expenses.length;
       expenses.push(current);
-    } else if ((Number(current.updatedAt) || 0) > (Number(expenses[index].updatedAt) || 0)) {
+    } else if ((Number(current.updatedAt) || 0) >= (Number(expenses[index].updatedAt) || 0)) {
       expenses[index] = current;
     }
   });
