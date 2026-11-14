@@ -155,7 +155,7 @@ export function loadGs(options = {}) {
     },
     Session: { getScriptTimeZone: () => 'Europe/Moscow' },
     ScriptApp: {
-      getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/test-exec/exec' }),
+      getService: () => ({ getUrl: () => options.scriptUrl || 'https://script.google.com/macros/s/test-exec/exec' }),
     },
     Logger: { log: (...args) => calls.urlFetch.push({ log: args.map(String).join(' ') }) },
     MimeType: { PLAIN_TEXT: 'text/plain' },
@@ -218,6 +218,13 @@ check('setup регистрирует webhook на текущем /exec без �
   eq(Object.keys(payload).join(','), 'url', 'только URL в payload');
   eq(calls.urlFetch[0].options.payload.includes('test-token'), false, 'токен не попадает в payload');
   eq(calls.urlFetch.filter(call => call.log).length, 0, 'setup ничего не печатает');
+});
+
+check('setup заменяет editor /dev на публичный /exec', () => {
+  const { context, calls } = loadGs({ db, scriptUrl: 'https://script.google.com/macros/s/test-dev/dev' });
+  context.setupTelegramWebhook();
+  const payload = JSON.parse(calls.urlFetch[0].options.payload);
+  eq(payload.url, 'https://script.google.com/macros/s/test-dev/exec?telegram=test-secret', 'публичный URL webhook');
 });
 
 check('delete отключает webhook без раскрытия токена', () => {
