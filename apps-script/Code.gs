@@ -26,6 +26,7 @@ function doPost(e) {
       const chat = body.message ? update.chat : update.message && update.message.chat;
       if (!_telegramAllowed(update.from, chat)) return out({ ok: true });
       if (body.message) _telegramHandleMessage(body.message);
+      else _telegramUndo(body.callback_query);
       return out({ ok: true });
     }
     if (SECRET && body.token !== SECRET) return out({ error: 'Unauthorized' });
@@ -160,6 +161,82 @@ function _telegramAddTemplate(message, template) {
   return rec;
 }
 
+function _telegramUndo(callbackQuery) {
+  const message = callbackQuery.message || {};
+  if (!_telegramAllowed(callbackQuery.from, message.chat)) return;
+  const data = String(callbackQuery.data || '');
+  if (data.indexOf('undo:') !== 0 || !data.slice(5)) {
+    _telegramApi('answerCallbackQuery', {
+      callback_query_id: callbackQuery.id,
+      text: 'Некорректная отмена расхода.',
+    });
+    return;
+  }
+  const id = data.slice(5);
+  const key = 'callback:' + callbackQuery.id;
+  const lock = LockService.getScriptLock();
+  const cache = CacheService.getScriptCache();
+  const props = PropertiesService.getScriptProperties();
+  let outcome = 'duplicate';
+  try {
+    lock.waitLock(10000);
+    const now = new Date();
+    const all = props.getProperties();
+    Object.keys(all).forEach(function(name) {
+      if ((name.indexOf('message:') === 0 || name.indexOf('callback:') === 0) &&
+          now.getTime() - Number(all[name]) >= 24 * 3600 * 1000) {
+        props.deleteProperty(name);
+      }
+    });
+    if (cache.get(key) || props.getProperty(key)) return;
+    const file = getDataFile();
+    const db = file ? JSON.parse(file.getBlob().getDataAsString()) : { expenses: [] };
+    const rec = (db.expenses || []).find(function(e) { return e.id === id; });
+    if (!rec || rec.source !== 'telegram') {
+      outcome = 'invalid';
+    } else if (rec._deleted) {
+      outcome = 'deleted';
+    } else {
+      rec._deleted = true;
+      rec.amount = 0;
+      rec.updatedAt = now.getTime();
+      backupIfDue(file);
+      file.setContent(JSON.stringify(db));
+      try {
+        cache.put(key, '1', 600);
+        props.setProperty(key, String(now.getTime()));
+      } catch(err) {
+        try { cache.remove(key); } catch(_) {}
+        try { props.deleteProperty(key); } catch(_) {}
+        throw err;
+      }
+      outcome = 'ok';
+    }
+  } catch(err) {
+    outcome = 'error';
+  } finally {
+    try { lock.releaseLock(); } catch(_) {}
+  }
+  if (outcome === 'ok') {
+    _telegramApi('answerCallbackQuery', {
+      callback_query_id: callbackQuery.id,
+      text: 'Расход отменён.',
+    });
+    _telegramApi('editMessageText', {
+      chat_id: message.chat.id,
+      message_id: message.message_id,
+      text: 'Отменено: ' + String(message.text || 'Расход'),
+      reply_markup: { inline_keyboard: [] },
+    });
+  } else if (outcome !== 'duplicate') {
+    _telegramApi('answerCallbackQuery', {
+      callback_query_id: callbackQuery.id,
+      text: outcome === 'error' ? 'Не удалось отменить расход. Попробуйте повторить позже.' :
+        outcome === 'deleted' ? 'Этот расход уже отменён.' : 'Можно отменить только расход, добавленный ботом.',
+    });
+  }
+}
+
 function _telegramHandleMessage(message) {
   let db;
   try {
@@ -223,6 +300,27 @@ function getDataFile() {
   return null;
 }
 
+function _mergeTelegramExpenses(currentDb, incomingDb) {
+  const merged = Object.assign({}, incomingDb);
+  const expenses = (incomingDb.expenses || []).slice();
+  const byId = Object.create(null);
+  expenses.forEach(function(e, index) {
+    if (e.id !== undefined && e.id !== null) byId[e.id] = index;
+  });
+  ((currentDb && currentDb.expenses) || []).forEach(function(current) {
+    if (current.source !== 'telegram' || current.id === undefined || current.id === null) return;
+    const index = byId[current.id];
+    if (index === undefined) {
+      byId[current.id] = expenses.length;
+      expenses.push(current);
+    } else if ((Number(current.updatedAt) || 0) > (Number(expenses[index].updatedAt) || 0)) {
+      expenses[index] = current;
+    }
+  });
+  merged.expenses = expenses;
+  return merged;
+}
+
 function saveData(content, force) {
   const lock = LockService.getScriptLock();
   try {
@@ -236,6 +334,9 @@ function saveData(content, force) {
         if (oldSize > 20000 && content.length < oldSize * 0.3) {
           return { error: 'Push отклонён: локальных данных заметно меньше, чем на Drive. Проверьте данные и нажмите «Выгрузить в Drive».' };
         }
+        const currentDb = JSON.parse(file.getBlob().getDataAsString());
+        const incomingDb = JSON.parse(content);
+        content = JSON.stringify(_mergeTelegramExpenses(currentDb, incomingDb));
       }
       backupIfDue(file);
       file.setContent(content);

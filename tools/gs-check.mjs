@@ -417,6 +417,107 @@ check('допущенный webhook /start читает DB и отправляе
   eq(sentPayload(calls).reply_markup.keyboard.flat().map(b => b.text).join('|'), 'Кофе — 350 ₽|Такси — 12,50 ₽', 'шаблоны');
 });
 
+check('callback отменяет только bot-расход и идемпотентен', () => {
+  let now = Date.parse('2026-11-12T21:30:00Z');
+  const fixture = expenseFixture();
+  fixture.expenses.push({ id: 'client300', amount: 300, updatedAt: 300 });
+  const { context, state, calls } = loadGs({ db: fixture, now: () => now });
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  const rec = state.db.expenses.find(e => e.source === 'telegram');
+  const callback = {
+    id: 'cb-undo',
+    from: { id: 42 },
+    message: { message_id: 77, chat: { id: 42, type: 'private' } },
+    data: 'undo:' + rec.id,
+  };
+
+  const beforeForeign = JSON.stringify(state.db);
+  post(context, { callback_query: {
+    ...callback,
+    id: 'cb-foreign',
+    from: { id: 43 },
+    message: { message_id: 77, chat: { id: 43, type: 'private' } },
+  } });
+  eq(JSON.stringify(state.db), beforeForeign, 'чужой callback не меняет DB');
+  eq(calls.urlFetch.length, 2, 'чужой callback не имеет побочных эффектов');
+
+  now += 1000;
+  post(context, { callback_query: callback });
+  const undone = state.db.expenses.find(e => e.id === rec.id);
+  eq(undone._deleted, true, 'мягкое удаление');
+  eq(undone.amount, 0, 'сумма обнулена');
+  eq(undone.updatedAt, now, 'новый updatedAt');
+  eq(state.cache['callback:cb-undo'], '1', 'done-маркер callback в Cache');
+  eq(Number(state.properties['callback:cb-undo']), now, 'done-маркер callback в Properties');
+  eq(calls.cache.find(call => call.key === 'callback:cb-undo').expirationInSeconds, 600, 'TTL callback');
+  eq(calls.urlFetch.length, 4, 'ответ на callback и редактирование сообщения');
+  eq(calls.urlFetch[2].url, 'https://api.telegram.org/bottest-token/answerCallbackQuery', 'answerCallbackQuery');
+  const answer = JSON.parse(calls.urlFetch[2].options.payload);
+  eq(answer.callback_query_id, 'cb-undo', 'id отвеченного callback');
+  eq(calls.urlFetch[3].url, 'https://api.telegram.org/bottest-token/editMessageText', 'editMessageText');
+  const edit = JSON.parse(calls.urlFetch[3].options.payload);
+  eq(edit.chat_id, 42, 'чат редактируемого подтверждения');
+  eq(edit.message_id, 77, 'сообщение редактируемого подтверждения');
+  eq(edit.text.includes('Отмен'), true, 'подтверждение отмены');
+  eq(!edit.reply_markup || !edit.reply_markup.inline_keyboard || edit.reply_markup.inline_keyboard.length === 0,
+    true, 'inline-кнопка удалена');
+
+  const afterUndo = JSON.stringify(state.db);
+  now += 1000;
+  post(context, { callback_query: callback });
+  eq(JSON.stringify(state.db), afterUndo, 'повтор callback не меняет updatedAt и DB');
+  eq(calls.urlFetch.length, 4, 'повтор callback не имеет побочных эффектов');
+
+  const beforeClient = JSON.stringify(state.db);
+  post(context, { callback_query: { ...callback, id: 'cb-client', data: 'undo:client300' } });
+  eq(JSON.stringify(state.db), beforeClient, 'обычная клиентская запись не изменена');
+  eq(calls.urlFetch.length, 5, 'ошибка отмены отвечает на callback');
+  eq(calls.urlFetch[4].url, 'https://api.telegram.org/bottest-token/answerCallbackQuery', 'ответ на отказ отмены');
+  const rejected = JSON.parse(calls.urlFetch[4].options.payload);
+  eq(rejected.callback_query_id, 'cb-client', 'id отклонённого callback');
+  eq(typeof rejected.text, 'string', 'текст ошибки отмены');
+});
+
+check('не-force push сохраняет bot-записи по id и updatedAt', () => {
+  const current = { expenses: [
+    { id: 'add100', amount: 100, updatedAt: 100, source: 'telegram' },
+    { id: 'del200', amount: 0, _deleted: true, updatedAt: 200, source: 'telegram' },
+    { id: 'client300', amount: 300, updatedAt: 300 },
+  ] };
+  const incoming = { expenses: [
+    { id: 'del200', amount: 0, _deleted: true, updatedAt: 150, source: 'telegram' },
+    { id: 'client300', amount: 300, updatedAt: 300 },
+  ] };
+  const { context, state } = loadGs({ db: current });
+  const result = context.saveData(JSON.stringify(incoming), false);
+  eq(result.ok, true, 'не-force push принят');
+  const merged = state.db;
+  eq(merged.expenses.filter(e => e.id === 'add100').length, 1, 'старый push не теряет bot add');
+  eq(merged.expenses.find(e => e.id === 'del200').updatedAt, 200, 'новая отмена бота побеждает');
+  eq(merged.expenses.find(e => e.id === 'client300').source, undefined, 'обычные записи не смешиваем');
+
+  const newer = loadGs({ db: { expenses: [
+    { id: 'add200', amount: 200, updatedAt: 200, source: 'telegram' },
+  ] } });
+  newer.context.saveData(JSON.stringify({ expenses: [
+    { id: 'add200', amount: 0, _deleted: true, updatedAt: 250, source: 'telegram' },
+  ] }), false);
+  const winner = newer.state.db.expenses.find(e => e.id === 'add200');
+  eq(winner._deleted, true, 'входящий tombstone с updatedAt 250 побеждает bot add 200');
+  eq(winner.updatedAt, 250, 'updatedAt входящего tombstone');
+});
+
+check('force-restore не подмешивает текущие bot-записи', () => {
+  const { context, state } = loadGs({ db: { expenses: [
+    { id: 'add100', amount: 100, updatedAt: 100, source: 'telegram' },
+  ] } });
+  const incoming = { expenses: [{ id: 'client300', amount: 300, updatedAt: 300 }] };
+  const result = context.saveData(JSON.stringify(incoming), true);
+  eq(result.ok, true, 'force-restore принят');
+  eq(state.db.expenses.length, 1, 'force оставляет только входящий payload');
+  eq(state.db.expenses[0].id, 'client300', 'текущий bot-расход не восстановлен');
+});
+
 check('прежний action ping продолжает работать', () => {
   const { context } = loadGs({ db });
   const result = context.doPost({ postData: { contents: JSON.stringify({ action: 'ping' }) }, parameter: {} });
