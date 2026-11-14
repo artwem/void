@@ -114,44 +114,89 @@ function _telegramExpenseFromTemplate(template, db, now) {
   };
 }
 
-function _telegramAddTemplate(message, template) {
+function _telegramCleanupMarkers(props, now) {
+  const all = props.getProperties();
+  Object.keys(all).forEach(function(name) {
+    const operation = name.indexOf('operation:message:') === 0;
+    if (!operation && name.indexOf('message:') !== 0 && name.indexOf('callback:') !== 0) return;
+    let timestamp = Number(all[name]);
+    if (operation) {
+      try { timestamp = Number(JSON.parse(all[name]).createdAt); } catch(_) { return; }
+    }
+    if (now.getTime() - timestamp >= 24 * 3600 * 1000) props.deleteProperty(name);
+  });
+}
+
+function _telegramAddTemplate(message) {
   const key = 'message:' + message.chat.id + ':' + message.message_id;
+  const operationKey = 'operation:' + key;
   const lock = LockService.getScriptLock();
   const cache = CacheService.getScriptCache();
   const props = PropertiesService.getScriptProperties();
   let db;
   let rec;
+  let operation;
+  let outcome = 'error';
   try {
     lock.waitLock(10000);
     const now = new Date();
-    const all = props.getProperties();
-    Object.keys(all).forEach(function(name) {
-      if ((name.indexOf('message:') === 0 || name.indexOf('callback:') === 0) &&
-          now.getTime() - Number(all[name]) >= 24 * 3600 * 1000) {
-        props.deleteProperty(name);
-      }
-    });
-    if (cache.get(key) || props.getProperty(key)) return null;
+    _telegramCleanupMarkers(props, now);
+    const savedOperation = props.getProperty(operationKey);
+    operation = savedOperation ? JSON.parse(savedOperation) : null;
+    const notified = operation && operation.committed && operation.notifications &&
+      operation.notifications.keyboard && operation.notifications.confirmation;
+    if (notified || (!operation && (cache.get(key) || props.getProperty(key)))) return null;
+
     const file = getDataFile();
     db = file ? JSON.parse(file.getBlob().getDataAsString()) : { templates: [], expenses: [] };
     if (!db.expenses) db.expenses = [];
-    rec = _telegramExpenseFromTemplate(template, db, now);
-    db.expenses.push(rec);
-    const content = JSON.stringify(db);
-    if (file) {
-      backupIfDue(file);
-      file.setContent(content);
-    } else {
-      const created = DriveApp.createFile(FILE_DATA, content, MimeType.PLAIN_TEXT);
-      props.setProperty('dataFileId', created.getId());
+    rec = operation ? db.expenses.find(function(e) { return e.id === operation.id; }) : null;
+    if (rec) {
+      operation.committed = true;
+    } else if (!operation || !operation.committed) {
+      const text = String(message.text || '');
+      const matches = (db.templates || []).filter(function(t) {
+        return !t._deleted && _telegramTemplateLabel(t) === text;
+      });
+      if (matches.length !== 1) {
+        outcome = matches.length ? 'ambiguous' : 'changed';
+      } else {
+        rec = _telegramExpenseFromTemplate(matches[0], db, now);
+        if (operation) {
+          rec.id = operation.id;
+        } else {
+          operation = {
+            id: rec.id,
+            label: _telegramTemplateLabel(matches[0]),
+            committed: false,
+            notifications: { keyboard: false, confirmation: false },
+            createdAt: now.getTime(),
+          };
+          props.setProperty(operationKey, JSON.stringify(operation));
+        }
+        db.expenses.push(rec);
+        const content = JSON.stringify(db);
+        if (file) {
+          backupIfDue(file);
+          file.setContent(content);
+        } else {
+          const created = DriveApp.createFile(FILE_DATA, content, MimeType.PLAIN_TEXT);
+          props.setProperty('dataFileId', created.getId());
+        }
+        operation.committed = true;
+      }
     }
-    try {
-      cache.put(key, '1', 600);
-      props.setProperty(key, String(now.getTime()));
-    } catch(err) {
-      try { cache.remove(key); } catch(_) {}
-      try { props.deleteProperty(key); } catch(_) {}
-      throw err;
+    if (operation && operation.committed && outcome !== 'changed' && outcome !== 'ambiguous') {
+      props.setProperty(operationKey, JSON.stringify(operation));
+      try {
+        cache.put(key, '1', 600);
+        props.setProperty(key, String(now.getTime()));
+      } catch(err) {
+        try { cache.remove(key); } catch(_) {}
+        try { props.deleteProperty(key); } catch(_) {}
+        throw err;
+      }
+      outcome = 'committed';
     }
   } catch(err) {
     _telegramApi('sendMessage', {
@@ -162,16 +207,34 @@ function _telegramAddTemplate(message, template) {
   } finally {
     try { lock.releaseLock(); } catch(_) {}
   }
-  _telegramApi('sendMessage', {
-    chat_id: message.chat.id,
-    text: 'Выберите шаблон:',
-    reply_markup: _telegramKeyboard(db, 0),
-  });
-  _telegramApi('sendMessage', {
-    chat_id: message.chat.id,
-    text: 'Добавлен расход: ' + _telegramTemplateLabel(template),
-    reply_markup: { inline_keyboard: [[{ text: 'Отменить', callback_data: 'undo:' + rec.id }]] },
-  });
+  if (outcome === 'changed' || outcome === 'ambiguous') {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: outcome === 'ambiguous'
+        ? 'Несколько шаблонов имеют одинаковые название и сумму. Измените их в приложении.'
+        : 'Шаблон изменился. Выберите актуальный шаблон:',
+      reply_markup: _telegramKeyboard(db, 0),
+    });
+    return null;
+  }
+  if (!operation.notifications.keyboard) {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Выберите шаблон:',
+      reply_markup: _telegramKeyboard(db, 0),
+    });
+    operation.notifications.keyboard = true;
+    props.setProperty(operationKey, JSON.stringify(operation));
+  }
+  if (!operation.notifications.confirmation) {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Добавлен расход: ' + operation.label,
+      reply_markup: { inline_keyboard: [[{ text: 'Отменить', callback_data: 'undo:' + operation.id }]] },
+    });
+    operation.notifications.confirmation = true;
+    props.setProperty(operationKey, JSON.stringify(operation));
+  }
   return rec;
 }
 
@@ -186,13 +249,7 @@ function _telegramUndo(callbackQuery) {
   try {
     lock.waitLock(10000);
     const now = new Date();
-    const all = props.getProperties();
-    Object.keys(all).forEach(function(name) {
-      if ((name.indexOf('message:') === 0 || name.indexOf('callback:') === 0) &&
-          now.getTime() - Number(all[name]) >= 24 * 3600 * 1000) {
-        props.deleteProperty(name);
-      }
-    });
+    _telegramCleanupMarkers(props, now);
     if (cache.get(key) || props.getProperty(key)) return;
     const data = String(callbackQuery.data || '');
     let file;
@@ -260,17 +317,28 @@ function _telegramHandleMessage(message) {
   }
   const text = String(message.text || '');
   const navigation = text.match(/^(Ещё|Назад) (\d+)\/(\d+)$/);
-  const template = (db.templates || []).find(function(t) {
+  const templates = (db.templates || []).filter(function(t) {
     return !t._deleted && _telegramTemplateLabel(t) === text;
   });
-  if (template) {
-    _telegramAddTemplate(message, template);
+  if (templates.length > 1) {
+    _telegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Несколько шаблонов имеют одинаковые название и сумму. Измените их в приложении.',
+      reply_markup: _telegramKeyboard(db, 0),
+    });
+    return;
+  }
+  if (templates.length === 1) {
+    _telegramAddTemplate(message);
     return;
   }
   let page = 0;
   let reply = 'Выберите шаблон кнопкой ниже.';
   if (text === '/start' || navigation) reply = 'Выберите шаблон:';
   if (navigation) page = Number(navigation[2]) - 1;
+  if (!(db.templates || []).some(function(t) { return !t._deleted; })) {
+    reply += '\nАктивных шаблонов нет. Создайте шаблоны в приложении.';
+  }
   _telegramApi('sendMessage', {
     chat_id: message.chat.id,
     text: reply,

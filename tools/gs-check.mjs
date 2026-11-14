@@ -124,7 +124,10 @@ export function loadGs(options = {}) {
       }),
     },
     LockService: {
-      getScriptLock: () => ({ waitLock() {}, releaseLock() {} }),
+      getScriptLock: () => ({
+        waitLock() { if (options.onLockWait) options.onLockWait(); },
+        releaseLock() {},
+      }),
     },
     UrlFetchApp: {
       fetch(url, fetchOptions = {}) {
@@ -370,25 +373,105 @@ check('ошибка Drive не оставляет done-маркер и допу�
   eq(calls.urlFetch.length, 3, 'после повтора клавиатура и подтверждение');
 });
 
-check('ошибка записи Cache или Properties не оставляет частичный done-маркер', () => {
-  const failures = [
-    { failCachePut: key => key === 'message:42:1' },
-    { failPropertySet: key => key === 'message:42:1' },
-  ];
-  for (const failure of failures) {
+const messageMarkerFailures = [
+  { name: 'Cache', option: 'failCachePut' },
+  { name: 'Properties', option: 'failPropertySet' },
+];
+for (const failure of messageMarkerFailures) {
+  check('сбой done-маркера ' + failure.name + ' не дублирует расход при повторе', () => {
+    let fail = true;
     const { context, state, calls } = loadGs({
       db: expenseFixture(),
       now: '2026-11-12T21:30:00Z',
-      ...failure,
+      [failure.option]: key => fail && key === 'message:42:1',
     });
     const key = 'message:42:1';
     context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
     eq(state.db.expenses.length, 1, 'Drive-запись уже выполнена');
+    const committedId = state.db.expenses[0].id;
     eq(calls.urlFetch.length, 1, 'только сообщение об ошибке маркера');
     eq(sentPayload(calls).text.includes('повтор'), true, 'просьба повторить позже');
     eq(state.cache[key], undefined, 'частичный Cache-маркер удалён');
     eq(state.properties[key], undefined, 'частичный Properties-маркер удалён');
-  }
+
+    fail = false;
+    context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+    eq(state.db.expenses.length, 1, 'повтор не создаёт второй расход');
+    eq(state.db.expenses[0].id, committedId, 'повтор использует committed id');
+    eq(calls.drive.filter(call => call.method === 'setContent').length, 1, 'Drive перезаписан только один раз');
+    eq(calls.urlFetch.length, 3, 'повтор восстанавливает клавиатуру и подтверждение');
+  });
+}
+
+for (const notification of ['keyboard', 'confirmation']) {
+  check('сбой sendMessage (' + notification + ') восстанавливается повтором без записи Drive', () => {
+    let fail = true;
+    const { context, state, calls } = loadGs({
+      db: expenseFixture(),
+      now: '2026-11-12T21:30:00Z',
+      failTelegram: (method, payload) => fail && method === 'sendMessage' &&
+        (notification === 'keyboard'
+          ? payload.text === 'Выберите шаблон:'
+          : payload.text.indexOf('Добавлен расход:') === 0),
+    });
+    const first = JSON.parse(post(context, { message: message('Кофе — 12,50 ₽') }).getData());
+    eq(typeof first.error, 'string', 'первый webhook сообщает об ошибке Telegram');
+    eq(state.db.expenses.length, 1, 'расход уже сохранён');
+    const committed = JSON.stringify(state.db);
+    const committedId = state.db.expenses[0].id;
+
+    fail = false;
+    const retry = JSON.parse(post(context, { message: message('Кофе — 12,50 ₽') }).getData());
+    eq(retry.ok, true, 'повторный webhook успешен');
+    eq(JSON.stringify(state.db), committed, 'повтор не перезаписывает расход');
+    eq(calls.drive.filter(call => call.method === 'setContent').length, 1, 'Drive не перезаписан повтором');
+    eq(calls.urlFetch.length, 3, 'повтор отправляет только недоставленные уведомления');
+    const confirmation = sentPayload(calls, calls.urlFetch.length - 1);
+    eq(confirmation.text.indexOf('Добавлен расход:'), 0, 'подтверждение восстановлено');
+    eq(confirmation.reply_markup.inline_keyboard[0][0].callback_data, 'undo:' + committedId, 'восстановлена отмена committed id');
+  });
+}
+
+check('одинаковые подписи активных шаблонов не создают неоднозначный расход', () => {
+  const fixture = expenseFixture();
+  fixture.templates.push({
+    ...fixture.templates[0], id: 't2', cat: 1, catId: 'c2', comment: 'Другой комментарий', oneoff: false,
+  });
+  const { context, state, calls } = loadGs({ db: fixture });
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 0, 'неоднозначная кнопка ничего не записывает');
+  eq(calls.urlFetch.length, 1, 'только просьба устранить неоднозначность');
+  const payload = sentPayload(calls);
+  eq(payload.text.includes('одинаков'), true, 'объяснение неоднозначности');
+  eq(payload.reply_markup.keyboard.length > 0, true, 'свежая клавиатура возвращена');
+});
+
+check('изменение шаблона между выбором и блокировкой отменяет запись', () => {
+  let harness;
+  let mutate = true;
+  harness = loadGs({
+    db: expenseFixture(),
+    onLockWait() {
+      if (!mutate) return;
+      mutate = false;
+      const changed = harness.state.db;
+      changed.templates[0].amount = 99;
+      harness.state.files['file-1'].content = JSON.stringify(changed);
+    },
+  });
+  harness.context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(harness.state.db.expenses.length, 0, 'устаревший выбор не создаёт расход');
+  eq(harness.calls.urlFetch.length, 1, 'только свежая клавиатура');
+  const payload = sentPayload(harness.calls);
+  eq(payload.reply_markup.keyboard[0][0].text, 'Кофе — 99 ₽', 'клавиатура отражает изменённый шаблон');
+});
+
+check('пустая клавиатура предлагает создать шаблоны в приложении', () => {
+  const { context, calls } = loadGs({ db: { templates: [], expenses: [] } });
+  context._telegramHandleMessage(message('/start'));
+  const payload = sentPayload(calls);
+  eq(payload.text.includes('Создайте шаблоны в приложении'), true, 'инструкция для пустого списка');
+  eq(payload.reply_markup.keyboard.length, 0, 'клавиатура остаётся пустой');
 });
 
 check('неизвестный текст возвращает подсказку и клавиатуру', () => {
