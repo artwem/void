@@ -1,4 +1,4 @@
-// ===== BUDGET TRACKER APPS SCRIPT v11.1 — Drive Storage =====
+// ===== BUDGET TRACKER APPS SCRIPT v11.2 — Drive Storage =====
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 // Данные хранятся в файле nto_data.json в Google Drive (не в таблице)
@@ -9,9 +9,9 @@
 
 const FILE_DATA = 'nto_data.json';
 const SECRET = '';
-// Версия скрипта уходит в каждом JSON-ответе (v11.1): приложение сверяет её со
+// Версия скрипта уходит в каждом JSON-ответе (v11.2): приложение сверяет её со
 // своей и в Настройках подсказывает, что скрипт пора переразвернуть.
-const VERSION = '11.1';
+const VERSION = '11.2';
 const BAK_PREFIX = 'nto_data.bak.';   // nto_data.bak.YYYY-MM-DD.json
 const BAK_KEEP = 7;                    // суточных копий храним столько
 
@@ -118,6 +118,16 @@ function _telegramKeyboard(db, page) {
   if (page < pageCount - 1) navigation.push({ text: 'Ещё ' + (page + 2) + '/' + pageCount });
   if (navigation.length) rows.push(navigation);
   return { keyboard: rows, resize_keyboard: true, is_persistent: true, one_time_keyboard: false };
+}
+
+function _telegramKeyboardSignature(db) {
+  return JSON.stringify((db.templates || []).filter(function(t) { return !t._deleted; }).map(function(t) {
+    return { id: t.id, name: t.name, cat: t.cat, catId: t.catId, amount: t.amount, comment: t.comment, oneoff: t.oneoff, special: t.special };
+  }));
+}
+
+function _telegramRememberKeyboard(db) {
+  PropertiesService.getScriptProperties().setProperty('TELEGRAM_KEYBOARD_SIGNATURE', _telegramKeyboardSignature(db));
 }
 
 function _telegramAllowed(from, chat) {
@@ -244,16 +254,17 @@ function _telegramAddTemplate(message) {
         : 'Шаблон изменился. Выберите актуальный шаблон:',
       reply_markup: _telegramKeyboard(db, 0),
     });
+    _telegramRememberKeyboard(db);
     return null;
   }
-  if (!operation.notifications.keyboard) {
+  const keyboardSignature = _telegramKeyboardSignature(db);
+  if (props.getProperty('TELEGRAM_KEYBOARD_SIGNATURE') !== keyboardSignature) {
     _telegramApi('sendMessage', {
       chat_id: message.chat.id,
-      text: 'Выберите шаблон:',
+      text: 'Шаблоны обновлены:',
       reply_markup: _telegramKeyboard(db, 0),
     });
-    operation.notifications.keyboard = true;
-    props.setProperty(operationKey, JSON.stringify(operation));
+    props.setProperty('TELEGRAM_KEYBOARD_SIGNATURE', keyboardSignature);
   }
   if (!operation.notifications.confirmation) {
     _telegramApi('sendMessage', {
@@ -355,6 +366,7 @@ function _telegramHandleMessage(message) {
       text: 'Несколько шаблонов имеют одинаковые название и сумму. Измените их в приложении.',
       reply_markup: _telegramKeyboard(db, 0),
     });
+    _telegramRememberKeyboard(db);
     return;
   }
   if (templates.length === 1) {
@@ -373,6 +385,7 @@ function _telegramHandleMessage(message) {
     text: reply,
     reply_markup: _telegramKeyboard(db, page),
   });
+  _telegramRememberKeyboard(db);
 }
 
 function doGet(e) {

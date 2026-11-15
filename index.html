@@ -1439,7 +1439,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.0</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.1</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -10326,7 +10326,7 @@ async function syncRequest(action, data, opts) {
 // Приложение знает, какой Code.gs ему нужен (APPS_SCRIPT_VERSION), а скрипт
 // подписывает ответы своей версией. Расхождение раньше было невидимым: после
 // обновления приложения синк молча работал по-старому, без хэша и копий.
-const APPS_SCRIPT_VERSION = '11.1';
+const APPS_SCRIPT_VERSION = '11.2';
 let _remoteScriptVersion = uiGet('scriptVersion', '');
 function _verLess(a, b){ // '10.4' < '10.5'; '<10.5' — заведомо старый
   if(String(a).startsWith('<')) return true;

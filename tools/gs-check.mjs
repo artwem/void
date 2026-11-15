@@ -304,6 +304,71 @@ check('polling после ошибки повторяет update и подтве
   eq(calls.urlFetch.filter(call => call.url.endsWith('/sendMessage')).length, 2, 'одна повторная отправка');
 });
 
+check('подпись клавиатуры учитывает поля шаблонов и сохраняется после /start', () => {
+  const { context, state, calls } = loadGs({ db });
+  const initial = context._telegramKeyboardSignature(db);
+  eq(initial.includes('Удалён'), false, 'удалённый шаблон не входит в подпись');
+  const changed = JSON.parse(JSON.stringify(db));
+  changed.templates[0].comment = 'Другой';
+  eq(context._telegramKeyboardSignature(changed) === initial, false, 'комментарий меняет подпись');
+  changed.templates.reverse();
+  eq(context._telegramKeyboardSignature(changed) === initial, false, 'порядок меняет подпись');
+  post(context, { message: message('/start') });
+  eq(state.properties.TELEGRAM_KEYBOARD_SIGNATURE, initial, 'подпись после успешного /start');
+  eq(calls.urlFetch.length, 1, 'одно сообщение /start');
+});
+
+check('изменение суммы обновляет клавиатуру один раз', () => {
+  const fixture = expenseFixture();
+  const { context, state, calls } = loadGs({ db: fixture });
+  context._telegramRememberKeyboard(fixture);
+  const previous = state.properties.TELEGRAM_KEYBOARD_SIGNATURE;
+  fixture.templates[0].amount = 20;
+  Object.values(state.files)[0].content = JSON.stringify(fixture);
+  context._telegramHandleMessage(message('Кофе — 20 ₽'));
+  eq(calls.urlFetch.length, 2, 'клавиатура и подтверждение');
+  eq(sentPayload(calls, 0).text, 'Шаблоны обновлены:', 'сообщение обновления');
+  eq(state.properties.TELEGRAM_KEYBOARD_SIGNATURE === previous, false, 'подпись обновлена');
+});
+
+check('сбой клавиатуры не фиксирует подпись и повторяется без дубля расхода', () => {
+  let fail = true;
+  const fixture = expenseFixture();
+  const { context, state, calls } = loadGs({
+    db: fixture,
+    failTelegram: method => fail && method === 'sendMessage',
+  });
+  context._telegramRememberKeyboard(fixture);
+  const previous = state.properties.TELEGRAM_KEYBOARD_SIGNATURE;
+  fixture.templates[0].amount = 20;
+  Object.values(state.files)[0].content = JSON.stringify(fixture);
+  let threw = false;
+  try { context._telegramHandleMessage(message('Кофе — 20 ₽')); } catch (_) { threw = true; }
+  eq(threw, true, 'ошибка отправки клавиатуры');
+  eq(state.properties.TELEGRAM_KEYBOARD_SIGNATURE, previous, 'подпись не обновлена');
+  eq(state.db.expenses.length, 1, 'расход уже сохранён');
+  fail = false;
+  context._telegramHandleMessage(message('Кофе — 20 ₽'));
+  eq(state.db.expenses.length, 1, 'повтор не дублирует расход');
+  eq(calls.urlFetch.length, 3, 'одна ошибка, затем клавиатура и подтверждение повторно доставлены');
+});
+
+check('старая operation не вызывает клавиатуру при актуальной подписи', () => {
+  const fixture = expenseFixture();
+  fixture.expenses.push({ id: 'existing', amount: 12.5, cat: 0, catId: 'c1', source: 'telegram' });
+  const { context, state, calls } = loadGs({
+    db: fixture,
+    properties: {
+      'operation:message:42:1': JSON.stringify({ id: 'existing', label: 'Кофе — 12,50 ₽', committed: true, notifications: { keyboard: false, confirmation: false }, createdAt: Date.now() }),
+    },
+  });
+  context._telegramRememberKeyboard(fixture);
+  context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
+  eq(state.db.expenses.length, 1, 'повторная запись не создана');
+  eq(calls.urlFetch.length, 1, 'только повторное подтверждение');
+  eq(sentPayload(calls).reply_markup.inline_keyboard[0][0].callback_data, 'undo:existing', 'undo прежнего расхода');
+});
+
 check('подписи шаблонов и активная клавиатура', () => {
   const { context } = loadGs({ db });
   eq(context._telegramTemplateLabel(db.templates[0]), 'Кофе — 350 ₽', 'целая сумма');
@@ -388,17 +453,17 @@ check('legacy special и пустой комментарий соответст�
   eq(obligatory.oneoff, null, 'legacy special игнорируется в обязательной категории');
 });
 
-check('кнопка шаблона пишет расход и шлёт клавиатуру и отмену отдельно', () => {
-  const { context, state, calls } = loadGs({ db: expenseFixture(), now: '2026-11-12T21:30:00Z' });
+check('кнопка шаблона пишет расход и шлёт только подтверждение при неизменной клавиатуре', () => {
+  const fixture = expenseFixture();
+  const { context, state, calls } = loadGs({ db: fixture, now: '2026-11-12T21:30:00Z' });
+  context._telegramRememberKeyboard(fixture);
+  calls.urlFetch.length = 0;
   context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
   eq(state.db.expenses.length, 1, 'расход сохранён на Drive');
   eq(state.db.expenses[0].source, 'telegram', 'источник сохранённой записи');
   eq(state.db.expenses[0].date, '2026-11-13', 'дата сохранённой записи');
-  eq(calls.urlFetch.length, 2, 'два отдельных sendMessage');
-  const keyboard = sentPayload(calls, 0);
-  eq(keyboard.reply_markup.is_persistent, true, 'свежая постоянная клавиатура');
-  eq(keyboard.reply_markup.keyboard[0][0].text, 'Кофе — 12,50 ₽', 'актуальный шаблон');
-  const confirmation = sentPayload(calls, 1);
+  eq(calls.urlFetch.length, 1, 'одно подтверждение без обновления клавиатуры');
+  const confirmation = sentPayload(calls, 0);
   eq(confirmation.text.includes('Кофе'), true, 'название в подтверждении');
   eq(confirmation.text.includes('12,50'), true, 'сумма в подтверждении');
   eq(confirmation.reply_markup.inline_keyboard[0][0].callback_data, 'undo:' + state.db.expenses[0].id, 'callback отмены');
@@ -421,7 +486,7 @@ check('повтор message_id не дублирует расход, новый 
   eq(calls.urlFetch.length, 2, 'повтор не шлёт второе подтверждение');
   context._telegramHandleMessage(message('Кофе — 12,50 ₽', { message_id: 2 }));
   eq(state.db.expenses.length, 2, 'новое нажатие создаёт второй расход');
-  eq(calls.urlFetch.length, 4, 'два подтверждения для двух нажатий');
+  eq(calls.urlFetch.length, 3, 'одна клавиатура и два подтверждения для двух нажатий');
   eq(state.db.expenses[0].id === state.db.expenses[1].id, false, 'разные id расходов');
 });
 
@@ -485,7 +550,7 @@ for (const notification of ['keyboard', 'confirmation']) {
       now: '2026-11-12T21:30:00Z',
       failTelegram: (method, payload) => fail && method === 'sendMessage' &&
         (notification === 'keyboard'
-          ? payload.text === 'Выберите шаблон:'
+          ? payload.text === 'Шаблоны обновлены:'
           : payload.text.indexOf('Добавлен расход:') === 0),
     });
     const first = JSON.parse(post(context, { message: message('Кофе — 12,50 ₽') }).getData());
