@@ -58,8 +58,10 @@ function _telegramApi(method, payload) {
 }
 
 function setupTelegramWebhook() {
-  const secret = PropertiesService.getScriptProperties().getProperty('TELEGRAM_WEBHOOK_SECRET');
-  const url = ScriptApp.getService().getUrl().replace(/\/dev$/, '/exec') + '?telegram=' + encodeURIComponent(secret);
+  const props = PropertiesService.getScriptProperties();
+  const secret = props.getProperty('TELEGRAM_WEBHOOK_SECRET');
+  const execUrl = props.getProperty('TELEGRAM_EXEC_URL') || ScriptApp.getService().getUrl();
+  const url = execUrl.replace(/\/dev$/, '/exec') + '?telegram=' + encodeURIComponent(secret);
   _telegramApi('setWebhook', { url: url });
 }
 

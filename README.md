@@ -90,9 +90,9 @@ Telegram WebView использует отдельное хранилище `loc
 Для работы бота:
 
 1. Скопируй актуальный `apps-script/Code.gs` в проект Apps Script и в **Настройках проекта** выбери часовой пояс **Europe/Moscow**.
-2. В **Project Settings → Script Properties** задай три свойства: `TELEGRAM_BOT_TOKEN` — токен от BotFather, `TELEGRAM_ALLOWED_USER_ID` — свой числовой Telegram user ID, `TELEGRAM_WEBHOOK_SECRET` — собственную случайную строку для защиты webhook.
-3. **Обязательно создай новое развёртывание** веб-приложения после обновления кода: **Выполнять как: Я**, доступ **Все**. Используй опубликованный URL, заканчивающийся на `/exec`, а не тестовый `/dev`.
-4. Один раз вручную запусти функцию `setupTelegramWebhook` в редакторе Apps Script. Она зарегистрирует webhook на текущем `/exec` с секретным параметром. Для отключения webhook при откате запусти `deleteTelegramWebhook`.
+2. В **Project Settings → Script Properties** задай четыре свойства: `TELEGRAM_BOT_TOKEN` — токен от BotFather, `TELEGRAM_ALLOWED_USER_ID` — свой числовой Telegram user ID, `TELEGRAM_WEBHOOK_SECRET` — собственную случайную строку для защиты webhook, `TELEGRAM_EXEC_URL` — полный URL публичного развёртывания `/exec`.
+3. **Обязательно создай новое развёртывание** веб-приложения после обновления кода: **Выполнять как: Я**, доступ **Все**. Используй опубликованный URL, заканчивающийся на `/exec`, а не тестовый `/dev`. Если развёртываний несколько, выбери то, которое открыто **всем**, и вставь его URL в `TELEGRAM_EXEC_URL`.
+4. Один раз вручную запусти функцию `setupTelegramWebhook` в редакторе Apps Script. Она зарегистрирует webhook на `TELEGRAM_EXEC_URL` с секретным параметром; без этого свойства используется `/exec` текущего развёртывания. Для отключения webhook при откате запусти `deleteTelegramWebhook`.
 5. Открой личный чат с ботом и один раз отправь `/start`.
 
 Токен бота хранится только в Script Properties: не помещай его в код, репозиторий, логи или скриншоты. Для запуска одного Main Mini App без бота расходов эти свойства и webhook не нужны.

@@ -227,6 +227,13 @@ check('setup заменяет editor /dev на публичный /exec', () => 
   eq(payload.url, 'https://script.google.com/macros/s/test-dev/exec?telegram=test-secret', 'публичный URL webhook');
 });
 
+check('setup использует явный TELEGRAM_EXEC_URL при наличии нескольких развёртываний', () => {
+  const { context, calls } = loadGs({ db, properties: { TELEGRAM_EXEC_URL: 'https://script.google.com/macros/s/selected/exec' } });
+  context.setupTelegramWebhook();
+  const payload = JSON.parse(calls.urlFetch[0].options.payload);
+  eq(payload.url, 'https://script.google.com/macros/s/selected/exec?telegram=test-secret', 'явный публичный URL webhook');
+});
+
 check('delete отключает webhook без раскрытия токена', () => {
   const { context, calls } = loadGs({ db });
   const result = context.deleteTelegramWebhook();
