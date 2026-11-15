@@ -12,7 +12,6 @@ export function loadGs(options = {}) {
   const properties = {
     TELEGRAM_BOT_TOKEN: 'test-token',
     TELEGRAM_ALLOWED_USER_ID: '42',
-    TELEGRAM_WEBHOOK_SECRET: 'test-secret',
     ...(options.properties || {}),
   };
   const cache = {};
@@ -159,7 +158,6 @@ export function loadGs(options = {}) {
     },
     Session: { getScriptTimeZone: () => 'Europe/Moscow' },
     ScriptApp: {
-      getService: () => ({ getUrl: () => options.scriptUrl || 'https://script.google.com/macros/s/test-exec/exec' }),
       getProjectTriggers: () => (options.triggers || []).slice(),
       deleteTrigger(trigger) {
         const triggers = options.triggers || (options.triggers = []);
@@ -220,10 +218,10 @@ function message(text, overrides = {}) {
   };
 }
 
-function post(context, body, telegram = 'test-secret') {
+function post(context, body) {
   return context.doPost({
     postData: { contents: JSON.stringify(body) },
-    parameter: { telegram },
+    parameter: {},
   });
 }
 
@@ -232,7 +230,7 @@ function sentPayload(calls, index = 0) {
   return JSON.parse(calls.urlFetch[index].options.payload);
 }
 
-check('backend без Telegram.gs сохраняет Drive API и игнорирует Telegram updates', () => {
+check('backend без Telegram.gs сохраняет Drive API и не обрабатывает Telegram updates', () => {
   const { context, state, calls } = loadGs({ db, telegram: false });
   const pulled = JSON.parse(post(context, { action: 'pull' }).getData());
   eq(pulled.templates.length, 3, 'pull без Telegram-модуля');
@@ -245,36 +243,9 @@ check('backend без Telegram.gs сохраняет Drive API и игнорир
   const fetchCount = calls.urlFetch.length;
   const writeCount = calls.drive.filter(call => call.method === 'setContent').length;
   const ignored = JSON.parse(post(context, { message: message('/start') }).getData());
-  eq(ignored.ok, true, 'Telegram update безопасно проигнорирован');
+  eq(ignored.error, 'Unknown action: ', 'Telegram update не является Drive action');
   eq(calls.urlFetch.length, fetchCount, 'нет обращения к Bot API');
   eq(calls.drive.filter(call => call.method === 'setContent').length, writeCount, 'нет записи Drive из Telegram update');
-});
-
-check('setup регистрирует webhook на текущем /exec без раскрытия токена', () => {
-  const { context, calls } = loadGs({ db });
-  const result = context.setupTelegramWebhook();
-  eq(result, undefined, 'setup не возвращает ответ Bot API');
-  eq(calls.urlFetch.length, 1, 'один вызов Bot API');
-  eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/setWebhook', 'метод setWebhook');
-  const payload = JSON.parse(calls.urlFetch[0].options.payload);
-  eq(payload.url, 'https://script.google.com/macros/s/test-exec/exec?telegram=test-secret', 'URL webhook');
-  eq(Object.keys(payload).join(','), 'url', 'только URL в payload');
-  eq(calls.urlFetch[0].options.payload.includes('test-token'), false, 'токен не попадает в payload');
-  eq(calls.urlFetch.filter(call => call.log).length, 0, 'setup ничего не печатает');
-});
-
-check('setup заменяет editor /dev на публичный /exec', () => {
-  const { context, calls } = loadGs({ db, scriptUrl: 'https://script.google.com/macros/s/test-dev/dev' });
-  context.setupTelegramWebhook();
-  const payload = JSON.parse(calls.urlFetch[0].options.payload);
-  eq(payload.url, 'https://script.google.com/macros/s/test-dev/exec?telegram=test-secret', 'публичный URL webhook');
-});
-
-check('setup использует явный TELEGRAM_EXEC_URL при наличии нескольких развёртываний', () => {
-  const { context, calls } = loadGs({ db, properties: { TELEGRAM_EXEC_URL: 'https://script.google.com/macros/s/selected/exec' } });
-  context.setupTelegramWebhook();
-  const payload = JSON.parse(calls.urlFetch[0].options.payload);
-  eq(payload.url, 'https://script.google.com/macros/s/selected/exec?telegram=test-secret', 'явный публичный URL webhook');
 });
 
 check('delete отключает webhook без раскрытия токена', () => {
@@ -311,7 +282,6 @@ check('disable удаляет polling и webhook, сохраняет настр�
   eq(triggers.length, 1, 'повторное отключение не меняет триггеры');
   eq(state.properties.TELEGRAM_BOT_TOKEN, 'test-token', 'токен сохранён');
   eq(state.properties.TELEGRAM_ALLOWED_USER_ID, '42', 'user ID сохранён');
-  eq(state.properties.TELEGRAM_WEBHOOK_SECRET, 'test-secret', 'webhook secret сохранён');
   context.setupTelegramPolling();
   eq(triggers.filter(item => item.handlerFunction === 'pollTelegramUpdates').length, 1, 'повторное включение создаёт один polling-триггер');
   eq(triggers.some(item => item.handlerFunction === 'unrelated'), true, 'повторное включение сохраняет посторонний триггер');
@@ -367,7 +337,7 @@ check('подпись клавиатуры учитывает поля шабл�
   eq(context._telegramKeyboardSignature(changed) === initial, false, 'комментарий меняет подпись');
   changed.templates.reverse();
   eq(context._telegramKeyboardSignature(changed) === initial, false, 'порядок меняет подпись');
-  post(context, { message: message('/start') });
+  context._telegramHandleMessage(message('/start'));
   eq(state.properties.TELEGRAM_KEYBOARD_SIGNATURE, initial, 'подпись после успешного /start');
   eq(calls.urlFetch.length, 1, 'одно сообщение /start');
 });
@@ -607,15 +577,15 @@ for (const notification of ['keyboard', 'confirmation']) {
           ? payload.text === 'Шаблоны обновлены:'
           : payload.text.indexOf('Добавлен расход:') === 0),
     });
-    const first = JSON.parse(post(context, { message: message('Кофе — 12,50 ₽') }).getData());
-    eq(typeof first.error, 'string', 'первый webhook сообщает об ошибке Telegram');
+    let firstError = '';
+    try { context._telegramHandleMessage(message('Кофе — 12,50 ₽')); } catch (err) { firstError = err.message; }
+    eq(firstError.includes('sendMessage'), true, 'первая обработка сообщает об ошибке sendMessage');
     eq(state.db.expenses.length, 1, 'расход уже сохранён');
     const committed = JSON.stringify(state.db);
     const committedId = state.db.expenses[0].id;
 
     fail = false;
-    const retry = JSON.parse(post(context, { message: message('Кофе — 12,50 ₽') }).getData());
-    eq(retry.ok, true, 'повторный webhook успешен');
+    context._telegramHandleMessage(message('Кофе — 12,50 ₽'));
     eq(JSON.stringify(state.db), committed, 'повтор не перезаписывает расход');
     eq(calls.drive.filter(call => call.method === 'setContent').length, 1, 'Drive не перезаписан повтором');
     eq(calls.urlFetch.length, 3, 'повтор отправляет только недоставленные уведомления');
@@ -683,47 +653,22 @@ check('доступ разрешён только пользователю 42 в
   eq(context._telegramAllowed({ id: 42 }, { id: -100, type: 'group' }), false, 'группа');
 });
 
-check('неверный webhook secret отклоняется до Drive и Telegram', () => {
-  const { context, calls } = loadGs({ db });
-  const result = post(context, { message: message('/start') }, 'wrong-secret');
-  eq(JSON.parse(result.getData()).ok, true, 'нейтральный ответ webhook');
+check('polling игнорирует чужого пользователя без Drive и ответа', () => {
+  const update = { update_id: 100, message: message('/start', { from: { id: 43 }, chat: { id: 43, type: 'private' } }) };
+  const { context, state, calls } = loadGs({ db, telegramResponses: { getUpdates: [update] } });
+  context.pollTelegramUpdates();
   eq(calls.drive.length, 0, 'Drive не вызывался');
-  eq(calls.urlFetch.length, 0, 'Telegram не вызывался');
-  eq(result.getData().includes('Кофе'), false, 'шаблоны не раскрыты');
+  eq(calls.urlFetch.length, 1, 'только getUpdates');
+  eq(state.properties.TELEGRAM_UPDATE_OFFSET, '101', 'чужой update подтверждён');
 });
 
-check('callback с неверным webhook secret тоже отклоняется до Drive', () => {
-  const { context, calls } = loadGs({ db });
-  const result = post(context, { callback_query: { id: 'cb1', from: { id: 42 }, message: { chat: { id: 42, type: 'private' } } } }, 'wrong-secret');
-  eq(JSON.parse(result.getData()).ok, true, 'нейтральный ответ webhook');
+check('polling игнорирует групповой чат без Drive и ответа', () => {
+  const update = { update_id: 100, message: message('/start', { chat: { id: -100, type: 'group' } }) };
+  const { context, state, calls } = loadGs({ db, telegramResponses: { getUpdates: [update] } });
+  context.pollTelegramUpdates();
   eq(calls.drive.length, 0, 'Drive не вызывался');
-  eq(calls.urlFetch.length, 0, 'Telegram не вызывался');
-});
-
-check('чужой пользователь не получает шаблоны и не трогает Drive', () => {
-  const { context, calls } = loadGs({ db });
-  const result = post(context, { message: message('/start', { from: { id: 43 }, chat: { id: 43, type: 'private' } }) });
-  eq(JSON.parse(result.getData()).ok, true, 'нейтральный ответ webhook');
-  eq(calls.drive.length, 0, 'Drive не вызывался');
-  eq(calls.urlFetch.length, 0, 'Telegram не вызывался');
-  eq(result.getData().includes('Кофе'), false, 'шаблоны не раскрыты');
-});
-
-check('групповой чат не получает шаблоны и не трогает Drive', () => {
-  const { context, calls } = loadGs({ db });
-  const result = post(context, { message: message('/start', { chat: { id: -100, type: 'group' } }) });
-  eq(JSON.parse(result.getData()).ok, true, 'нейтральный ответ webhook');
-  eq(calls.drive.length, 0, 'Drive не вызывался');
-  eq(calls.urlFetch.length, 0, 'Telegram не вызывался');
-  eq(result.getData().includes('Кофе'), false, 'шаблоны не раскрыты');
-});
-
-check('допущенный webhook /start читает DB и отправляет шаблоны', () => {
-  const { context, calls } = loadGs({ db });
-  const result = post(context, { message: message('/start') });
-  eq(JSON.parse(result.getData()).ok, true, 'ответ webhook');
-  eq(calls.drive.length > 0, true, 'Drive прочитан');
-  eq(sentPayload(calls).reply_markup.keyboard.flat().map(b => b.text).join('|'), 'Кофе — 350 ₽|Такси — 12,50 ₽', 'шаблоны');
+  eq(calls.urlFetch.length, 1, 'только getUpdates');
+  eq(state.properties.TELEGRAM_UPDATE_OFFSET, '101', 'групповой update подтверждён');
 });
 
 check('callback отменяет только bot-расход и идемпотентен', () => {
@@ -741,17 +686,17 @@ check('callback отменяет только bot-расход и идемпот
   };
 
   const beforeForeign = JSON.stringify(state.db);
-  post(context, { callback_query: {
+  context._telegramUndo({
     ...callback,
     id: 'cb-foreign',
     from: { id: 43 },
     message: { message_id: 77, chat: { id: 43, type: 'private' } },
-  } });
+  });
   eq(JSON.stringify(state.db), beforeForeign, 'чужой callback не меняет DB');
   eq(calls.urlFetch.length, 2, 'чужой callback не имеет побочных эффектов');
 
   now += 1000;
-  post(context, { callback_query: callback });
+  context._telegramUndo(callback);
   const undone = state.db.expenses.find(e => e.id === rec.id);
   eq(undone._deleted, true, 'мягкое удаление');
   eq(undone.amount, 0, 'сумма обнулена');
@@ -773,12 +718,12 @@ check('callback отменяет только bot-расход и идемпот
 
   const afterUndo = JSON.stringify(state.db);
   now += 1000;
-  post(context, { callback_query: callback });
+  context._telegramUndo(callback);
   eq(JSON.stringify(state.db), afterUndo, 'повтор callback не меняет updatedAt и DB');
   eq(calls.urlFetch.length, 4, 'повтор callback не имеет побочных эффектов');
 
   const beforeClient = JSON.stringify(state.db);
-  post(context, { callback_query: { ...callback, id: 'cb-client', data: 'undo:client300' } });
+  context._telegramUndo({ ...callback, id: 'cb-client', data: 'undo:client300' });
   eq(JSON.stringify(state.db), beforeClient, 'обычная клиентская запись не изменена');
   eq(calls.urlFetch.length, 5, 'ошибка отмены отвечает на callback');
   eq(calls.urlFetch[4].url, 'https://api.telegram.org/bottest-token/answerCallbackQuery', 'ответ на отказ отмены');
@@ -855,11 +800,11 @@ for (const scenario of terminalCallbacks) {
     const { context, state, calls } = loadGs({ db: undoDb(), now: 1000 });
     const callback = undoCallback('cb-' + scenario.name, scenario.data);
     const before = JSON.stringify(state.db);
-    post(context, { callback_query: callback });
+    context._telegramUndo(callback);
     eq(calls.urlFetch.length, 1, 'первый terminal callback получил ответ');
     eq(state.cache['callback:cb-' + scenario.name], '1', 'terminal marker Cache');
     eq(Number(state.properties['callback:cb-' + scenario.name]), 1000, 'terminal marker Properties');
-    post(context, { callback_query: callback });
+    context._telegramUndo(callback);
     eq(calls.urlFetch.length, 1, 'повтор terminal callback не имеет побочных эффектов');
     eq(JSON.stringify(state.db), before, 'terminal callback не меняет DB');
   });
@@ -882,7 +827,7 @@ for (const failure of undoWriteFailures) {
     });
     const callback = undoCallback('cb-retry', 'undo:bot100');
     const before = JSON.stringify(state.db);
-    post(context, { callback_query: callback });
+    context._telegramUndo(callback);
     eq(JSON.stringify(state.db), before, 'DB не изменена после сбоя ' + failure.name);
     eq(state.cache['callback:cb-retry'], undefined, 'частичный Cache-маркер удалён');
     eq(state.properties['callback:cb-retry'], undefined, 'частичный Properties-маркер удалён');
@@ -890,7 +835,7 @@ for (const failure of undoWriteFailures) {
     eq(JSON.parse(calls.urlFetch[0].options.payload).text.includes('повтор'), true, 'ответ предлагает retry');
 
     fail = false;
-    post(context, { callback_query: callback });
+    context._telegramUndo(callback);
     const rec = state.db.expenses.find(e => e.id === 'bot100');
     eq(rec._deleted, true, 'retry сохраняет tombstone');
     eq(rec.amount, 0, 'retry обнуляет сумму');
@@ -915,7 +860,7 @@ check('undo в ту же миллисекунду увеличивает updated
   const fixture = undoDb();
   fixture.expenses[0].updatedAt = 1000;
   const { context, state } = loadGs({ db: fixture, now: 1000 });
-  post(context, { callback_query: undoCallback('cb-same-ms', 'undo:bot100') });
+  context._telegramUndo(undoCallback('cb-same-ms', 'undo:bot100'));
   eq(state.db.expenses[0].updatedAt, 1001, 'updatedAt строго больше прежнего значения');
   eq(state.db.expenses[0]._deleted, true, 'tombstone сохранён');
 });
@@ -928,9 +873,9 @@ for (const method of ['answerCallbackQuery', 'editMessageText']) {
       failTelegram: called => called === method,
     });
     const callback = undoCallback('cb-api-' + method, 'undo:bot100');
-    const response = JSON.parse(post(context, { callback_query: callback }).getData());
-    eq(typeof response.error, 'string', 'webhook не сообщает успех при сбое ' + method);
-    eq(response.error.includes(method), true, 'ошибка называет failed Bot API method');
+    let response = '';
+    try { context._telegramUndo(callback); } catch (err) { response = err.message; }
+    eq(response.includes(method), true, 'ошибка называет failed Bot API method');
     const rec = state.db.expenses.find(e => e.id === 'bot100');
     eq(rec._deleted, true, 'durable tombstone сохранён');
     eq(rec.amount, 0, 'durable сумма сохранена');
@@ -938,8 +883,7 @@ for (const method of ['answerCallbackQuery', 'editMessageText']) {
     eq(Number(state.properties['callback:cb-api-' + method]), 1000, 'Properties marker сохранён');
     const after = JSON.stringify(state.db);
     const callCount = calls.urlFetch.length;
-    const retry = JSON.parse(post(context, { callback_query: callback }).getData());
-    eq(retry.ok, true, 'повтор обработан как уже завершённый');
+    context._telegramUndo(callback);
     eq(calls.urlFetch.length, callCount, 'повтор не вызывает Telegram после post-commit сбоя');
     eq(JSON.stringify(state.db), after, 'повтор не меняет durable tombstone');
   });

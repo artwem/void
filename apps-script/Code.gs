@@ -19,10 +19,6 @@ const BAK_KEEP = 7;                    // суточных копий храни
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    if (body.message || body.callback_query) {
-      if (typeof _telegramHandleUpdate === 'function') return _telegramHandleUpdate(body, e.parameter || {});
-      return out({ ok: true });
-    }
     if (SECRET && body.token !== SECRET) return out({ error: 'Unauthorized' });
     const action = body.action || '';
     if (action === 'ping') return out({ ok: true });

@@ -1,17 +1,6 @@
 // ===== TELEGRAM BOT — необязательный модуль Code.gs =====
 // Для бота оба файла находятся в одном Apps Script-проекте и глобальном контексте.
 
-function _telegramHandleUpdate(body, p) {
-  const props = PropertiesService.getScriptProperties();
-  if (p.telegram !== props.getProperty('TELEGRAM_WEBHOOK_SECRET')) return out({ ok: true });
-  const update = body.message || body.callback_query;
-  const chat = body.message ? update.chat : update.message && update.message.chat;
-  if (!_telegramAllowed(update.from, chat)) return out({ ok: true });
-  if (body.message) _telegramHandleMessage(body.message);
-  else _telegramUndo(body.callback_query);
-  return out({ ok: true });
-}
-
 function _telegramApi(method, payload) {
   const token = PropertiesService.getScriptProperties().getProperty('TELEGRAM_BOT_TOKEN');
   const response = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/' + method, {
@@ -25,14 +14,6 @@ function _telegramApi(method, payload) {
     throw new Error('Telegram API ' + method + ': ' + (result && result.description || 'ok:false'));
   }
   return result;
-}
-
-function setupTelegramWebhook() {
-  const props = PropertiesService.getScriptProperties();
-  const secret = props.getProperty('TELEGRAM_WEBHOOK_SECRET');
-  const execUrl = props.getProperty('TELEGRAM_EXEC_URL') || ScriptApp.getService().getUrl();
-  const url = execUrl.replace(/\/dev$/, '/exec') + '?telegram=' + encodeURIComponent(secret);
-  _telegramApi('setWebhook', { url: url });
 }
 
 function deleteTelegramWebhook() {
