@@ -1439,7 +1439,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.3</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.4</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -2063,12 +2063,6 @@ function _reindexCats(){
     r.cat = i >= 0 ? i : 0;
   }));
 }
-// Сколько живых трат ссылаются на категории, которых в списке нет
-function _orphanExpenseCount(){
-  const known = new Set(DB.catIds || []);
-  return (DB.expenses || []).filter(e => e && !e._deleted && e.catId && !known.has(e.catId)).length;
-}
-
 
 // ─── ВИД ТРАТЫ: ОБЯЗАТЕЛЬНАЯ / РАЗОВАЯ (since v1.79.0) ──────────────
 // До v1.79.0 одна галочка «особое» отвечала на два разных вопроса: вынуть ли

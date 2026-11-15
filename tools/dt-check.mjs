@@ -3374,20 +3374,22 @@ suite(390, 'аудит v1.82.0', () => {
       DB.expenses.push({ id: 'orph1', date: today(), cat: 3, catId: 'ghost-cat', amount: 100, comment: '', updatedAt: Date.now() });
       _ensureCatIds();
       const e = DB.expenses.find(x => x.id === 'orph1');
-      const before = { cat: e.cat, catId: e.catId, orphans: _orphanExpenseCount() };
+      const countOrphans = () => DB.expenses.filter(x => x.catId && !DB.catIds.includes(x.catId) && !x._deleted).length;
+      const before = { cat: e.cat, catId: e.catId, orphans: countOrphans() };
       // «правильный» список приехал — запись сама встаёт на место
       DB.categories.push('Призрак'); DB.catIds.push('ghost-cat');
       _ensureCatIds();
-      const after = { cat: e.cat, orphans: _orphanExpenseCount() };
+      const after = { cat: e.cat, orphans: countOrphans() };
       DB.categories.pop(); DB.catIds.pop();
       DB.expenses = DB.expenses.filter(x => x.id !== 'orph1'); _ensureCatIds();
-      return { before, after };
+      return { before, after, helperAbsent: typeof _orphanExpenseCount === 'undefined' };
     });
     eq(got.before.cat, 0, 'сирота показывается в первой категории');
     eq(got.before.catId, 'ghost-cat', 'catId сироты сохранён');
     eq(got.before.orphans, 1, 'счётчик сирот');
     eq(got.after.cat, 7, 'после появления категории запись встала на своё место');
     eq(got.after.orphans, 0, 'сирот не осталось');
+    eq(got.helperAbsent, true, 'test-only helper отсутствует в production');
   });
 
   check('снимок счетов правится на месте, без тумбстоунов на каждое сохранение', async p => {
