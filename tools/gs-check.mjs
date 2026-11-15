@@ -1,5 +1,5 @@
 // Проверки Apps Script без развёртывания и сети: node tools/gs-check.mjs
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -161,6 +161,11 @@ export function loadGs(options = {}) {
     ScriptApp: {
       getService: () => ({ getUrl: () => options.scriptUrl || 'https://script.google.com/macros/s/test-exec/exec' }),
       getProjectTriggers: () => (options.triggers || []).slice(),
+      deleteTrigger(trigger) {
+        const triggers = options.triggers || (options.triggers = []);
+        const index = triggers.indexOf(trigger);
+        if (index >= 0) triggers.splice(index, 1);
+      },
       newTrigger: name => ({
         timeBased: () => ({
           everyMinutes: minutes => ({
@@ -178,6 +183,10 @@ export function loadGs(options = {}) {
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(readFileSync(join(ROOT, 'apps-script/Code.gs'), 'utf8'), context, { filename: 'Code.gs' });
+  const telegramPath = join(ROOT, 'apps-script/Telegram.gs');
+  if (options.telegram !== false && existsSync(telegramPath)) {
+    vm.runInContext(readFileSync(telegramPath, 'utf8'), context, { filename: 'Telegram.gs' });
+  }
   const state = {
     files, properties, cache,
     get db() {
@@ -222,6 +231,24 @@ function sentPayload(calls, index = 0) {
   eq(calls.urlFetch[index].url, 'https://api.telegram.org/bottest-token/sendMessage', 'URL Bot API');
   return JSON.parse(calls.urlFetch[index].options.payload);
 }
+
+check('backend без Telegram.gs сохраняет Drive API и игнорирует Telegram updates', () => {
+  const { context, state, calls } = loadGs({ db, telegram: false });
+  const pulled = JSON.parse(post(context, { action: 'pull' }).getData());
+  eq(pulled.templates.length, 3, 'pull без Telegram-модуля');
+  const pushed = JSON.parse(post(context, {
+    action: 'push',
+    data: { templates: [], expenses: [{ id: 'pwa', amount: 10, updatedAt: 1 }] },
+  }).getData());
+  eq(pushed.ok, true, 'push без Telegram-модуля');
+  eq(state.db.expenses[0].id, 'pwa', 'push сохранил payload');
+  const fetchCount = calls.urlFetch.length;
+  const writeCount = calls.drive.filter(call => call.method === 'setContent').length;
+  const ignored = JSON.parse(post(context, { message: message('/start') }).getData());
+  eq(ignored.ok, true, 'Telegram update безопасно проигнорирован');
+  eq(calls.urlFetch.length, fetchCount, 'нет обращения к Bot API');
+  eq(calls.drive.filter(call => call.method === 'setContent').length, writeCount, 'нет записи Drive из Telegram update');
+});
 
 check('setup регистрирует webhook на текущем /exec без раскрытия токена', () => {
   const { context, calls } = loadGs({ db });
@@ -270,6 +297,33 @@ check('polling setup отключает webhook и создаёт один ми�
   eq(triggers[0].minutes, 1, 'интервал минуты');
   context.setupTelegramPolling();
   eq(triggers.length, 1, 'повторный setup не дублирует триггер');
+});
+
+check('disable удаляет polling и webhook, сохраняет настройки и позволяет включить бота снова', () => {
+  const trigger = handlerFunction => ({ handlerFunction, getHandlerFunction: () => handlerFunction });
+  const triggers = [trigger('pollTelegramUpdates'), trigger('unrelated'), trigger('pollTelegramUpdates')];
+  const { context, state, calls } = loadGs({ db, triggers });
+  context.disableTelegram();
+  eq(triggers.length, 1, 'удалены все polling-триггеры');
+  eq(triggers[0].handlerFunction, 'unrelated', 'посторонний триггер сохранён');
+  eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/deleteWebhook', 'webhook отключён');
+  context.disableTelegram();
+  eq(triggers.length, 1, 'повторное отключение не меняет триггеры');
+  eq(state.properties.TELEGRAM_BOT_TOKEN, 'test-token', 'токен сохранён');
+  eq(state.properties.TELEGRAM_ALLOWED_USER_ID, '42', 'user ID сохранён');
+  eq(state.properties.TELEGRAM_WEBHOOK_SECRET, 'test-secret', 'webhook secret сохранён');
+  context.setupTelegramPolling();
+  eq(triggers.filter(item => item.handlerFunction === 'pollTelegramUpdates').length, 1, 'повторное включение создаёт один polling-триггер');
+  eq(triggers.some(item => item.handlerFunction === 'unrelated'), true, 'повторное включение сохраняет посторонний триггер');
+});
+
+check('disable останавливает polling даже при ошибке deleteWebhook', () => {
+  const triggers = [{ handlerFunction: 'pollTelegramUpdates', getHandlerFunction: () => 'pollTelegramUpdates' }];
+  const { context } = loadGs({ db, triggers, failTelegram: method => method === 'deleteWebhook' });
+  let threw = false;
+  try { context.disableTelegram(); } catch (_) { threw = true; }
+  eq(threw, true, 'ошибка Bot API не скрыта');
+  eq(triggers.length, 0, 'polling-триггер удалён до ошибки Bot API');
 });
 
 check('polling обрабатывает сообщения и продвигает offset', () => {

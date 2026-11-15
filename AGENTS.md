@@ -4,7 +4,7 @@
 
 **V.O.I.D. — Visual Overview of Income & Debt** — русскоязычный личный финансовый трекер для PWA, Telegram Mini App и Telegram-бота расходов по шаблонам: бюджет с лимитами, ежедневные расходы, доходы, аналитика и годовой отчёт, банковские счета, вклады, инвестиции, кредиты и калькулятор накоплений. Опубликованное приложение: `https://artwem.github.io/void/`.
 
-Основное приложение — статический клиент без локального серверного компонента и шага сборки. Данные хранятся на устройстве в `localStorage`, основные функции работают офлайн. Telegram Mini App использует тот же клиент и отдельное хранилище WebView. По желанию пользователь подключает двустороннюю синхронизацию через собственный Google Apps Script; его код находится в `apps-script/Code.gs`, а JSON хранится в Google Drive. Тот же скрипт обрабатывает обновления Telegram-бота и записывает расходы в общий JSON.
+Основное приложение — статический клиент без локального серверного компонента и шага сборки. Данные хранятся на устройстве в `localStorage`, основные функции работают офлайн. Telegram Mini App использует тот же клиент и отдельное хранилище WebView. По желанию пользователь подключает двустороннюю синхронизацию через собственный Google Apps Script; backend находится в `apps-script/Code.gs`, а JSON хранится в Google Drive. Необязательный `apps-script/Telegram.gs` в том же проекте обрабатывает обновления Telegram-бота и записывает расходы в общий JSON.
 
 Текущая видимая версия интерфейса — `v1.91.1`, ожидаемая версия Apps Script — `11.2`.
 
@@ -45,7 +45,8 @@ index.html                 HTML, модалки и весь прикладной
 css/app.css                стили, темы и адаптивная раскладка
 sw.js                      офлайн-кеш и обновление PWA
 manifest.json              установка PWA и deep-link ярлыки
-apps-script/Code.gs        опциональный backend синхронизации и Telegram webhook
+apps-script/Code.gs        самостоятельный backend синхронизации, Drive и резервные копии
+apps-script/Telegram.gs    необязательный Telegram-бот в том же проекте и глобальном контексте
 vendor/                    локальные Chart.js, XLSX, Telegram SDK и WOFF2-шрифты
 tools/                     Node VM и Puppeteer-проверки, скриншоты, нарезка шрифтов
 docs/superpowers/          исторические спецификации и планы функций
@@ -109,7 +110,7 @@ apple-touch-icon.png       растровая иконка; исходник з�
 - При изменении списков вызывать `touchList(name)` для LWW по `listsMeta`. `limits` и `specPlan` имеют собственные 3-way baselines `_lastSyncedLimits` и `_lastSyncedSpecPlan`; сравнение объектов — через `_canonJSON()`.
 - `buildPayload()` исключает `syncUrl`, `syncToken`, настройки уведомлений, тему, приватность, локальные baselines и `_dirty`. JSON-резервная копия использует тот же payload.
 - `Code.gs` сериализует запись под `LockService`, защищается от подозрительно маленького push, поддерживает SHA-256 short-circuit и хранит семь суточных копий `nto_data.bak.YYYY-MM-DD.json`. Эти защиты не ослаблять.
-- Telegram webhook создаёт расходы из активных шаблонов с `source:'telegram'`; отмена делает обычный tombstone. При не-force `saveData()` сервер дополнительно объединяет такие записи из текущей Drive-версии с входящим payload по `id`/`updatedAt`, чтобы stale-push их не затирал. Force-restore по-прежнему полностью заменяет данные без этого merge.
+- `Telegram.gs` создаёт расходы из активных шаблонов с `source:'telegram'`; отмена делает обычный tombstone. При не-force `saveData()` сервер дополнительно объединяет такие записи из текущей Drive-версии с входящим payload по `id`/`updatedAt`, чтобы stale-push их не затирал. Force-restore по-прежнему полностью заменяет данные без этого merge. Без `Telegram.gs` оба Telegram-вызова в `Code.gs` отключаются, а Drive API продолжает работать.
 
 ## Стиль кода и UI
 
@@ -136,7 +137,7 @@ node tools/gs-check.mjs
 node tools/dt-check.mjs
 ```
 
-Либо из `tools/`: `npm run check`. `tools/gs-check.mjs` выполняет `apps-script/Code.gs` в Node VM с mock Drive, Telegram и Script Properties, без сети и развёртывания. Браузерному раннеру нужен системный Chrome. По умолчанию в `tools/harness.mjs` задан Windows-путь; на другой системе передать `CHROME_PATH`. Проверенная команда для macOS:
+Либо из `tools/`: `npm run check`. `tools/gs-check.mjs` выполняет `apps-script/Code.gs` и `apps-script/Telegram.gs` в общем Node VM с mock Drive, Telegram и Script Properties, без сети и развёртывания; отдельная проверка загружает только backend. Браузерному раннеру нужен системный Chrome. По умолчанию в `tools/harness.mjs` задан Windows-путь; на другой системе передать `CHROME_PATH`. Проверенная команда для macOS:
 
 ```bash
 CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node tools/dt-check.mjs
@@ -180,7 +181,7 @@ Service worker использует network-first для навигационн�
 
 ### Apps Script
 
-Изменение `apps-script/Code.gs` не публикуется вместе с Pages автоматически. Код нужно вручную скопировать в редактор Apps Script и создать новую версию развёртывания веб-приложения («Выполнять как: Я», доступ «Все»). При изменении протокола синхронно обновлять `VERSION` в `Code.gs` и ожидаемую `APPS_SCRIPT_VERSION` в `index.html`, а также проверять совместимость старых клиентов. Для бота часовой пояс проекта должен быть `Europe/Moscow`; после обновления кода нужно один раз вручную запустить `setupTelegramPolling()`, который отключит webhook и создаст один минутный триггер `pollTelegramUpdates`. Для остановки webhook предусмотрена `deleteTelegramWebhook()`.
+Изменения `apps-script/Code.gs` и `apps-script/Telegram.gs` не публикуются вместе с Pages автоматически. Для PWA-only backend нужно скопировать только `Code.gs`; для бота — оба файла в один проект с общим глобальным контекстом и создать новую версию развёртывания веб-приложения («Выполнять как: Я», доступ «Все»). При изменении протокола синхронно обновлять `VERSION` в `Code.gs` и ожидаемую `APPS_SCRIPT_VERSION` в `index.html`, а также проверять совместимость старых клиентов. Для бота часовой пояс проекта должен быть `Europe/Moscow`; после обновления кода нужно один раз вручную запустить `setupTelegramPolling()`, который отключит webhook и создаст один минутный триггер `pollTelegramUpdates`. Для полного отключения бота предусмотрена `disableTelegram()`: она удаляет polling-триггеры и webhook, сохраняя настройки и данные.
 
 ## Безопасность и данные пользователя
 
