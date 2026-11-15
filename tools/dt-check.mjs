@@ -2786,6 +2786,41 @@ suite(390, 'копирование Apps Script', () => {
     eq(got.copied, got.core + '\n' + got.telegram, 'в буфере полный скрипт одним текстом');
     new Function(got.copied);
   });
+
+  check('syncToken подставляется в SECRET только в текст для копирования', async p => {
+    const got = await p.evaluate(async () => {
+      const previous = DB.syncToken;
+      const token = 'тест " \\ \n next';
+      let copied = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async text => { copied = text; } },
+      });
+      try {
+        DB.syncToken = token;
+        await copyAppsScript();
+        showScriptModal();
+        const modal = document.getElementById('script-code-ta').value;
+        closeModal('modal-script');
+        const cached = window._APPS_SCRIPT_CODE;
+        const withSecret = copied;
+        DB.syncToken = '';
+        await copyAppsScript();
+        return {
+          copied: withSecret, modal, cached, token,
+          expected: 'const SECRET = ' + JSON.stringify(token) + ';',
+          empty: copied.includes("const SECRET = '';"),
+        };
+      } finally {
+        DB.syncToken = previous;
+      }
+    });
+    eq(got.copied.includes(got.expected), true, 'clipboard содержит сериализованный SECRET');
+    eq(got.modal, got.copied, 'fallback содержит тот же готовый код');
+    eq(got.cached.includes(got.token), false, 'кэш исходника не содержит токен');
+    eq(got.empty, true, 'пустой токен оставляет пустой SECRET');
+    new Function(got.copied);
+  });
 });
 
 // Секрет Apps Script скрыт звёздочками, а дата снимка принимает будущее:

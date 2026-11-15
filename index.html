@@ -1439,7 +1439,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.4</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.5</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -10207,7 +10207,7 @@ function doClearData(){
 
 // ── Копирование скрипта ───────────────────────────────────────────────
 async function copyAppsScript(){
-  const code = await loadAppsScriptCode();
+  const code = _appsScriptWithSecret(await loadAppsScriptCode());
   if(!code){ toast('Скрипт не загрузился — проверьте сеть', 'err'); return; }
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(code)
@@ -10218,8 +10218,13 @@ async function copyAppsScript(){
   }
 }
 
+function _appsScriptWithSecret(code){
+  if(!DB.syncToken) return code;
+  return code.replace("const SECRET = '';", 'const SECRET = ' + JSON.stringify(DB.syncToken) + ';');
+}
+
 function showScriptModal(){
-  document.getElementById('script-code-ta').value = window._APPS_SCRIPT_CODE || '';
+  document.getElementById('script-code-ta').value = _appsScriptWithSecret(window._APPS_SCRIPT_CODE || '');
   openModal('modal-script');
 }
 
