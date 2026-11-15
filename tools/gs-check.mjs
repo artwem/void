@@ -133,12 +133,16 @@ export function loadGs(options = {}) {
       fetch(url, fetchOptions = {}) {
         calls.urlFetch.push({ url, options: fetchOptions });
         const method = url.slice(url.lastIndexOf('/') + 1);
+        const payload = JSON.parse(fetchOptions.payload || '{}');
         const fail = typeof options.failTelegram === 'function'
-          ? options.failTelegram(method, JSON.parse(fetchOptions.payload || '{}'))
+          ? options.failTelegram(method, payload)
           : options.failTelegram;
+        const custom = typeof options.telegramResponse === 'function'
+          ? options.telegramResponse(method, payload)
+          : options.telegramResponses && options.telegramResponses[method];
         return { getContentText: () => JSON.stringify(fail
           ? { ok: false, error_code: 500, description: 'Тестовый сбой Telegram ' + method }
-          : { ok: true, result: {} }) };
+          : { ok: true, result: custom === undefined ? {} : custom }) };
       },
     },
     Utilities: {
@@ -156,6 +160,18 @@ export function loadGs(options = {}) {
     Session: { getScriptTimeZone: () => 'Europe/Moscow' },
     ScriptApp: {
       getService: () => ({ getUrl: () => options.scriptUrl || 'https://script.google.com/macros/s/test-exec/exec' }),
+      getProjectTriggers: () => (options.triggers || []).slice(),
+      newTrigger: name => ({
+        timeBased: () => ({
+          everyMinutes: minutes => ({
+            create: () => {
+              const trigger = { handlerFunction: name, minutes, getHandlerFunction: () => name };
+              (options.triggers || (options.triggers = [])).push(trigger);
+              return trigger;
+            },
+          }),
+        }),
+      }),
     },
     Logger: { log: (...args) => calls.urlFetch.push({ log: args.map(String).join(' ') }) },
     MimeType: { PLAIN_TEXT: 'text/plain' },
@@ -242,6 +258,50 @@ check('delete отключает webhook без раскрытия токена'
   eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/deleteWebhook', 'метод deleteWebhook');
   eq(calls.urlFetch[0].options.payload, '{}', 'пустой payload');
   eq(calls.urlFetch.filter(call => call.log).length, 0, 'delete ничего не печатает');
+});
+
+check('polling setup отключает webhook и создаёт один минутный триггер', () => {
+  const triggers = [];
+  const { context, calls } = loadGs({ db, triggers });
+  context.setupTelegramPolling();
+  eq(calls.urlFetch[0].url, 'https://api.telegram.org/bottest-token/deleteWebhook', 'webhook отключён');
+  eq(triggers.length, 1, 'один триггер');
+  eq(triggers[0].handlerFunction, 'pollTelegramUpdates', 'обработчик polling');
+  eq(triggers[0].minutes, 1, 'интервал минуты');
+  context.setupTelegramPolling();
+  eq(triggers.length, 1, 'повторный setup не дублирует триггер');
+});
+
+check('polling обрабатывает сообщения и продвигает offset', () => {
+  const update = { update_id: 100, message: { message_id: 1, from: { id: 42 }, chat: { id: 42, type: 'private' }, text: '/start' } };
+  const { context, state, calls } = loadGs({ db, telegramResponses: { getUpdates: [update] } });
+  context.pollTelegramUpdates();
+  eq(state.properties.TELEGRAM_UPDATE_OFFSET, '101', 'следующий offset');
+  const payload = JSON.parse(calls.urlFetch[0].options.payload);
+  eq(payload.offset, 0, 'первый запуск без смещения');
+  eq(payload.allowed_updates.join(','), 'message,callback_query', 'типы обновлений');
+  const reply = sentPayload(calls, 1);
+  eq(reply.text, 'Выберите шаблон:', 'ответ на /start');
+  eq(reply.reply_markup.is_persistent, true, 'постоянная клавиатура');
+});
+
+check('polling после ошибки повторяет update и подтверждает только после успеха', () => {
+  let fail = true;
+  const update = { update_id: 100, message: { message_id: 1, from: { id: 42 }, chat: { id: 42, type: 'private' }, text: '/start' } };
+  const { context, state, calls } = loadGs({
+    db,
+    properties: { TELEGRAM_UPDATE_OFFSET: '100' },
+    telegramResponses: { getUpdates: [update] },
+    failTelegram: method => fail && method === 'sendMessage',
+  });
+  let threw = false;
+  try { context.pollTelegramUpdates(); } catch (_) { threw = true; }
+  eq(threw, true, 'ошибка отправки видна триггеру');
+  eq(state.properties.TELEGRAM_UPDATE_OFFSET, '100', 'offset не продвинут после ошибки');
+  fail = false;
+  context.pollTelegramUpdates();
+  eq(state.properties.TELEGRAM_UPDATE_OFFSET, '101', 'offset после успешной обработки');
+  eq(calls.urlFetch.filter(call => call.url.endsWith('/sendMessage')).length, 2, 'одна повторная отправка');
 });
 
 check('подписи шаблонов и активная клавиатура', () => {

@@ -1,4 +1,4 @@
-// ===== BUDGET TRACKER APPS SCRIPT v11.0 — Drive Storage =====
+// ===== BUDGET TRACKER APPS SCRIPT v11.1 — Drive Storage =====
 // Деплой: Расширения → Apps Script → Развернуть → Новое развертывание
 // Тип: Веб-приложение | Выполнять как: Я | Доступ: Все
 // Данные хранятся в файле nto_data.json в Google Drive (не в таблице)
@@ -9,9 +9,9 @@
 
 const FILE_DATA = 'nto_data.json';
 const SECRET = '';
-// Версия скрипта уходит в каждом JSON-ответе (v11.0): приложение сверяет её со
+// Версия скрипта уходит в каждом JSON-ответе (v11.1): приложение сверяет её со
 // своей и в Настройках подсказывает, что скрипт пора переразвернуть.
-const VERSION = '11.0';
+const VERSION = '11.1';
 const BAK_PREFIX = 'nto_data.bak.';   // nto_data.bak.YYYY-MM-DD.json
 const BAK_KEEP = 7;                    // суточных копий храним столько
 
@@ -67,6 +67,33 @@ function setupTelegramWebhook() {
 
 function deleteTelegramWebhook() {
   _telegramApi('deleteWebhook', {});
+}
+
+function setupTelegramPolling() {
+  deleteTelegramWebhook();
+  const exists = ScriptApp.getProjectTriggers().some(function(trigger) {
+    return trigger.getHandlerFunction() === 'pollTelegramUpdates';
+  });
+  if (!exists) ScriptApp.newTrigger('pollTelegramUpdates').timeBased().everyMinutes(1).create();
+}
+
+function pollTelegramUpdates() {
+  const props = PropertiesService.getScriptProperties();
+  const offset = Number(props.getProperty('TELEGRAM_UPDATE_OFFSET') || 0);
+  const updates = _telegramApi('getUpdates', {
+    offset: offset,
+    timeout: 0,
+    allowed_updates: ['message', 'callback_query'],
+  }).result || [];
+  updates.forEach(function(update) {
+    if (update.message) {
+      if (_telegramAllowed(update.message.from, update.message.chat)) _telegramHandleMessage(update.message);
+    } else if (update.callback_query) {
+      const query = update.callback_query;
+      if (_telegramAllowed(query.from, query.message && query.message.chat)) _telegramUndo(query);
+    }
+    props.setProperty('TELEGRAM_UPDATE_OFFSET', String(update.update_id + 1));
+  });
 }
 
 function _telegramTemplateLabel(template) {
