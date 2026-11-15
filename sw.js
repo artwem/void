@@ -2,7 +2,7 @@
 // Для обновления PWA на iOS: поменяй дату в V перед каждым деплоем.
 // iOS сравнивает байты sw.js — любое изменение = новая установка = сброс кеша.
 
-const V = '2026-11-15 v1.91.1';
+const V = '2026-11-15 v1.91.2';
 const CACHE = 'app-' + V;
 
 // Файлы для предзагрузки
@@ -10,6 +10,7 @@ const PRECACHE = [
   './',
   './css/app.css',
   './apps-script/Code.gs',
+  './apps-script/Telegram.gs',
   './vendor/telegram-web-app.js',
   './vendor/chart.umd.js',
   './vendor/xlsx.style.min.js',

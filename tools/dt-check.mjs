@@ -2769,6 +2769,25 @@ suite(390, 'дни недели и подушка', () => {
   });
 });
 
+suite(390, 'копирование Apps Script', () => {
+  check('одна кнопка копирует backend и Telegram-бота единым скриптом', async p => {
+    const got = await p.evaluate(async () => {
+      const core = await fetch('./apps-script/Code.gs').then(r => r.text());
+      const telegram = await fetch('./apps-script/Telegram.gs').then(r => r.text());
+      window._APPS_SCRIPT_CODE = '';
+      let copied = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async text => { copied = text; } },
+      });
+      await copyAppsScript();
+      return { copied, core, telegram };
+    });
+    eq(got.copied, got.core + '\n' + got.telegram, 'в буфере полный скрипт одним текстом');
+    new Function(got.copied);
+  });
+});
+
 // Секрет Apps Script скрыт звёздочками, а дата снимка принимает будущее:
 // вечером 31-го вносят состояние на 1-е, и «🏷 грейс» обязан сохранить снимок
 // за выбранную дату. С max=today() пикер молча ел будущую дату, и снимок

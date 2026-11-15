@@ -1439,7 +1439,7 @@ if ('serviceWorker' in navigator) {
       <div>
         <div style="font-size:20px;font-weight:600;letter-spacing:2px;color:var(--text)">V.O.I.D.</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Visual Overview of Income &amp; Debt</div>
-        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.1</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">v1.91.2</div>
       </div>
     </div>
     <p style="font-size:14px;color:var(--muted);line-height:1.6;font-style:italic;margin-bottom:12px">Личный финансовый трекер для тех, кто хочет видеть куда уходят деньги.</p>
@@ -10603,13 +10603,20 @@ document.addEventListener('visibilitychange', () => {
 // ── Loader кода Apps Script ───────────────────────────────────────────
 // Код Apps Script грузится лениво, по кнопке «Скопировать»: до v1.82.0 init()
 // ждал этот fetch при каждом старте, а при ошибке сети подставлял инлайновую
-// копию v10.1 — без секрета, блокировки и защиты от затирания. Файл лежит в
-// PRECACHE service worker, поэтому оффлайн он всё равно доступен.
+// копию v10.1 — без секрета, блокировки и защиты от затирания. Оба файла лежат в
+// PRECACHE service worker и объединяются здесь, чтобы вставка осталась одной.
 async function loadAppsScriptCode() {
   if(window._APPS_SCRIPT_CODE) return window._APPS_SCRIPT_CODE;
   try {
-    const r = await fetch('./apps-script/Code.gs');
-    if(r.ok) { window._APPS_SCRIPT_CODE = await r.text(); return window._APPS_SCRIPT_CODE; }
+    const responses = await Promise.all([
+      fetch('./apps-script/Code.gs'),
+      fetch('./apps-script/Telegram.gs'),
+    ]);
+    if(responses.every(r => r.ok)) {
+      const [core, telegram] = await Promise.all(responses.map(r => r.text()));
+      window._APPS_SCRIPT_CODE = core + '\n' + telegram;
+      return window._APPS_SCRIPT_CODE;
+    }
   } catch(_) {}
   return '';
 }
