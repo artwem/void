@@ -1118,6 +1118,14 @@ if ('serviceWorker' in navigator) {
       <select id="inv-contrib-bank" class="finp"></select>
       <div style="font-size:11px;color:var(--muted);margin-top:4px" id="inv-contrib-bank-hint">Остаток банка уменьшится в ближайшем снимке счетов</div>
     </div>
+    <div id="inv-close-income-grp" style="display:none">
+      <div id="inv-close-profit" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="inv-close-to-income" checked onchange="_updateInvCloseIncome()" style="width:18px;height:18px;flex-shrink:0;padding:0;margin:0;accent-color:var(--green);-webkit-appearance:checkbox;appearance:auto"/>
+        <span>Записать прибыль в доходы</span>
+      </label>
+      <div class="fgrp" id="inv-close-tag-grp"><label class="flbl">Тег дохода (прибыль)</label><select id="inv-close-income-tag" class="finp"></select></div>
+    </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal('modal-inv-contrib')">Отмена</button>
       <button class="btn primary" id="inv-contrib-save" onclick="saveInvContribution()">Пополнить</button>
@@ -7346,6 +7354,31 @@ function _invWithdrawalAvailable(v, date){
   return Math.max(0, parseMoney(invValueAt(v, date) + (c && c.amount<0 ? -c.amount : 0)));
 }
 
+function _invCloseProfit(draft){
+  const td = today();
+  return invValueAt(draft,td)===0 ? _invCashTotals(draft,td).result : 0;
+}
+
+function _updateInvCloseIncome(){
+  const v = (DB.investments||[]).find(x=>x.id===_invContribId && !x._deleted);
+  const closing = !!(v && !_invEditContribId && _invContribDir<0 && _invWithdrawMode==='all');
+  let profit = 0;
+  if(closing){
+    const date = document.getElementById('inv-contrib-date').value;
+    const amount = _invWithdrawalAvailable(v,date);
+    const draft = _invDraft(v);
+    _invFreezeSnapshot(draft,date);
+    draft.contributions.push({id:'_inv-close-preview',date,amount:-amount});
+    profit = _invCloseProfit(draft);
+  }
+  document.getElementById('inv-close-income-grp').style.display = closing ? '' : 'none';
+  document.getElementById('inv-close-profit').innerHTML = closing
+    ? (profit>0 ? 'Будет записана прибыль: <span style="color:var(--green);font-weight:600">+'+fmtH(profit)+'</span>'
+      : 'Доход не создаётся: счёт не закрывается или нет положительной прибыли') : '';
+  document.getElementById('inv-close-to-income').disabled = profit<=0;
+  document.getElementById('inv-close-tag-grp').style.display = closing && profit>0 && document.getElementById('inv-close-to-income').checked ? '' : 'none';
+}
+
 function updateInvWithdrawal(){
   const v = (DB.investments||[]).find(x=>x.id===_invContribId && !x._deleted);
   const inp = document.getElementById('inv-contrib-amount');
@@ -7354,6 +7387,7 @@ function updateInvWithdrawal(){
   const available = v ? _invWithdrawalAvailable(v, document.getElementById('inv-contrib-date').value) : 0;
   document.getElementById('inv-withdraw-available').innerHTML = withdrawing ? 'Доступно: '+fmtH(available) : '';
   if(inp.readOnly) setMoneyInput('inv-contrib-amount', available);
+  _updateInvCloseIncome();
 }
 
 function _fillInvBankSelect(dir){
@@ -7392,6 +7426,9 @@ function openInvContribution(id, dir, cid){
     setMoneyInput('inv-contrib-amount',Math.abs(c.amount));
     closeModal('modal-investment');
   }
+  const incomeTags = [...new Set([...(DB.incomeTags||[]),'Инвестиции'])];
+  document.getElementById('inv-close-income-tag').innerHTML = incomeTags.map(t=>`<option value="${esc(t)}"${t==='Инвестиции'?' selected':''}>${esc(t)}</option>`).join('');
+  document.getElementById('inv-close-to-income').checked = true;
   setInvWithdrawMode('part');
   openModal('modal-inv-contrib');
 }
@@ -7416,6 +7453,8 @@ function saveInvContribution(){
   if(old) draft.contributions.find(c=>c.id===cid).amount = signed;
   else draft.contributions.push({id:cid, date, amount:signed});
   if(_invWouldOverdraw(v,draft)){ toast('После операции остаток станет отрицательным — проверьте выводы'); return; }
+  const closeProfit = !old && _invContribDir<0 && _invWithdrawMode==='all' ? _invCloseProfit(draft) : 0;
+  const closeToIncome = closeProfit>0 && document.getElementById('inv-close-to-income').checked;
   if(!v.contributions) v.contributions = [];
   const bank = old ? old.bank : document.getElementById('inv-contrib-bank').value;
   _invFreezeSnapshot(v, date);
@@ -7425,6 +7464,15 @@ function saveInvContribution(){
   v.contributions.sort((a,b)=>a.date.localeCompare(b.date));
   v.updatedAt = Date.now();
   if(bank) _invBankTransfer(bank, date, prevAmount-signed);
+  if(closeToIncome){
+    if(!DB.incomes) DB.incomes = [];
+    if(!DB.incomeTags) DB.incomeTags = [];
+    if(!DB.incomeTagOrder) DB.incomeTagOrder = [];
+    if(!DB.incomeTags.includes('Инвестиции')){ DB.incomeTags.push('Инвестиции'); touchList('incomeTags'); }
+    if(!DB.incomeTagOrder.includes('Инвестиции')){ DB.incomeTagOrder.push('Инвестиции'); touchList('incomeTagOrder'); }
+    const tag = document.getElementById('inv-close-income-tag').value || 'Инвестиции';
+    DB.incomes.push({id:uid(),source:'Прибыль по инвестициям '+v.name,amount:closeProfit,date,comment:'',tag,_deleted:false,updatedAt:Date.now()});
+  }
   saveDB();
   closeModal('modal-inv-contrib');
   _invContribId = null;
@@ -7432,7 +7480,7 @@ function saveInvContribution(){
   if(typeof renderAssets==='function') renderAssets();
   if(old) openInvestModal(v.id);
   _invEditContribId = null;
-  toast('✓ '+(signed>0?'Пополнение ':'Вывод ')+fmt(amount)+(bank?' · '+bank:''));
+  toast('✓ '+(signed>0?'Пополнение ':'Вывод ')+fmt(amount)+(bank?' · '+bank:'')+(closeToIncome?'; прибыль '+fmt(closeProfit)+' → в доходы':''));
 }
 
 function renderDeposits(){

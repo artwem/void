@@ -2816,7 +2816,7 @@ suite(390, 'копирование Apps Script', () => {
       }
     });
     eq(got.copied.includes(got.expected), true, 'clipboard содержит сериализованный SECRET');
-    eq(got.modal, got.copied, 'fallback содержит тот же готовый код');
+    eq(got.modal, got.copied.replace(/\r\n/g, '\n'), 'fallback содержит тот же готовый код');
     eq(got.cached.includes(got.token), false, 'кэш исходника не содержит токен');
     eq(got.empty, true, 'пустой токен оставляет пустой SECRET');
     new Function(got.copied);
@@ -3033,6 +3033,89 @@ suite(390, 'вывод инвестиций и исправление сумм',
     eq(r.value,0,'остаток'); near(r.bank,6000.55,'банк',0.001);
     eq(r.flows,2,'история сохранена'); eq(r.deleted,false,'счёт сохранён');
     near(r.profit,200.30,'полученная прибыль сохранена',0.001);
+  });
+  check('полный вывод создаёт доход с прибылью и тегом Инвестиции', async p => {
+    await reset(p,true);
+    const r = await p.evaluate(() => {
+      const before = DB.incomes.length;
+      openInvContribution('inv-test',-1); setInvWithdrawMode('all');
+      const shown = getComputedStyle(document.getElementById('inv-close-income-grp')).display !== 'none';
+      const checked = document.getElementById('inv-close-to-income').checked;
+      saveInvContribution();
+      const added = DB.incomes.slice(before), inc = added[0] || {};
+      return {shown,checked,count:added.length,amount:inc.amount,date:inc.date,source:inc.source,tag:inc.tag,
+        tags:DB.incomeTags.filter(t=>t==='Инвестиции').length,
+        order:DB.incomeTagOrder.filter(t=>t==='Инвестиции').length,
+        meta:!!(DB.listsMeta.incomeTags && DB.listsMeta.incomeTagOrder)};
+    });
+    eq(r.shown,true,'галочка показана'); eq(r.checked,true,'галочка включена по умолчанию');
+    eq(r.count,1,'добавлен один доход'); near(r.amount,200.30,'прибыль до копеек',0.001);
+    eq(r.date,await p.evaluate(()=>today()),'дата вывода');
+    eq(r.source,'Прибыль по инвестициям Тестовый счёт','источник'); eq(r.tag,'Инвестиции','тег дохода');
+    eq(r.tags,1,'тег добавлен один раз'); eq(r.order,1,'тег добавлен в порядок списания'); eq(r.meta,true,'списки помечены для синка');
+  });
+  check('частичный вывод и неположительный результат не создают доход', async p => {
+    await reset(p,true);
+    const r = await p.evaluate(() => {
+      const run = (value,all,amount) => {
+        DB.investments = [{id:'inv-test',name:'Тестовый счёт',snapshots:{[today()]:value},
+          contributions:[{id:'inv-initial',date:'2020-01-01',amount:800.25,updatedAt:1}],updatedAt:1}];
+        DB.incomes = [];
+        openInvContribution('inv-test',-1);
+        if(all) setInvWithdrawMode('all'); else setMoneyInput('inv-contrib-amount',amount);
+        const hidden = document.getElementById('inv-close-income-grp').style.display === 'none';
+        const tagHidden = document.getElementById('inv-close-tag-grp').style.display === 'none';
+        saveInvContribution();
+        return {hidden,tagHidden,count:DB.incomes.length};
+      };
+      return {partial:run(1000.55,false,250.25),loss:run(700,true),zero:run(800.25,true)};
+    });
+    eq(r.partial.hidden,true,'при частичном выводе блок скрыт'); eq(r.partial.count,0,'частичный вывод без дохода');
+    eq(r.loss.tagHidden,true,'при убытке тег скрыт'); eq(r.loss.count,0,'убыток не записан');
+    eq(r.zero.tagHidden,true,'при нуле тег скрыт'); eq(r.zero.count,0,'нулевой результат не записан');
+  });
+  check('галочка отключает доход и создание тега', async p => {
+    await reset(p,true);
+    const r = await p.evaluate(() => {
+      const before = {incomes:DB.incomes.length,tags:JSON.stringify(DB.incomeTags),order:JSON.stringify(DB.incomeTagOrder)};
+      openInvContribution('inv-test',-1); setInvWithdrawMode('all');
+      document.getElementById('inv-close-to-income').checked = false;
+      saveInvContribution();
+      return {before,after:{incomes:DB.incomes.length,tags:JSON.stringify(DB.incomeTags),order:JSON.stringify(DB.incomeTagOrder)},
+        value:invValueAt(DB.investments[0],today()),flows:DB.investments[0].contributions.length};
+    });
+    eq(r.after.incomes,r.before.incomes,'доход не добавлен'); eq(r.after.tags,r.before.tags,'теги не изменены');
+    eq(r.after.order,r.before.order,'порядок не изменён'); eq(r.value,0,'счёт всё же закрыт'); eq(r.flows,2,'вывод сохранён');
+  });
+  check('задний полный вывод до более позднего снимка не создаёт доход', async p => {
+    await reset(p,true);
+    const r = await p.evaluate(() => {
+      const v = DB.investments[0]; v.snapshots = {'2020-01-01':800.25,[today()]:1000.55}; DB.incomes = [];
+      openInvContribution(v.id,-1); setInvWithdrawMode('all');
+      document.getElementById('inv-contrib-date').value = '2020-01-01'; updateInvWithdrawal();
+      const tagHidden = document.getElementById('inv-close-tag-grp').style.display === 'none';
+      saveInvContribution();
+      return {tagHidden,count:DB.incomes.length,value:invValueAt(v,today())};
+    });
+    eq(r.tagHidden,true,'текущего закрытия нет, тег скрыт'); eq(r.count,0,'доход не создан'); eq(r.value,1000.55,'поздний снимок сохранён');
+  });
+  check('существующий тег не дублируется, выбранный тег сохраняется', async p => {
+    await reset(p,true);
+    const existing = await p.evaluate(() => {
+      DB.incomes = []; DB.incomeTags = ['Проценты','Инвестиции']; DB.incomeTagOrder = ['Проценты','Инвестиции'];
+      openInvContribution('inv-test',-1); setInvWithdrawMode('all'); saveInvContribution();
+      return DB.incomeTags.filter(t=>t==='Инвестиции').length;
+    });
+    await reset(p,true);
+    const custom = await p.evaluate(() => {
+      DB.incomes = []; DB.incomeTags = ['Проценты']; DB.incomeTagOrder = [];
+      openInvContribution('inv-test',-1); setInvWithdrawMode('all');
+      document.getElementById('inv-close-income-tag').value = 'Проценты'; saveInvContribution();
+      return {tag:DB.incomes[0].tag,tags:DB.incomeTags.filter(t=>t==='Инвестиции').length,
+        order:DB.incomeTagOrder.filter(t=>t==='Инвестиции').length};
+    });
+    eq(existing,1,'существующий тег не продублирован'); eq(custom.tag,'Проценты','выбран другой тег');
+    eq(custom.tags,1,'тег по умолчанию добавлен'); eq(custom.order,1,'порядок списания обновлён');
   });
   check('новый снимок поглощает прежний вывод, следующий вывод учитывается сразу', async p => {
     await reset(p); await withdraw(p,250.25);
